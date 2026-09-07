@@ -7,6 +7,7 @@
   <p>
     <img src="https://img.shields.io/badge/status-active%20build-ff6a2b?style=flat-square" alt="Active build" />
     <img src="https://img.shields.io/badge/milestones-0%20done%20%7C%2011%20left-32c878?style=flat-square" alt="Milestones: 0 done | 11 left" />
+    <img src="https://img.shields.io/badge/license-BSL%201.1-blue?style=flat-square" alt="BSL 1.1 License" />
     <img src="https://img.shields.io/badge/platform-Windows--first-20232a?style=flat-square" alt="Windows first" />
     <img src="https://img.shields.io/badge/engine-CEF%20planned-59636e?style=flat-square" alt="CEF planned" />
     <img src="https://img.shields.io/badge/focus-agent--first-f4f0e8?style=flat-square" alt="Agent first" />
@@ -270,7 +271,11 @@ If you discover a security issue, do not publish credentials, cookies, session d
 
 ## License
 
-The licensing decision is being finalized alongside the first public repository release. Until then, treat this prototype and its copied assets as a development snapshot and check the repository’s `LICENSE` before redistributing code.
+AgentGo is licensed under the [Business Source License 1.1 (BSL 1.1)](LICENSE).
+
+- **Personal & Non-Commercial Use**: You are free to run, modify, inspect, and evaluate AgentGo for personal, research, and non-commercial development.
+- **Commercial Use**: Any use in production, deployment by a commercial entity, or for commercial purposes requires a commercial license agreement from the Licensor.
+- **Open Source Transition**: On the Change Date (2030-01-01), the software automatically converts to the **Apache License, Version 2.0**.
 
 <div align="center">
   <br />
