@@ -5,7 +5,8 @@
   <p>A Windows-first, local, agent-centric browser surface designed to give Codex, Claude Code, OpenCode, and other agents the same control a human has — with better context, safer execution, and fewer tokens.</p>
 
   <p>
-    <img src="https://img.shields.io/badge/status-research%20%2B%20active%20build-ff6a2b?style=flat-square" alt="Research and active build" />
+    <img src="https://img.shields.io/badge/status-active%20build-ff6a2b?style=flat-square" alt="Active build" />
+    <img src="https://img.shields.io/badge/milestones-0%20done%20%7C%2011%20left-32c878?style=flat-square" alt="Milestones: 0 done | 11 left" />
     <img src="https://img.shields.io/badge/platform-Windows--first-20232a?style=flat-square" alt="Windows first" />
     <img src="https://img.shields.io/badge/engine-CEF%20planned-59636e?style=flat-square" alt="CEF planned" />
     <img src="https://img.shields.io/badge/focus-agent--first-f4f0e8?style=flat-square" alt="Agent first" />
@@ -196,18 +197,24 @@ AgentGo is an active research and implementation project. The visual direction i
 
 This README is intentionally honest: the product goal is ambitious, but the browser is not being presented as production-ready before the hard parts are proven.
 
-### Roadmap
+### Roadmap (Milestones)
 
-| Stage | Focus | Outcome |
-| --- | --- | --- |
-| 0 | Workspace and architecture | Clear crate boundaries, schemas, threat model, and build conventions |
-| 1 | Local bridge and instance lifecycle | Launch, attach, isolate, observe, act, log, and shut down reliably |
-| 2 | Browser surface | Tabs, windows, navigation, input, forms, dialogs, uploads, downloads, and page state |
-| 3 | Agent context | Semantic snapshots, DOM/HTML, accessibility, layout, screenshots, deltas, and artifacts |
-| 4 | Workflow engine | Batches, verification, retries, recovery, extraction, and compact result handles |
-| 5 | Safety UX | Approval mode, Full Access mode, pause/stop, CAPTCHA handoff, purchase gates, and settings |
-| 6 | Agent interoperability | Shared skill, SDKs, examples, compatibility fixtures, and host integration guides |
-| 7 | Hardening | Security review, adversarial tests, performance work, accessibility, packaging, and release candidates |
+| Milestone | Status | Focus | Target Outcome |
+| :---: | :---: | :--- | :--- |
+| **0** | ✅ **Done** | Workspace & Architecture | 15 Rust crates, toolchain pins, invariant tests, capability manifest |
+| **1** | 🔄 *In progress* | CEF Engine & Surface | Native CEF subprocess model, headed browser window, tab lifecycle |
+| **2** | 📋 *Planned* | Windows Native Harness | Native file-picker dialogs, OS prompts, foreground/background control |
+| **3** | 📋 *Planned* | Local Protocol & Bridge | Windows named pipes / stdio, cryptographic session isolation |
+| **4** | 📋 *Planned* | Semantic Context Reducer | Outline views, intent filtering, structural deltas, stable element references |
+| **5** | 📋 *Planned* | Batch Workflow Engine | One-call multi-step flows, auto-wait, local verification checkpoints |
+| **6** | 📋 *Planned* | Safety & Policy Engine | Approval vs Full-Access modes, hard purchase gates, Stop Agent button |
+| **7** | 📋 *Planned* | Human Handoff Relay | In-place CAPTCHA & 2FA pause with native Windows notifications |
+| **8** | 📋 *Planned* | Evidence & Artifact Store | Local artifact persistence, sha256 evidence handles, secret redaction |
+| **9** | 📋 *Planned* | AgentGo Skill & MCP | Shared cross-agent skill, MCP server, Claude Code / Codex adapters |
+| **10** | 📋 *Planned* | Complete Browser Surface | Tabs, sessions, history, downloads, DevTools, extension management |
+| **11** | 📋 *Planned* | Hardening & Benchmarks | BrowserGym evaluation, security audit, fuzz testing, release candidate |
+
+*Current Progress: Milestone 0 completed — 11 milestones remaining.*
 
 ## Run the visual prototype
 
