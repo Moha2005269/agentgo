@@ -217,15 +217,29 @@ This README is intentionally honest: the product goal is ambitious, but the brow
 
 *Current Progress: Milestone 0 completed — 11 milestones remaining.*
 
-## Run the visual prototype
+## Visual prototype & interface preview
 
-The GitHub README is the canonical project story. This folder also includes [`showcase.html`](showcase.html), a local, richer visual preview of the same message with the AgentGo logo, continuous angel-wing animation, feature cards, and a simulated control surface.
+The GitHub README is the canonical project story. AgentGo includes a comprehensive visual interface prototype ([`agentgo-ui.html`](agentgo-ui.html)) and a local presentation page ([`showcase.html`](showcase.html)).
 
 ```text
-Open showcase.html in a browser
+Open showcase.html or agentgo-ui.html in a modern browser
 ```
 
-The current UI prototype is preserved as [`agentgo-ui.html`](agentgo-ui.html). It is copied from the active build for reference; the active build itself is intentionally not modified by this showcase pass.
+### New Tab & Agent Omnibar
+
+The landing surface combines quick access shortcuts, ambient agent status, and an omnibar designed to either search or delegate the tab directly to Codex, Claude Code, or OpenCode:
+
+<p align="center">
+  <img src="assets/agentgo-ui-home.png" width="100%" alt="AgentGo New Tab and Omnibar interface" />
+</p>
+
+### Autonomous execution ("Watch it work")
+
+AgentGo handles multi-step browsing sessions with real cursor interaction, verification checkpoints, and receipts for every move:
+
+<p align="center">
+  <img src="assets/agentgo-ui-watch-it-work.png" width="100%" alt="AgentGo Watch It Work live autonomous execution view" />
+</p>
 
 ## Repository layout
 
@@ -233,12 +247,14 @@ The current UI prototype is preserved as [`agentgo-ui.html`](agentgo-ui.html). I
 .
 ├── README.md
 ├── showcase.html                  # local visual preview of the README story
-├── agentgo-ui.html                 # copied UI prototype
+├── agentgo-ui.html                 # interactive UI prototype
 ├── assets/
 │   ├── agentgo-logo.svg            # source logo
 │   ├── agentgo-loop.svg            # animated vector source
 │   ├── agentgo-loop.gif            # GitHub-compatible motion asset
-│   └── agentgo-workspace.gif        # cursor + click + verification motion asset
+│   ├── agentgo-workspace.gif        # cursor + click + verification motion asset
+│   ├── agentgo-ui-home.png         # 1920x1080 New Tab UI preview
+│   └── agentgo-ui-watch-it-work.png # 1920x1080 autonomous session UI preview
 ├── docs/
 │   ├── capability-inventory.md
 │   └── implementation-plan.md
