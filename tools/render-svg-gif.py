@@ -24,8 +24,11 @@ with sync_playwright() as p:
     )
     page = browser.new_page(viewport={"width": 960, "height": 540}, device_scale_factor=1)
     page.goto(f"file:///{SVG_PATH}")
-    
-    page.evaluate("() => document.getAnimations().forEach(a => a.pause())")
+    page.evaluate("""() => {
+        if (document.documentElement) document.documentElement.style.background = '#0b0d12';
+        if (document.body) document.body.style.background = '#0b0d12';
+        document.getAnimations().forEach(a => a.pause());
+    }""")
     
     for i in range(TOTAL_FRAMES):
         t_ms = (i / FPS) * 1000

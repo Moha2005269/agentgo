@@ -37,7 +37,7 @@
       @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }
     </style>
   </defs>
-  <rect width="960" height="540" rx="34" fill="url(#bg)"/>
+  <rect width="960" height="540" fill="url(#bg)"/>
   <g opacity=".18" fill="none" stroke="#6d6470" stroke-width="1">
     <path d="M80 438C230 385 320 407 480 448s250 57 400-15"/>
     <path d="M72 102C260 48 340 78 480 93s250-18 408 26"/>

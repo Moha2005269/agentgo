@@ -16,12 +16,6 @@
   <img src="assets/agentgo-loop.gif" width="760" alt="Animated AgentGo halo and continuous angel wings" />
 </p>
 
-<p align="center">
-  <img src="assets/agentgo-workspace.gif" width="760" alt="Animated AgentGo workspace with a cursor moving, clicking a result, and verifying progress" />
-</p>
-
-<p align="center"><sub>Observe the page. Make the move. Verify the result.</sub></p>
-
 > AgentGo is being built around one uncompromising idea: the browser should be a first-class control surface for agents, not a tab-shaped API wrapper that makes the agent fight the web.
 
 ## Why AgentGo?
@@ -29,6 +23,12 @@
 Browser automation usually forces an agent to choose between two bad extremes: a brittle click script that cannot understand a changing page, or a huge stream of screenshots and raw HTML that burns context while still missing the important state.
 
 AgentGo is meant to give an agent a compact, truthful picture of the page and the ability to act on it directly. The agent can inspect the DOM, accessibility tree, layout, HTML, screenshot, and browser state; choose the smallest useful representation; then click, type, scroll, drag, upload, download, navigate, verify, and recover through one consistent control surface.
+
+<p align="center">
+  <img src="assets/agentgo-workspace.gif" width="760" alt="Animated AgentGo workspace with a cursor moving, clicking a result, and verifying progress" />
+</p>
+
+<p align="center"><sub>Observe the page. Make the move. Verify the result.</sub></p>
 
 The user remains in charge of credentials, CAPTCHA handoffs, purchases, destructive actions, and the emergency controls. Everything else can be automated when the user chooses Full Access mode.
 
@@ -171,7 +171,7 @@ This makes AgentGo portable across agent hosts: the browser stays the same while
 
 The browser is the control surface. It is not meant to hide the agent behind a private cloud API, require a proprietary account, or force every agent ecosystem to implement a different integration.
 
-The second motion plate above is a small visual translation of the UI prototype’s **Watch it work** section: a cursor moves through a live-looking browser workspace, clicks a result, and advances the verification record. It is an illustration of the interaction model, not a claim that the pictured site is being controlled by this README.
+The workspace motion plate in the explanation section above is a visual translation of the UI prototype’s **Watch it work** section: a cursor moves through a live-looking browser workspace, clicks a result, and advances the verification record. It is an illustration of the interaction model, not a claim that the pictured site is being controlled by this README.
 
 ## Planned developer flow
 
