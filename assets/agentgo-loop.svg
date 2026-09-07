@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-labelledby="title desc">
+  <title id="title">AgentGo animated angel-wing mark</title>
+  <desc id="desc">Continuous feather wings and a halo orbit around the AgentGo mark.</desc>
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="42%" r="72%">
+      <stop offset="0" stop-color="#28232a"/>
+      <stop offset=".48" stop-color="#17181f"/>
+      <stop offset="1" stop-color="#0b0d12"/>
+    </radialGradient>
+    <linearGradient id="warm" x1="0" x2="1">
+      <stop stop-color="#b64b1e" stop-opacity=".18"/>
+      <stop offset=".48" stop-color="#ff6a2b" stop-opacity=".92"/>
+      <stop offset="1" stop-color="#b64b1e" stop-opacity=".18"/>
+    </linearGradient>
+    <linearGradient id="ivory" x1="0" x2="1">
+      <stop stop-color="#858b99"/>
+      <stop offset=".48" stop-color="#f4f0e8"/>
+      <stop offset="1" stop-color="#858b99"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <style>
+      .halo { transform-origin: 480px 135px; animation: orbit 8s ease-in-out infinite; }
+      .halo-sheen { stroke-dasharray: 120 560; animation: sheen 4.8s linear infinite; }
+      .wings { transform-origin: 480px 242px; animation: breathe 7s ease-in-out infinite; }
+      .feather { stroke-dasharray: 640; stroke-dashoffset: 640; animation: draw 2.4s cubic-bezier(.2,.7,.2,1) forwards; }
+      .feather:nth-child(2n) { animation-delay: .12s; }
+      .feather:nth-child(3n) { animation-delay: .24s; }
+      .mark { animation: mark-in 1.2s cubic-bezier(.2,.8,.2,1) .18s both; }
+      @keyframes orbit { 0%,100% { transform: rotate(-2deg) scaleX(.98); } 50% { transform: rotate(2deg) scaleX(1.02); } }
+      @keyframes sheen { to { stroke-dashoffset: -680; } }
+      @keyframes breathe { 0%,100% { transform: scaleY(.985) translateY(1px); } 50% { transform: scaleY(1.02) translateY(-2px); } }
+      @keyframes draw { to { stroke-dashoffset: 0; } }
+      @keyframes mark-in { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
+      @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }
+    </style>
+  </defs>
+  <rect width="960" height="540" rx="34" fill="url(#bg)"/>
+  <g opacity=".18" fill="none" stroke="#6d6470" stroke-width="1">
+    <path d="M80 438C230 385 320 407 480 448s250 57 400-15"/>
+    <path d="M72 102C260 48 340 78 480 93s250-18 408 26"/>
+  </g>
+  <g class="halo" fill="none" stroke-linecap="round">
+    <ellipse cx="480" cy="135" rx="165" ry="43" stroke="#ff6a2b" stroke-opacity=".11" stroke-width="18" filter="url(#glow)"/>
+    <ellipse cx="480" cy="135" rx="165" ry="43" stroke="url(#warm)" stroke-width="4"/>
+    <ellipse class="halo-sheen" cx="480" cy="135" rx="165" ry="43" stroke="#f7c6a7" stroke-opacity=".86" stroke-width="5"/>
+  </g>
+  <g class="wings" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <g stroke="#ff6a2b" stroke-opacity=".13" stroke-width="16" filter="url(#glow)">
+      <path d="M455 236C383 158 254 126 104 192C244 190 349 229 423 285"/>
+      <path d="M505 236C577 158 706 126 856 192C716 190 611 229 537 285"/>
+    </g>
+    <g stroke="url(#warm)" stroke-width="4">
+      <path class="feather" d="M455 236C387 165 268 130 104 192C242 191 350 226 423 285"/>
+      <path class="feather" d="M452 242C367 186 239 170 88 242C232 221 337 244 418 294"/>
+      <path class="feather" d="M449 248C345 211 218 222 93 298C224 254 330 264 413 305"/>
+      <path class="feather" d="M446 254C330 248 232 280 142 354C247 302 330 294 407 316"/>
+      <path class="feather" d="M505 236C573 165 692 130 856 192C718 191 610 226 537 285"/>
+      <path class="feather" d="M508 242C593 186 721 170 872 242C728 221 623 244 542 294"/>
+      <path class="feather" d="M511 248C615 211 742 222 867 298C736 254 630 264 547 305"/>
+      <path class="feather" d="M514 254C630 248 728 280 818 354C713 302 630 294 553 316"/>
+    </g>
+    <g stroke="url(#ivory)" stroke-width="2.4" opacity=".78">
+      <path class="feather" d="M449 239C358 198 239 199 128 253"/>
+      <path class="feather" d="M511 239C602 198 721 199 832 253"/>
+      <path class="feather" d="M443 263C337 275 249 315 186 373"/>
+      <path class="feather" d="M517 263C623 275 711 315 774 373"/>
+    </g>
+  </g>
+  <g transform="translate(436, 202)">
+    <g class="mark" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M0 92 36 0h16l36 92M17 62h54" stroke="#f4f0e8" stroke-width="7"/>
+      <path d="M-5 79c30-11 61-34 93-66m-24 0h24v24" stroke="#ff6a2b" stroke-width="6"/>
+    </g>
+  </g>
+  <g fill="#f4f0e8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" text-anchor="middle">
+    <text x="480" y="458" font-size="16" letter-spacing="6" fill="#9ba0ad">AGENTGO</text>
+    <text x="480" y="483" font-size="11" letter-spacing="3" fill="#ff6a2b">THE BROWSER YOUR AGENT DRIVES</text>
+  </g>
+</svg>

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="title desc">
+  <title id="title">AgentGo mark</title>
+  <desc id="desc">A premium ivory A with an orange navigation slash and halo.</desc>
+  <defs>
+    <filter id="orange-glow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="2.4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <ellipse cx="48" cy="17.5" rx="22" ry="6.8" stroke="#ff6a2b" stroke-width="4" filter="url(#orange-glow)"/>
+    <path d="M23 79 43.3 31h9.4L73 79M32.4 63.5h31.4" stroke="#f4f0e8" stroke-width="6"/>
+    <path d="M20.2 71.8c16.9-6.5 32.5-18.2 48.5-34.3m-12.5 0h12.5V50" stroke="#ff6a2b" stroke-width="5"/>
+  </g>
+</svg>
