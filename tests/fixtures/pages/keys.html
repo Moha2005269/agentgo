@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Keys fixture</title></head>
+<body>
+  <h1>Keys fixture</h1>
+  <input id="field" placeholder="type here">
+  <pre id="log"></pre>
+<script>
+  const log = (text) => { document.getElementById('log').textContent += text + '\n'; };
+  addEventListener('keydown', (event) => {
+    const key = event.key.toLowerCase();
+    log('keydown ' + [event.ctrlKey && 'ctrl', event.shiftKey && 'shift', event.altKey && 'alt', key].filter(Boolean).join('+'));
+    // The page tries to keep Ctrl+H and Ctrl+T. Only the first is allowed to
+    // win: a browser never lets a page take Ctrl+T.
+    if (event.ctrlKey && (key === 'h' || key === 't')) event.preventDefault();
+  });
+</script>
+</body>
+</html>

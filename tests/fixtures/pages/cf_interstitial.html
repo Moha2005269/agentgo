@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+<meta charset="UTF-8">
+<title>Just a moment...</title>
+<meta http-equiv="refresh" content="360">
+</head>
+<body>
+<!-- Structure of a Cloudflare full-page browser check. The script below is a
+     stand-in: with ?pass=<ms> the "check" finishes by itself, as it does for
+     most real browsers; without it the check never ends. -->
+<div class="main-wrapper" role="main"></div>
+<script>window._cf_chl_opt = { cType: 'managed', cRay: 'fixture' };</script>
+<script src="/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1?ray=fixture"></script>
+<script>
+  const pass = Number(new URLSearchParams(location.search).get('pass') || 0);
+  if (pass) {
+    setTimeout(() => {
+      document.title = 'Verified page';
+      document.body.innerHTML = '<h1>Welcome through</h1><button id="go">Go on</button>';
+    }, pass);
+  }
+</script>
+</body>
+</html>

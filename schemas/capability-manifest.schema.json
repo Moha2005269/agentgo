@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentgo.invalid/schemas/capability-manifest.schema.json",
+  "title": "AgentGo capability manifest (shape contract for the generated manifest)",
+  "type": "object",
+  "required": ["manifestVersion", "source", "sourceSha256", "agentgoVersion", "protocolVersion", "skillVersion", "counts", "sections"],
+  "properties": {
+    "manifestVersion": { "const": 1 },
+    "source": { "const": "docs/capability-inventory.md" },
+    "sourceSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "agentgoVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "protocolVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "skillVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "counts": {
+      "type": "object",
+      "required": ["total", "p0", "p1", "p2"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 1 },
+        "p0": { "type": "integer", "minimum": 0 },
+        "p1": { "type": "integer", "minimum": 0 },
+        "p2": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "sections": {
+      "type": "array",
+      "minItems": 30,
+      "items": {
+        "type": "object",
+        "required": ["number", "title", "owner", "milestone", "capabilities"],
+        "properties": {
+          "number": { "type": "integer", "minimum": 1 },
+          "title": { "type": "string", "minLength": 1 },
+          "owner": { "enum": ["runtime", "native", "agent", "shell"] },
+          "milestone": { "type": "integer", "minimum": 1, "maximum": 11 },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "description", "priority", "owner", "risk", "status", "testId", "skillRef", "milestone"],
+              "properties": {
+                "id": { "type": "string", "pattern": "^[a-z0-9]+(\\.[a-z0-9_]+)+$" },
+                "description": { "type": "string", "minLength": 1 },
+                "priority": { "enum": ["P0", "P1", "P2"] },
+                "owner": { "enum": ["runtime", "native", "agent", "shell"] },
+                "risk": { "enum": ["benign", "sensitive", "destructive", "money"] },
+                "status": { "enum": ["planned", "implemented", "partial", "unsupported"] },
+                "testId": { "type": ["string", "null"] },
+                "skillRef": { "type": "string", "minLength": 1 },
+                "milestone": { "type": "integer", "minimum": 1, "maximum": 11 }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

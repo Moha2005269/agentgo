@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Sign in</title>
+<h1>Sign in</h1>
+<form id="f">
+  <label>Email <input name="email" type="email" autocomplete="username"></label>
+  <label>Password <input name="password" type="password" autocomplete="current-password"></label>
+  <button type="submit">Sign in</button>
+</form>
+<p id="out">not signed in</p>
+<script>
+  document.getElementById("f").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const { email, password } = event.target.elements;
+    document.getElementById("out").textContent = password.value === "hunter2-vault" ? "welcome " + email.value : "wrong password";
+  });
+</script>

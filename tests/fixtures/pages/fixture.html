@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AgentGo fixture — interaction page</title>
+</head>
+<body>
+<h1 id="heading">AgentGo Fixture Page</h1>
+<p id="status">idle</p>
+<form id="fixture-form" onsubmit="return false">
+  <label for="fixture-input">Query</label>
+  <input id="fixture-input" type="text" name="q" placeholder="type here">
+  <button id="fixture-submit" type="button">Submit fixture</button>
+</form>
+<a id="fixture-link" href="#done">finish link</a>
+<script>
+  document.getElementById('fixture-submit').addEventListener('click', () => {
+    const v = document.getElementById('fixture-input').value.trim();
+    document.getElementById('status').textContent = v ? 'submitted: ' + v : 'submitted (empty)';
+  });
+  // Marker used by the milestone-1 spike smoke test to verify the
+  // untrusted content surface actually executed page JavaScript.
+  window.__agentgoFixtureReady = true;
+</script>
+</body>
+</html>

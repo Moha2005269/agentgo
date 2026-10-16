@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>AgentGo rest fixture</title>
+<style>
+  body { font: 18px/1.5 "Segoe UI", sans-serif; margin: 24px; }
+  #drop { width: 320px; height: 90px; border: 2px dashed #888; display: grid; place-items: center; }
+  #big { font-size: 40px; font-weight: 700; }
+  canvas { border: 1px solid #ccc; }
+</style></head>
+<body>
+  <h1>Rest fixture</h1>
+  <p id="big">Quarterly Report</p>
+  <input id="file" type="file" aria-label="Pick file">
+  <button id="pick" type="button">Open picker</button>
+  <div id="drop" aria-label="Drop zone">Drop files here</div>
+  <div id="editor" contenteditable="true" aria-label="Editor"></div>
+  <textarea id="notes" aria-label="Notes">This sentense has a mistake</textarea>
+  <input id="ime" aria-label="Composer">
+  <canvas id="art" width="120" height="60" aria-label="Art"></canvas>
+  <a id="dl" href="download.txt" download="file.txt">Download the file</a>
+  <a id="next" href="rest.html?page=2">Next</a>
+  <ul id="items"><li><a href="#a">Item A</a></li><li><a href="#b">Item B</a></li></ul>
+  <button id="popup" type="button">Open popup</button>
+  <p id="status">ready</p>
+  <iframe name="inner" srcdoc="<p>inside frame</p>" width="200" height="50"></iframe>
+<script>
+  const status = text => { document.getElementById('status').textContent = text; };
+  const page = new URLSearchParams(location.search).get('page');
+  if (page) { document.querySelector('#items').innerHTML = `<li><a href="#c">Item C${page}</a></li>`; document.getElementById('next').href = `rest.html?page=${Number(page) + 1}`; }
+  document.getElementById('pick').addEventListener('click', () => document.getElementById('file').click());
+  document.getElementById('file').addEventListener('change', e => status('picked ' + [...e.target.files].map(f => f.name).join(',')));
+  const drop = document.getElementById('drop');
+  drop.addEventListener('dragover', e => e.preventDefault());
+  drop.addEventListener('drop', e => { e.preventDefault(); status('dropped ' + [...e.dataTransfer.files].map(f => f.name).join(',')); });
+  document.addEventListener('paste', e => { const files = [...(e.clipboardData?.files || [])]; if (files.length) status('pasted image ' + files[0].type); });
+  const ctx = document.getElementById('art').getContext('2d'); ctx.fillStyle = '#e33'; ctx.fillRect(10, 10, 60, 30);
+  document.getElementById('popup').addEventListener('click', () => window.open('minimal.html', '_blank'));
+  window.addEventListener('message', e => { if (e.origin === 'agentgo') status('message ' + JSON.stringify(e.data)); });
+</script>
+</body>
+</html>

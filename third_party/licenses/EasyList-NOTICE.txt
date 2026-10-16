@@ -1,0 +1,40 @@
+EasyList and EasyPrivacy
+========================
+
+AgentGo blocks ads and trackers with filter lists from the EasyList project
+(https://easylist.to/). Unmodified snapshots of two lists are compiled into
+the browser:
+
+  - EasyList      https://easylist.to/easylist/easylist.txt
+  - EasyPrivacy   https://easylist.to/easylist/easyprivacy.txt
+
+Copyright the EasyList authors. The lists are dual-licensed under the GNU
+General Public License v3 or later and the Creative Commons Attribution-
+ShareAlike 3.0 Unported license. The current terms are at
+https://easylist.to/pages/licence.html.
+
+The snapshot used by a given build is recorded in the "! Version:" line at
+the top of crates/agentgo-adblock/data/easylist.txt and easyprivacy.txt, and
+can be refreshed with scripts/update-adblock-lists.ps1.
+
+Other filter lists
+==================
+
+The same engine also compiles unmodified snapshots of: uBlock Origin filters
+(GPLv3, https://github.com/uBlockOrigin/uAssets); AdGuard Base, Social Media,
+Cookie Notices, Mobile Ads and DNS filters (GPLv3,
+https://github.com/AdguardTeam); HaGeZi Pro++ (GPLv3,
+https://github.com/hagezi/dns-blocklists); Peter Lowe's list
+(https://pgl.yoyo.org/adservers/); URLhaus (CC0, https://urlhaus.abuse.ch/);
+Fanboy Cookie Monster (CC BY 3.0, https://easylist.to/); and
+brave/adblock-resources (MPL-2.0). Each list's header carries its own license
+and version. The file agentgo-extra.txt is written for AgentGo.
+
+adblock (Brave's filter engine)
+===============================
+
+AgentGo links the unmodified `adblock` crate, version 0.13.3, published from
+https://github.com/brave/adblock-rust under the Mozilla Public License 2.0.
+The license text is in adblock-rust-LICENSE-MPL-2.0. The corresponding source
+is available at https://crates.io/crates/adblock/0.13.3 and at the
+repository above.

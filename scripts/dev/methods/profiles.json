@@ -1,0 +1,19 @@
+[
+ ["profile.open", "Open a tab in a side profile (profile, url): its own cookies, cache and storage, kept inside the running profile.", "integration.profiles_e2e"],
+ ["profile.close", "Close a side profile and its tabs.", "integration.profiles_e2e"],
+ ["profile.select", "Make a profile where this session's new tabs open (main to go back).", "integration.profiles_e2e"],
+ ["profile.lock", "Operator only: keep agents out of a profile (main too: then agents work only in side profiles).", "integration.profiles_e2e"],
+ ["profile.unlock", "Operator only: let agents use a locked profile again.", "integration.profiles_e2e"],
+ ["profile.clone", "Copy a closed side profile under a new name (as).", "integration.profiles_e2e"],
+ ["profile.ephemeral", "Open a tab in a new profile that lives in memory and is gone when it closes.", "integration.profiles_e2e"],
+ ["profile.incognito", "Open an incognito tab: a profile in memory, with nothing written to disk.", "integration.profiles_e2e"],
+ ["profile.reset_site", "Delete one site's cookies and storage in a profile (origin); main is the person's.", "integration.profiles_e2e"],
+ ["profile.cookie_policy", "A profile's cookies: all, block_third_party or block_all.", "integration.profiles_e2e"],
+ ["profile.storage_partition", "Where each profile keeps its data, whether it is open, in memory or locked, and its tabs.", "integration.profiles_e2e"],
+ ["profile.accessibility_preferences", "A profile's text sizes (fontSize, minimumFontSize, fixedFontSize).", "integration.profiles_e2e"],
+ ["profile.proxy", "A profile's proxy: mode direct, system, fixed_servers (server, bypass) or pac_script (pacUrl).", "integration.profiles_e2e"],
+ ["profile.permission_defaults", "A profile's default for a permission kind: block or ask (allow only for popups, images, javascript, sound and downloads).", "integration.profiles_e2e"],
+ ["profile.autofill_policy", "Turn address autofill on or off for a profile (card autofill always stays off).", "integration.profiles_e2e"],
+ ["profile.password_vault_binding", "Whether saved sign-ins may be typed in a side profile; bind: true or false is the person's decision.", "integration.profiles_e2e"],
+ ["agent.parallel_profiles", "Run step lists at once, each lane in its own profile (named, or a fresh one in memory).", "integration.profiles_e2e"]
+]

@@ -1,0 +1,18 @@
+AdGuard Base filter	2.4.97.46
+AdGuard Cookie Notices filter	2.0.96.90
+AdGuard DNS filter	2026-10-15T10:14:16.955Z
+AdGuard Mobile Ads filter	2.0.72.76
+AdGuard Social Media filter	2.1.33.99
+agentgo-extra	snapshot
+Easylist Cookie List	2026-10-15 08:25 UTC
+EasyList	202610150726
+EasyPrivacy	202610150708
+HaGeZi's Multi PRO++ - advanced protection (more aggressive)	2026.1015.0904.35
+peter-lowe	snapshot
+uBlock filters – Badware risks	Tue, 13 Oct 2026 12:37:28 +0000
+uBlock filters	Thu, 15 Oct 2026 08:41:52 +0000
+uBlock filters – Privacy	Mon, 12 Oct 2026 20:02:16 +0000
+uBlock filters – Quick fixes	Wed, 14 Oct 2026 16:06:39 +0000
+uBlock filters – Unbreak	Tue, 13 Oct 2026 08:48:49 +0000
+uBlock filters – Cookie Notices	Wed, 14 Oct 2026 14:26:40 +0000
+Online Malicious URL Blocklist (AdGuard Home)	2026-10-15T00:10:04Z

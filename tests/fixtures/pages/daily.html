@@ -1,0 +1,61 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Daily fixture</title>
+<style>
+  body { font: 15px sans-serif; margin: 16px; }
+  #track { position: relative; width: 420px; height: 40px; background: #ddd; }
+  #knob { position: absolute; left: 0; top: 0; width: 40px; height: 40px; background: #36c; }
+  #card, #zone { display: inline-block; width: 140px; height: 60px; margin: 12px 30px 12px 0; border: 2px solid #333; }
+  #tall { height: 2200px; }
+</style>
+<h1>Daily fixture</h1>
+<div id="track" aria-label="track"><button id="knob" type="button" aria-label="Slider knob"></button></div>
+<p id="slid">knob at 0</p>
+<div id="card" draggable="true" role="button" aria-label="Report card">Report card</div>
+<div id="zone" role="button" aria-label="Archive zone">Archive zone</div>
+<p id="dropped">nothing dropped</p>
+<p id="source">The quick agent copies this exact sentence.</p>
+<input id="target" aria-label="Paste target">
+<p id="pasted">nothing pasted</p>
+<div id="tall"></div>
+<p>needle one. A second needle sits here, far down the page.</p>
+<script>
+  // Pointer-driven drag, as sliders and sortable lists implement it.
+  const knob = document.getElementById("knob");
+  let grab = null;
+  knob.addEventListener("mousedown", (event) => { grab = event.clientX - knob.offsetLeft; });
+  addEventListener("mousemove", (event) => {
+    if (grab === null) return;
+    knob.style.left = Math.max(0, Math.min(380, event.clientX - grab)) + "px";
+  });
+  addEventListener("mouseup", () => {
+    if (grab === null) return;
+    grab = null;
+    document.getElementById("slid").textContent = "knob at " + knob.offsetLeft;
+  });
+  // HTML drag-and-drop.
+  const card = document.getElementById("card");
+  const zone = document.getElementById("zone");
+  card.addEventListener("dragstart", (event) => event.dataTransfer.setData("text/plain", "report-card"));
+  zone.addEventListener("dragover", (event) => event.preventDefault());
+  zone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    document.getElementById("dropped").textContent = "dropped " + event.dataTransfer.getData("text/plain");
+  });
+  document.getElementById("target").addEventListener("input", (event) => {
+    document.getElementById("pasted").textContent = "pasted " + event.target.value;
+  });
+  addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "pen") document.getElementById("pentrace").textContent = "pen at " + Math.round(event.clientX) + " pressure " + event.pressure.toFixed(2);
+  });
+</script>
+<p id="pentrace">no pen</p>
+<p id="touchtrace">no touch</p>
+<p id="keytrace">no keys</p>
+<script>
+  const touches = [];
+  addEventListener("touchstart", (event) => { touches.push("start" + event.touches.length); document.getElementById("touchtrace").textContent = touches.join(","); });
+  addEventListener("touchend", () => { touches.push("end"); document.getElementById("touchtrace").textContent = touches.join(","); });
+  addEventListener("keydown", (event) => { if (event.key === "Shift") document.getElementById("keytrace").textContent = "shift held"; });
+  addEventListener("keyup", (event) => { if (event.key === "Shift") document.getElementById("keytrace").textContent = "shift released"; });
+</script>

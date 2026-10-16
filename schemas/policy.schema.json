@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentgo.invalid/schemas/policy.schema.json",
+  "title": "AgentGo policy settings and decision records",
+  "type": "object",
+  "$defs": {
+    "AccessMode": { "enum": ["approval", "fullAccess"] },
+    "ActionRisk": { "enum": ["benign", "sensitive", "destructive", "money"] },
+    "Decision": { "enum": ["proceed", "requireApproval", "humanHandoff", "deny"] },
+    "UrlScope": {
+      "type": "object",
+      "required": ["allowed", "blocked"],
+      "properties": {
+        "allowed": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "blocked": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      },
+      "additionalProperties": false
+    },
+    "FileScope": {
+      "type": "object",
+      "required": ["roots"],
+      "properties": {
+        "roots": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      },
+      "additionalProperties": false
+    },
+    "PolicySettings": {
+      "type": "object",
+      "required": ["mode"],
+      "properties": {
+        "mode": { "$ref": "#/$defs/AccessMode" },
+        "urlScope": { "$ref": "#/$defs/UrlScope" },
+        "fileScope": { "$ref": "#/$defs/FileScope" },
+        "downloadsEnabled": { "type": "boolean", "default": false },
+        "credentialAutofillEnabled": { "type": "boolean", "default": false },
+        "credentialPlaintextVisible": { "type": "boolean", "default": false }
+      },
+      "additionalProperties": false
+    },
+    "ApprovalRecord": {
+      "type": "object",
+      "required": ["id", "origin", "action", "summary", "expiresAt"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^a-[a-z0-9-]+$" },
+        "origin": { "type": "string" },
+        "account": { "type": "string" },
+        "action": { "type": "string" },
+        "summary": { "type": "string" },
+        "amount": { "type": "string" },
+        "currency": { "type": "string" },
+        "workflowId": { "type": "string" },
+        "idempotencyKey": { "type": "string" },
+        "expiresAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

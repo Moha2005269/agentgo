@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "hosts": ["youtube.com", "youtube-nocookie.com"],
+  "json": [
+    "/youtubei/v1/player",
+    "/youtubei/v1/next",
+    "/youtubei/v1/browse",
+    "/youtubei/v1/search",
+    "/youtubei/v1/get_watch",
+    "/youtubei/v1/reel/reel_watch_sequence",
+    "/youtubei/v1/reel/reel_item_watch"
+  ],
+  "html": ["/watch", "/embed/", "/shorts/", "/live/", "/results", "/feed/", "/playlist", "/@", "/"],
+  "htmlExact": ["/"],
+  "pruneKeys": ["adPlacements", "playerAds", "adSlots", "adBreakHeartbeatParams"],
+  "dropItemKeys": [
+    "adSlotRenderer",
+    "promotedSponsoredVideoRenderer",
+    "compactPromotedVideoRenderer",
+    "inFeedAdLayoutRenderer",
+    "adBreakServiceRenderer",
+    "displayAdRenderer",
+    "searchPyvRenderer",
+    "promotedVideoRenderer",
+    "actionCompanionAdRenderer",
+    "playerLegacyDesktopWatchAdsRenderer",
+    "brandVideoSingletonRenderer",
+    "brandVideoShelfRenderer"
+  ],
+  "htmlMarkers": ["ytInitialPlayerResponse", "ytInitialData"]
+}

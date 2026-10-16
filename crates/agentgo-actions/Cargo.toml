@@ -1,0 +1,18 @@
+[package]
+name = "agentgo-actions"
+description = "AgentGo typed browser actions with risk classification"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+agentgo-locate = { workspace = true }
+agentgo-policy = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

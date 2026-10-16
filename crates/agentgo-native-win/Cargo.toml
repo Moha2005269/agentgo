@@ -1,0 +1,13 @@
+[package]
+name = "agentgo-native-win"
+description = "AgentGo scoped native Windows control lane (UIA, dialogs, notifications) — lands in Milestone 8"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }

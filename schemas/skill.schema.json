@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentgo.invalid/schemas/skill.schema.json",
+  "title": "AgentGo bundled skill package",
+  "type": "object",
+  "required": ["name", "version", "protocolVersion", "capabilitiesRef", "files"],
+  "properties": {
+    "name": { "const": "agentgo" },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "protocolVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "capabilitiesRef": { "const": "schemas/capability-manifest.json" },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "hostVariants": {
+      "type": "array",
+      "items": { "enum": ["codex", "claude-code", "opencode", "generic-cli", "mcp"] }
+    }
+  },
+  "additionalProperties": false
+}

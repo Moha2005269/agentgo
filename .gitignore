@@ -1,0 +1,36 @@
+# Build outputs
+/target
+**/target
+/out
+
+# Dependency caches and downloaded CEF distributions
+/third_party/cef-dist
+/third_party/downloads
+/deps
+
+# Local state (never commit instance secrets, profiles, traces)
+*.local.json
+/instances
+/artifacts
+/traces
+/logs
+/crashes
+
+# Editor / OS noise
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+.DS_Store
+
+# Generated but reviewable artifacts are committed on purpose:
+# - schemas/capability-manifest.json (generated, tracked for review)
+# - Cargo.lock (tracked for deterministic builds)
+/dist
+
+# usque binary (fetched by scripts/fetch-usque.ps1)
+/third_party/usque/
+
+# Signing keys must never be committed
+*.pem
+.agentgo-signing/

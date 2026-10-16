@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>AgentGo download fixture</title></head>
+<body>
+  <a id="download" download="agentgo-smoke.txt"
+     href="data:text/plain;charset=utf-8,AgentGo%20download%20smoke">Download fixture</a>
+  <script>
+    // A local, harmless download used only by the protocol smoke test.
+    setTimeout(() => document.getElementById('download').click(), 100);
+  </script>
+</body>
+</html>

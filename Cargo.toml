@@ -1,0 +1,91 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/agentgo-app",
+    "crates/agentgo-cli",
+    "crates/agentgo-protocol",
+    "crates/agentgo-policy",
+    "crates/agentgo-session",
+    "crates/agentgo-storage",
+    "crates/agentgo-artifacts",
+    "crates/agentgo-shell-bridge",
+    "crates/agentgo-cef",
+    "crates/agentgo-observe",
+    "crates/agentgo-locate",
+    "crates/agentgo-actions",
+    "crates/agentgo-workflows",
+    "crates/agentgo-native-win",
+    "crates/agentgo-mcp",
+    "crates/agentgo-accounts",
+    "crates/agentgo-adblock",
+    "crates/agentgo-import",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.98.1"
+license = "BUSL-1.1"
+repository = "https://github.com/Moha2005269/agentgo"
+publish = false
+
+[workspace.dependencies]
+agentgo-accounts = { path = "crates/agentgo-accounts" }
+agentgo-actions = { path = "crates/agentgo-actions" }
+agentgo-adblock = { path = "crates/agentgo-adblock" }
+agentgo-import = { path = "crates/agentgo-import" }
+agentgo-app = { path = "crates/agentgo-app" }
+agentgo-artifacts = { path = "crates/agentgo-artifacts" }
+agentgo-cef = { path = "crates/agentgo-cef" }
+agentgo-cli = { path = "crates/agentgo-cli" }
+agentgo-locate = { path = "crates/agentgo-locate" }
+agentgo-mcp = { path = "crates/agentgo-mcp" }
+agentgo-native-win = { path = "crates/agentgo-native-win" }
+agentgo-observe = { path = "crates/agentgo-observe" }
+agentgo-policy = { path = "crates/agentgo-policy" }
+agentgo-protocol = { path = "crates/agentgo-protocol" }
+agentgo-session = { path = "crates/agentgo-session" }
+agentgo-shell-bridge = { path = "crates/agentgo-shell-bridge" }
+agentgo-storage = { path = "crates/agentgo-storage" }
+agentgo-workflows = { path = "crates/agentgo-workflows" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+sha2 = "0.10"
+getrandom = "0.3"
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+rusqlite = { version = "0.37", features = ["bundled"] }
+ring = "0.17"
+windows-sys = "0.61.2"
+
+# Pinned CEF runtime (Milestone 1 spike). Exact revision of
+# https://github.com/tauri-apps/cef-rs recorded in scripts/pins.json and
+# crates/agentgo-cef/src/pins.rs. Enabled only via the `runtime` feature so
+# Milestone 0 builds do not compile the CEF C++ wrapper.
+cef = { git = "https://github.com/tauri-apps/cef-rs", rev = "83640144407b5742356b3ea6678a8b2de921e51d", default-features = false, features = [
+    # The stream resource handler used by agentgo://shell. Bundle tooling is
+    # intentionally not pulled into the runtime dependency graph.
+    "resources",
+] }
+
+# Dependencies run optimised in debug builds: the ad-block engine and parsers are far too slow unoptimised, and pages crawl.
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.dev.package.agentgo-adblock]
+opt-level = 3
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+

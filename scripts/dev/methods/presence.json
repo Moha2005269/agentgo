@@ -1,0 +1,4 @@
+[
+ ["agent.connect", "Tell the browser an agent is working (name; defaults to your client name). The toolbar shows it as connected until agent.disconnect; long-lived connections such as the MCP server are connected for their lifetime automatically. An unused connection expires after 30 minutes.", "integration.sessions_e2e"],
+ ["agent.disconnect", "Tell the browser the agent finished (name); the toolbar goes back to \"No agent\".", "integration.sessions_e2e"]
+]

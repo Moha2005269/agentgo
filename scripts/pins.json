@@ -1,0 +1,44 @@
+{
+  "$schema": "./pins.schema.json",
+  "rust": {
+    "toolchain": "1.98.1",
+    "target": "x86_64-pc-windows-msvc",
+    "components": ["rustfmt", "clippy"]
+  },
+  "cefRs": {
+    "repository": "https://github.com/tauri-apps/cef-rs",
+    "revision": "83640144407b5742356b3ea6678a8b2de921e51d",
+    "crateVersion": "152.0.0+152.0.5"
+  },
+  "cef": {
+    "version": "152.0.5+gb129680+chromium-152.0.7977.54",
+    "chromium": "152.0.7977.54",
+    "platform": "windows64",
+    "channel": "stable",
+    "distributionType": "standard",
+    "archiveName": "cef_binary_152.0.5+gb129680+chromium-152.0.7977.54_windows64.tar.bz2",
+    "archiveUrl": "https://cef-builds.spotifycdn.com/cef_binary_152.0.5+gb129680+chromium-152.0.7977.54_windows64.tar.bz2",
+    "archiveSha1": "ae9d03c6d0a885f7ff4737b935ec547c5c49c9bd",
+    "archiveSha256": "50f49f09d7c9ad91fa7e7f5e1780b180fade4c370b71d832c0211ef1c228be55",
+    "archiveSizeBytes": 359463765,
+    "archiveLastModified": "2026-09-06T02:32:25.133000Z",
+    "minimalArchive": {
+      "name": "cef_binary_152.0.5+gb129680+chromium-152.0.7977.54_windows64_minimal.tar.bz2",
+      "sha1": "303b58a428888c226e34ab329d412f9ac1a0c22c",
+      "sizeBytes": 171500790
+    },
+    "toolsArchive": {
+      "name": "cef_binary_152.0.5+gb129680+chromium-152.0.7977.54_windows64_tools.tar.bz2",
+      "url": "https://cef-builds.spotifycdn.com/cef_binary_152.0.5+gb129680+chromium-152.0.7977.54_windows64_tools.tar.bz2",
+      "sha1": "67ca57bff5163fd02176ec1c30e19a149c7847b3",
+      "sizeBytes": 212818044
+    }
+  },
+  "buildTools": {
+    "cmake": "any recent 3.2x (system install)",
+    "ninja": "any recent 1.1x (system install)",
+    "msvc": "Visual Studio 2022+ C++ tools (x86/x64)",
+    "python": "3.11+ (tooling only)"
+  },
+  "notes": "archiveSha256 is recorded by scripts/bootstrap.ps1 after the first verified download of archiveSha1+archiveSizeBytes and enforced thereafter. Changing any pin requires updating crates/agentgo-cef/src/pins.rs, Cargo.toml, and this file in the same commit (enforced by the pins_json_agrees_with_code_constants test)."
+}

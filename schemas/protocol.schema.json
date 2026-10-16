@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentgo.invalid/schemas/protocol.schema.json",
+  "title": "AgentGo local control protocol envelopes",
+  "type": "object",
+  "$defs": {
+    "Request": {
+      "type": "object",
+      "required": ["v", "id", "method"],
+      "properties": {
+        "v": { "const": 1 },
+        "id": { "type": "integer", "minimum": 0 },
+        "method": { "type": "string", "pattern": "^[a-z0-9]+(\\.[a-z0-9_]+)+$" },
+        "params": true
+      },
+      "additionalProperties": false
+    },
+    "ErrorBody": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "enum": [
+            "invalid.envelope",
+            "method.notFound",
+            "invalid.params",
+            "capability.unsupported",
+            "policy.denied",
+            "approval.required",
+            "handoff.required",
+            "target.stale",
+            "timeout",
+            "recovery.exhausted",
+            "unauthorized",
+            "idempotency.duplicate",
+            "internal"
+          ]
+        },
+        "message": { "type": "string" },
+        "data": true
+      },
+      "additionalProperties": false
+    },
+    "Response": {
+      "type": "object",
+      "required": ["v", "id", "ok"],
+      "properties": {
+        "v": { "const": 1 },
+        "id": { "type": "integer", "minimum": 0 },
+        "ok": { "type": "boolean" },
+        "result": true,
+        "error": { "$ref": "#/$defs/ErrorBody" }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": { "properties": { "ok": { "const": true } } },
+          "then": { "required": ["result"] }
+        },
+        {
+          "if": { "properties": { "ok": { "const": false } } },
+          "then": { "required": ["error"] }
+        }
+      ]
+    },
+    "Event": {
+      "type": "object",
+      "required": ["v", "event"],
+      "properties": {
+        "v": { "const": 1 },
+        "event": { "type": "string", "pattern": "^[a-z0-9]+(\\.[a-zA-Z0-9_]+)+$" },
+        "params": true
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,56 @@
+name: CI (Windows)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      CEF_PATH: ${{ github.workspace }}\third_party\cef-dist
+    steps:
+      - uses: actions/checkout@v4
+
+      # rust-toolchain.toml pins the exact toolchain; rustup reads it.
+      - name: Install Rust toolchain (pinned)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache CEF distribution
+        uses: actions/cache@v4
+        with:
+          path: third_party/cef-dist
+          key: cef-${{ hashFiles('scripts/pins.json') }}
+
+      - name: Bootstrap (toolchain + pinned CEF + fetch)
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File scripts/bootstrap.ps1
+
+      - name: Format check
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File scripts/fmt.ps1
+
+      - name: Lint (clippy, warnings denied)
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File scripts/lint.ps1
+
+      - name: Tests (unit + integration + conformance)
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File scripts/test.ps1
+
+      - name: Doctor (strict)
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File scripts/doctor.ps1 -Strict
+
+      - name: Release build
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File scripts/build.ps1 -Release
+
+      - name: Version report (gate evidence)
+        shell: pwsh
+        run: target\release\agentgo.exe version

@@ -1,0 +1,15 @@
+[package]
+name = "agentgo-adblock"
+description = "AgentGo ad and tracker blocking: Brave's adblock engine with bundled EasyList and EasyPrivacy"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+# `single-thread` is a default feature that makes the engine !Send; CEF asks
+# for a verdict on its network threads, so it must stay off.
+adblock = { version = "0.13.3", default-features = false, features = ["embedded-domain-resolver", "full-regex-handling"] }
+serde_json = "1"

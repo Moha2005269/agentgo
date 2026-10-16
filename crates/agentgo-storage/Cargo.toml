@@ -1,0 +1,15 @@
+[package]
+name = "agentgo-storage"
+description = "AgentGo local storage: atomic state files, schema migrations, and the %LOCALAPPDATA% layout"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+rusqlite = { workspace = true }
+thiserror = { workspace = true }

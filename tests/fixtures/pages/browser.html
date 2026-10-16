@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Browser features fixture</title></head>
+<body>
+  <h1>Everyday browser features</h1>
+  <p>An apple a day. Another apple. The last apple.</p>
+  <p id="langs"></p>
+  <form id="order" onsubmit="event.preventDefault(); document.getElementById('sent').textContent = 'sent ' + this.q.value;">
+    <input name="q" aria-label="Query" value="first">
+    <button type="submit">Send it</button>
+  </form>
+  <p id="sent">not sent</p>
+  <script>
+    document.getElementById('langs').textContent = 'languages=' + navigator.languages.join(',');
+  </script>
+</body>
+</html>

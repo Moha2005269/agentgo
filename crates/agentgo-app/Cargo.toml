@@ -1,0 +1,79 @@
+[package]
+name = "agentgo-app"
+description = "AgentGo executable and composition root: version reporting, doctor, capability manifest tooling"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+# The product executable is `agentgo.exe` (named after the protocol, not
+# the crate).
+# `agentgo.exe` is always the real browser: it cannot be built without the
+# native runtime, so a plain workspace build or test can never replace it
+# with a stub. Repository tooling (version, doctor, manifest) lives in
+# `agentgo-tool`, which needs no CEF.
+[[bin]]
+name = "agentgo"
+path = "src/main.rs"
+required-features = ["runtime"]
+
+[[bin]]
+name = "agentgo-browser"
+path = "src/bin/agentgo-browser.rs"
+
+[[bin]]
+name = "agentgo-tool"
+path = "src/bin/agentgo-tool.rs"
+
+[lib]
+name = "agentgo_app"
+path = "src/lib.rs"
+crate-type = ["rlib", "cdylib"]
+
+[features]
+default = []
+# Opt into the native CEF runtime only for a browser build. Keeping this
+# separate lets the protocol, policy, and installer tooling stay quick to
+# build and test on machines that have not bootstrapped CEF yet.
+runtime = ["agentgo-cef/runtime"]
+# Reserved for the packaged CEF bootstrap build, not a direct development
+# executable. See docs/adr/0008-rust-host-pinned-cef-rs.md.
+sandbox = ["runtime", "agentgo-cef/sandbox"]
+
+[dependencies]
+agentgo-artifacts = { workspace = true }
+agentgo-cef = { workspace = true }
+agentgo-cli = { workspace = true }
+agentgo-mcp = { workspace = true }
+agentgo-native-win = { workspace = true }
+agentgo-observe = { workspace = true }
+agentgo-policy = { workspace = true }
+agentgo-protocol = { workspace = true }
+agentgo-session = { workspace = true }
+agentgo-shell-bridge = { workspace = true }
+agentgo-storage = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+# Private desktops and job objects for `agentgo-tool quiet-run`.
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_JobObjects",
+    "Win32_System_LibraryLoader",
+    "Win32_System_StationsAndDesktops",
+    "Win32_System_Threading",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[dev-dependencies]
+serde_json = { workspace = true }

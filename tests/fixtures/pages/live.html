@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Live page</title>
+<h1>Live page</h1>
+<button id="go" type="button">Press me</button>
+<input id="name" aria-label="Your name">
+<p id="out">idle</p>
+<script>
+  // Counters the presentation test samples to prove the page keeps rendering
+  // and running timers while its window sits behind another window.
+  window.frames_seen = 0;
+  window.timers_seen = 0;
+  const frame = () => { window.frames_seen += 1; requestAnimationFrame(frame); };
+  requestAnimationFrame(frame);
+  setInterval(() => { window.timers_seen += 1; }, 50);
+  document.getElementById("go").addEventListener("click", () => {
+    document.getElementById("out").textContent = "pressed";
+  });
+  document.getElementById("name").addEventListener("input", (event) => {
+    document.getElementById("out").textContent = "typed " + event.target.value;
+  });
+</script>

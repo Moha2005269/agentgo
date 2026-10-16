@@ -1,0 +1,10 @@
+{
+  "name": "open-and-read",
+  "version": "0.1.0",
+  "description": "Open a page and read its text.",
+  "params": { "url": "about:blank" },
+  "steps": [
+    { "method": "navigate.url", "params": { "url": "{{url}}" } },
+    { "method": "observe.text", "params": {} }
+  ]
+}

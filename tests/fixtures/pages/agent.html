@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AgentGo action fixture</title>
+<style>
+  body { font: 15px system-ui; margin: 24px; }
+  #cover { position: fixed; left: 0; top: 0; width: 0; height: 0; background: rgba(0,0,0,.6); }
+  #cover.on { width: 100vw; height: 100vh; }
+  .spacer { height: 1400px; }
+</style>
+</head>
+<body>
+  <h1>Checkout practice</h1>
+  <form id="profile" aria-label="Profile">
+    <label>Full name <input id="name" name="name" required></label>
+    <label>Email <input id="email" type="email" name="email" placeholder="you@example.com"></label>
+    <label>Plan
+      <select id="plan" name="plan"><option value="free">Free</option><option value="pro">Pro tier</option><option value="team">Team</option></select>
+    </label>
+    <label><input id="news" type="checkbox" name="news"> Send me news</label>
+    <div id="notes" contenteditable="true" aria-label="Notes"></div>
+    <input id="file" type="file" aria-label="Attachment">
+    <button id="save" type="button">Save draft</button>
+    <button id="send" type="submit">Send profile</button>
+  </form>
+  <form id="search" role="search"><input id="q" name="q" type="search" aria-label="Search the catalog"></form>
+  <h2>Actions</h2>
+  <button id="counter">Count clicks</button>
+  <button id="late-trigger">Reveal later</button>
+  <button id="alert">Show alert</button>
+  <button id="buy">Buy now</button>
+  <button id="cover-toggle">Cover page</button>
+  <button id="twin-a" class="twin">Twin</button>
+  <a id="next" href="fixture.html">Open the next page</a>
+  <div id="shadow-host"></div>
+  <iframe id="frame" title="Embedded" srcdoc="<button id='inner'>Inner frame button</button><script>document.getElementById('inner').onclick=e=>parent.postMessage('inner trusted='+e.isTrusted,'*')</script>"></iframe>
+  <pre id="log" aria-live="polite"></pre>
+  <div id="cover"></div>
+  <div class="spacer"></div>
+  <button id="bottom">Bottom button</button>
+<script>
+  const log = (text) => { document.getElementById('log').textContent += text + '\n'; };
+  let clicks = 0;
+  document.getElementById('counter').addEventListener('click', (e) => log(`counter ${++clicks} trusted=${e.isTrusted}`));
+  document.getElementById('save').addEventListener('click', (e) => {
+    const f = document.getElementById('profile');
+    log(`saved name=${f.name.value} email=${f.email.value} plan=${f.plan.value} news=${f.news.checked} notes=${document.getElementById('notes').innerText.trim()} file=${document.getElementById('file').files[0]?.name || ''} trusted=${e.isTrusted}`);
+  });
+  document.getElementById('profile').addEventListener('submit', (e) => { e.preventDefault(); log('submitted'); });
+  document.getElementById('search').addEventListener('submit', (e) => { e.preventDefault(); log('searched ' + e.target.q.value); });
+  document.getElementById('q').addEventListener('keydown', (e) => { if (e.key === 'Enter') log(`search-enter trusted=${e.isTrusted}`); });
+  document.getElementById('name').addEventListener('keydown', (e) => { if (e.key === 'Enter') log(`enter-key trusted=${e.isTrusted}`); });
+  document.getElementById('late-trigger').addEventListener('click', () => setTimeout(() => {
+    const b = document.createElement('button'); b.id = 'late'; b.textContent = 'Late arrival';
+    b.onclick = () => log('late clicked'); document.getElementById('log').before(b);
+  }, 700));
+  document.getElementById('alert').addEventListener('click', () => { alert('Fixture alert'); log('alert closed'); });
+  document.getElementById('buy').addEventListener('click', () => log('PURCHASED'));
+  document.getElementById('cover-toggle').addEventListener('click', () => document.getElementById('cover').classList.toggle('on'));
+  document.getElementById('cover').addEventListener('click', () => document.getElementById('cover').classList.remove('on'));
+  document.getElementById('twin-a').addEventListener('click', (e) => {
+    // Replace this button with two identical ones: the old reference becomes stale and ambiguous.
+    e.target.remove();
+    for (const n of [1, 2]) { const b = document.createElement('button'); b.className = 'twin'; b.textContent = 'Twin'; document.getElementById('log').before(b); }
+  });
+  document.getElementById('bottom').addEventListener('click', () => log('bottom clicked'));
+  const shadow = document.getElementById('shadow-host').attachShadow({ mode: 'open' });
+  shadow.innerHTML = '<button id="deep">Shadow button</button>';
+  shadow.getElementById('deep').addEventListener('click', (e) => log(`shadow clicked trusted=${e.isTrusted}`));
+  addEventListener('message', (e) => { if (String(e.data).startsWith('inner')) log('frame clicked ' + e.data); });
+</script>
+</body>
+</html>

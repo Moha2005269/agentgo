@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>AgentGo — status and roadmap</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm; }
+  :root { --ink:#16181d; --muted:#5d6370; --line:#e3e5ea; --accent:#e85f22; --ok:#1f8f4e; --warn:#b26a00; --soft:#f6f7f9; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:10.5pt/1.5 "Segoe UI", system-ui, sans-serif; color:var(--ink); }
+  h1 { font:600 30pt/1.1 Georgia, serif; margin:0 0 6px; letter-spacing:-.01em; }
+  h2 { font:600 15pt Georgia, serif; margin:26px 0 8px; padding-bottom:4px; border-bottom:2px solid var(--accent); break-after:avoid; }
+  h3 { font-size:11pt; margin:16px 0 4px; }
+  p { margin:6px 0; }
+  .kicker { color:var(--accent); font:600 9pt Consolas, monospace; letter-spacing:.2em; text-transform:uppercase; }
+  .lead { color:var(--muted); font-size:11.5pt; max-width:640px; }
+  .cards { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:18px 0; }
+  .card { border:1px solid var(--line); border-radius:10px; padding:10px 12px; background:var(--soft); }
+  .card b { display:block; font:600 20pt Georgia, serif; }
+  .card span { color:var(--muted); font-size:9pt; }
+  .bar { height:12px; border-radius:6px; background:var(--line); overflow:hidden; display:flex; margin:8px 0 4px; }
+  .bar i { display:block; height:100%; }
+  table { width:100%; border-collapse:collapse; font-size:9.5pt; margin:6px 0 10px; }
+  th { text-align:left; font-weight:600; color:var(--muted); border-bottom:1px solid var(--ink); padding:5px 6px; }
+  td { border-bottom:1px solid var(--line); padding:5px 6px; vertical-align:top; }
+  tr { break-inside:avoid; }
+  td.num, th.num { text-align:right; white-space:nowrap; }
+  .badge { display:inline-block; padding:1px 8px; border-radius:99px; font-size:8.5pt; font-weight:600; color:#fff; }
+  .badge.done { background:var(--ok); } .badge.partly { background:var(--warn); }
+  .note { color:var(--muted); font-size:9pt; }
+  .names { font:8.5pt/1.45 Consolas, monospace; color:#3b4150; margin-top:3px; }
+  code { font:9pt Consolas, monospace; }
+  .legend span { display:inline-block; width:10px; height:10px; border-radius:2px; margin:0 4px 0 12px; vertical-align:middle; }
+  .page-break { break-before:page; }
+  ul { margin:4px 0 4px 18px; padding:0; }
+</style></head><body>
+
+<div class="kicker">AgentGo · Phase 1 report · 2026-10-16</div>
+<h1>Status and roadmap</h1>
+<p class="lead">AgentGo is a Chromium browser for Windows that AI agents drive while a person watches and stays in charge. This report says what is finished, what was tested, which tools exist and what is still left, measured from the code on 2026-10-16.</p>
+
+<div class="cards">
+  <div class="card"><b>1026</b><span>of 1039 register tools working, each with a test</span></div>
+  <div class="card"><b>25+5</b><span>integration test files (offline + live web)</span></div>
+  <div class="card"><b>157</b><span>unit tests passing</span></div>
+  <div class="card"><b>17/17</b><span>milestones done, 0 partly</span></div>
+</div>
+<div class="bar"><i style="width:48%;background:var(--ok)"></i><i style="width:51%;background:#6bbf8a"></i><i style="width:1%;background:#9aa1ad"></i><i style="width:0%;background:#f2c7a8"></i></div>
+<div class="legend note"><span style="background:var(--ok);margin-left:0"></span>own command 497<span style="background:#6bbf8a"></span>sub-tool of a command 529<span style="background:#9aa1ad"></span>impossible in the engine 13<span style="background:#f2c7a8"></span>not built 0</div>
+
+<h2>Milestones</h2>
+<table><tr><th>#</th><th>Milestone</th><th>Delivered</th><th>Left</th></tr>
+<tr><td class="num">0</td><td><b>Repository, toolchain, contracts</b><br><span class="badge done">Done</span></td><td>Rust workspace (16 crates), pinned CEF 152 / Chromium 152, protocol envelope, error codes, capability manifest, lockstep tests.</td><td>—</td></tr>
+<tr><td class="num">1</td><td><b>CEF composition</b><br><span class="badge done">Done</span></td><td>One window: trusted chrome, isolated content tabs (stacked full-size so background tabs stay usable), tools overlay; debug and release builds; portable package (the installer is still to do).</td><td>Code signing of the executable.</td></tr>
+<tr><td class="num">2</td><td><b>Instances, profiles, tabs, product core</b><br><span class="badge done">Done</span></td><td>Tabs, history, bookmarks, downloads, find bar, zoom, print, session restore, error page, Settings (startup, search engine, privacy, languages, downloads, system), durable profiles.</td><td>Several windows, tab groups and pinning.</td></tr>
+<tr><td class="num">3</td><td><b>Universal protocol and isolation</b><br><span class="badge done">Done</span></td><td>JSON lines over stdio, authenticated named pipe, CLI, MCP server; sessions, tab leases, pause and stop, idempotency, audit log.</td><td>—</td></tr>
+<tr><td class="num">4</td><td><b>Human-equivalent control</b><br><span class="badge done">Done</span></td><td>Click, type, fill, select, drag and drop, private clipboard, touch, pen, held buttons and keys, upload; agent's own pointer and keyboard, never the person's.</td><td>IME composition events; driving native file dialogs.</td></tr>
+<tr><td class="num">5</td><td><b>Compact observation and grounding</b><br><span class="badge done">Done</span></td><td>Outline with references and change sets (≈56× smaller than HTML), locators, grounding by description with confidence, accessibility views, screenshots, frame recording, DOM snapshot.</td><td>OCR, visual grounding, visual diff, cross-origin frames.</td></tr>
+<tr><td class="num">6</td><td><b>Batch workflows</b><br><span class="badge done">Done</span></td><td>Batches, search to records, collect, fill forms, workflow record and replay with healing, decision record/apply for Laya.</td><td>Agent task engine (plan, queue, parallel tabs, checkpoints of a task).</td></tr>
+<tr><td class="num">7</td><td><b>Policy, secrets, approvals, handoff</b><br><span class="badge done">Done</span></td><td>Approval and full modes, permanent purchase stop, CAPTCHA and login handoff (never solved), DPAPI sign-in vault with autofill the agent never sees, save prompt, Account Center with blocking, domain allow and block lists, site permissions granted by the person.</td><td>—</td></tr>
+<tr><td class="num">8</td><td><b>Artifacts, downloads, Windows lane</b><br><span class="badge done">Done</span></td><td>Artifacts (list, read, hash, redact, bundle, retention), print to PDF, downloads with progress, open and reveal after approval, scoped file operations. Native Windows UI Automation lane (29 tools, tested on WPF and WinForms windows). Every finished download gets Mark of the Web and a Microsoft Defender scan; a flagged file cannot be opened.</td><td>Scanning needs Microsoft Defender (other antivirus products are not called; without Defender the result is 'unavailable'); a real malware sample was not used in tests.</td></tr>
+<tr><td class="num">9</td><td><b>Skills and adapters</b><br><span class="badge done">Done</span></td><td>Bundled skill and generated command reference, MCP tools including browser_guide and browser_account, CLI.</td><td>SDK packages for Rust, TypeScript and Python; skill management commands.</td></tr>
+<tr><td class="num">10</td><td><b>Daily-browser P1/P2</b><br><span class="badge done">Done</span></td><td>Chrome Web Store extensions (content scripts, toolbar buttons), folder sync, sites as Start-menu apps, DevTools, permissions, find, zoom, session restore, several windows, tab groups and pinning (Menu: pin, group, remove from group), address-bar suggestions, Translate page and Reader view in the Menu.</td><td>Translate uses Google's page proxy; Reader view is plain text (no images); no drag-to-group or tab context menu; groups cannot be renamed from the UI.</td></tr>
+<tr><td class="num">11</td><td><b>Performance, security, release</b><br><span class="badge done">Done</span></td><td>Release build, portable zip with checksums (installer still to do), licence audit, secret scan, protocol fuzz test, performance benchmark, metrics and benchmark commands.</td><td>Code signing and auto-update; the BrowserGym evaluation (next phase).</td></tr>
+<tr><td class="num">12</td><td><b>Quiet background work and accounts</b><br><span class="badge done">Done</span></td><td>Window opens behind yours and never takes focus, agent pointer and typing animations, Account Center with OAuth API connectors, saved sign-ins, Laya interface and setting.</td><td>Laya model itself (training is the next phase).</td></tr>
+<tr><td class="num">13</td><td><b>Privacy, VPN and Settings search</b><br><span class="badge done">Done</span></td><td>Built-in ad and tracker blocker (Brave adblock engine, EasyList and EasyPrivacy bundled, on by default, operator-only switch, live counter). VPN through Cloudflare WARP (usque sidecar, MIT; off by default, operator-only, covers every tab and side window, WebRTC leak policy, fails closed, sidecar dies with the browser). Animated Settings search with typo tolerance, synonyms and related settings. Each has offline and live tests.</td><td>Installer (portable zip only for now); VPN uses an unofficial WARP client and accepts Cloudflare terms for the person; no per-site VPN or country choice; Tor was tried (arti) and dropped, its bootstrap hung; EasyList refresh is a manual script.</td></tr>
+<tr><td class="num">14</td><td><b>Everyday browsing polish</b><br><span class="badge done">Done</span></td><td>Favorites bar under the address bar with an animated star (add, reorder by drag, middle-click, remove, overflow menu, Ctrl+Shift+B). Extensions get toolbar buttons (pin or hide each one) and an Extensions panel (turn on or off, remove, Chrome Web Store link). Open panels slide away when the page is clicked. A Toolbar section in Settings (favorites bar, Home button, extension buttons). The window now comes to the front when the person launches it.</td><td>Installer; extension pop-ups are not supported; page-click and foreground behaviour are tested with synthetic messages on a private desktop, not on a real one; sdk_e2e needs cargo on PATH.</td></tr>
+<tr><td class="num">15</td><td><b>Stronger blocker, smoother panels</b><br><span class="badge done">Done</span></td><td>Ad blocker now ships 13 lists (EasyList, EasyPrivacy, uBlock Origin, AdGuard, Peter Lowe, URLhaus, HaGeZi Pro) precompiled into an engine snapshot, with cosmetic hiding (generic and per-site), scriptlets and redirect resources: 62% to 98% on turtlecute.org (129 of 132; the 3 left are rules for that one site), 99% on superadblocktest.com (478 of 482), 100/100 on adblock-tester.com; cookie-banner lists and AgentGo's own host list added; requests wait for the engine at launch instead of passing unfiltered. Panels close with a time-based animation at a 1 ms timer resolution and no blur filters. Alt+Tab and taskbar clicks by the person bring AgentGo forward; agents still cannot.</td><td>The few hosts still reachable are on purpose (redirector.googlevideo.com would break video; some are replaced by harmless stand-ins); Alt+Tab and taskbar behaviour is not verified on a real desktop; list data is GPLv3 (see third_party/README.md); list refresh is a manual script.</td></tr>
+<tr><td class="num">17</td><td>Human browser chrome and product features</td><td class="num">63</td><td class="num">23</td><td class="num">40</td><td class="num">0</td><td class="num">0</td></tr>
+</table>
+
+<h2>How it was verified</h2>
+<ul>
+  <li><b>Unit tests</b> (Rust): protocol, policy, accounts and PKCE attack cases, vault, decision records, recorder, extension patterns, packaging helpers — 157 passing.</li>
+  <li><b>Integration tests</b> drive the real browser on a hidden desktop: accounts_e2e, adapters_e2e, adblock_e2e, agent_e2e, browser_e2e, capabilities_e2e, daily_e2e, favorites_e2e, native_e2e, persistence_e2e, presentation_e2e, profiles_e2e, protocol_smoke, rest_e2e, safety_reader_e2e, sdk_e2e, sessions_e2e, settings_search_e2e, shell_e2e, site_signals_e2e, suite_e2e, tasks_e2e, tools_e2e, ui_surface_smoke, windows_e2e. Every one of the 1026 working register tools is called with real parameters and its answer checked.</li>
+  <li><b>Live web</b>: adblock_live_e2e, real_web_e2e, site_render_smoke, store_e2e, vpn_live_e2e — Wikipedia, Hacker News, a shop, a real form, dynamic pages, dialogs, drag and drop, GitHub, and an extension installed from the Chrome Web Store (Dark Reader). Blind runs on unfamiliar sites (python.org, a demo shop, a to-do app) found five outline faults, all fixed with regression checks.</li>
+  <li><b>Release package</b>: the same suite passed against the packaged release build, run from a folder outside the repository.</li>
+  <li><b>Speed</b> (debug build): start 585 ms, observe 12 ms, click 395 ms, screenshot 159 ms.</li>
+</ul>
+
+<h2 class="page-break">Tools by domain</h2>
+<table><tr><th class="num">#</th><th>Domain</th><th class="num">Tools</th><th class="num">Own</th><th class="num">Sub-tool</th><th class="num">Impossible</th><th class="num">Left</th></tr>
+<tr><td class="num">1</td><td>Browser runtime and process lifecycle</td><td class="num">26</td><td class="num">21</td><td class="num">3</td><td class="num">2</td><td class="num">0</td></tr>
+<tr><td class="num">2</td><td>Profiles, user contexts, and session state</td><td class="num">30</td><td class="num">26</td><td class="num">4</td><td class="num">0</td><td class="num">0</td></tr>
+<tr><td class="num">3</td><td>Windows, browser windows, and viewport control</td><td class="num">30</td><td class="num">19</td><td class="num">11</td><td class="num">0</td><td class="num">0</td></tr>
+<tr><td class="num">4</td><td>Tabs, frames, browsing contexts, and popups</td><td class="num">46</td><td class="num">23</td><td class="num">23</td><td class="num">0</td><td class="num">0</td></tr>
+<tr><td class="num">5</td><td>Navigation, loading, and synchronization</td><td class="num">35</td><td class="num">16</td><td class="num">19</td><td class="num">0</td><td class="num">0</td></tr>
+<tr><td class="num">6</td><td>Human-equivalent mouse, pointer, touch, and gesture input</td><td class="num">63</td><td class="num">36</td><td class="num">27</td><td class="num">0</td><td class="num">0</td></tr>
+<tr><td class="num">7</td><td>Clipboard, selection, focus, and editing</td><td class="num">32</td><td class="num">5</td><td class="num">27</td><td class="num">0</td><td class="num">0</td></tr>
+<tr><td class="num">8</td><td>Semantic page observation and visual grounding</td><td class="num">55</td><td class="num">22</td><td class="num">33</td><td class="num">0</td><td class="num">0</td></tr>
+<tr><td class="num">9</td><td>Locators, grounding, and target resolution</td><td class="num">36</td><td class="num">1</td><td class="num">35</td><td class="num">0</td><td class="num">0</td></tr>
+<tr><td class="num">10</td><td>Page actions and form operations</td><td class="num">56</td><td class="num">21</td><td class="num">35</td><td class="num">0</td><td class="num">0</td></tr>
+<tr><td class="num">11</td><td>JavaScript, DOM, and page-runtime control</td><td class="num">21</td><td class="num">8</td><td class="num">13</td><td class="num">0</td><td class="num">0</td></tr>
+<tr><td class="num">12</td><td>Files, native dialogs, downloads, and printing</td><td class="num">40</td><td class="num">30</td><td class="num">10</td><td class="num">0</td><td class="num">0</td></tr>
+<tr><td class="num">13</td><td>Browser dialogs, menus, prompts, and permissions</td><td class="num">27</td><td class="num">12</td><td class="num">15</td><td class="num">0</td><td class="num">0</td></tr>
+<tr><td class="num">14</td><td>Storage, cookies, credentials, and site data</td><td class="num">29</td><td class="num">6</td><td class="num">23</td><td class="num">0</td><td class="num">0</td></tr>
+<tr><td class="num">15</td><td>Network, requests, responses, and web platform events</td><td class="num">35</td><td class="num">21</td><td class="num">14</td><td class="num">0</td><td class="num">0</td></tr>
+<tr><td class="num">16</td><td>Media, camera, microphone, sensors, and devices</td><td class="num">30</td><td class="num">4</td><td class="num">21</td><td class="num">5</td><td class="num">0</td></tr>
+
+<tr><td class="num">18</td><td>Extensions, scripts, and Agentgo plugins</td><td class="num">19</td><td class="num">14</td><td class="num">0</td><td class="num">5</td><td class="num">0</td></tr>
+<tr><td class="num">19</td><td>Agent one-call execution and workflow control</td><td class="num">42</td><td class="num">26</td><td class="num">16</td><td class="num">0</td><td class="num">0</td></tr>
+<tr><td class="num">20</td><td>Batch execution, synchronization, and recovery</td><td class="num">28</td><td class="num">12</td><td class="num">16</td><td class="num">0</td><td class="num">0</td></tr>
+<tr><td class="num">21</td><td>Research, extraction, and data workflows</td><td class="num">35</td><td class="num">6</td><td class="num">29</td><td class="num">0</td><td class="num">0</td></tr>
+<tr><td class="num">22</td><td>Skills, memory, replay, and domain adapters</td><td class="num">35</td><td class="num">28</td><td class="num">7</td><td class="num">0</td><td class="num">0</td></tr>
+<tr><td class="num">23</td><td>Approval modes, risk policy, and human handoff</td><td class="num">29</td><td class="num">10</td><td class="num">19</td><td class="num">0</td><td class="num">0</td></tr>
+<tr><td class="num">24</td><td>Human handoff UI and Agentgo shell functions</td><td class="num">38</td><td class="num">21</td><td class="num">17</td><td class="num">0</td><td class="num">0</td></tr>
+<tr><td class="num">25</td><td>Artifacts, evidence, and context control</td><td class="num">32</td><td class="num">15</td><td class="num">17</td><td class="num">0</td><td class="num">0</td></tr>
+<tr><td class="num">26</td><td>Native Windows control lane</td><td class="num">32</td><td class="num">31</td><td class="num">1</td><td class="num">0</td><td class="num">0</td></tr>
+<tr><td class="num">27</td><td>Accessibility and inclusive interaction</td><td class="num">21</td><td class="num">1</td><td class="num">20</td><td class="num">0</td><td class="num">0</td></tr>
+<tr><td class="num">28</td><td>Debugging, inspection, and diagnostics</td><td class="num">24</td><td class="num">7</td><td class="num">16</td><td class="num">1</td><td class="num">0</td></tr>
+<tr><td class="num">29</td><td>Metrics and evaluation</td><td class="num">24</td><td class="num">23</td><td class="num">1</td><td class="num">0</td><td class="num">0</td></tr>
+<tr><td class="num">30</td><td>Agent control protocol and integration surface</td><td class="num">26</td><td class="num">9</td><td class="num">17</td><td class="num">0</td><td class="num">0</td></tr>
+<tr><td></td><td><b>Total</b></td><td class="num"><b>1039</b></td><td class="num"><b>497</b></td><td class="num"><b>529</b></td><td class="num"><b>13</b></td><td class="num"><b>0</b></td></tr>
+<tr><td class="num">17</td><td><b>Release polish</b><br><span class="badge done">Done</span></td><td>Command palette (Ctrl+K, fuzzy search over settings, tabs, history, bookmarks and actions). First-run welcome with import of history, bookmarks and open tabs from Chrome, Edge, Brave and Firefox. Per-site dark mode (own switch directly under Theme, brightness and contrast sliders, excluded-site list). Site permissions stay blocked by default and ask in a themed box (Keep blocked, Allow this time, Always allow); allowed sites are listed in Settings and can be blocked again. Translation: selection card and whole-page translate bar with a language picker and a "Translate into" setting. Switches animate in place without redrawing Settings. Report a problem (zip of diagnostics, nothing sent). Print to PDF. Prompt-injection scanner for page text given to agents. New Tab page: an animated film of an agent reading a page, filling a form, asking for approval and finishing. The VPN was removed (card shows "coming soon").</td><td>"Ask your agent" in the problem report only copies text; no GitHub issue link until a real repository address is set in <code>Cargo.toml</code>; Firefox passwords and Chrome v20-encrypted passwords are not imported; translation uses Google's service; the executable is not Authenticode-signed.</td></tr></table>
+<p class="note">A sub-tool is a register name that runs one of the browser's commands with the same effect (for example <code>browser_ui.back</code> runs <code>tab.back</code>); it is called and checked by the tests like any command. Every name not built yet answers <code>capability.unsupported</code> with "not built yet", so an agent is never left guessing.</p>
+
+<h2>What is left to build (0 tools)</h2>
+<table><tr><th class="num">#</th><th>Domain and tools</th><th class="num">Count</th></tr></table>
+
+<h2>What cannot be done in this browser (13)</h2>
+<table><tr><th>Tool</th><th>Why</th></tr><tr><td><code>browser.engine_switch</code></td><td>AgentGo is built on one engine (Chromium through CEF) and cannot switch engines.</td></tr><tr><td><code>browser.engine_matrix</code></td><td>AgentGo is built on one engine (Chromium through CEF).</td></tr><tr><td><code>device.bluetooth</code></td><td>pages are not given access to real hardware devices.</td></tr><tr><td><code>device.usb</code></td><td>pages are not given access to real hardware devices.</td></tr><tr><td><code>device.serial</code></td><td>pages are not given access to real hardware devices.</td></tr><tr><td><code>device.hid</code></td><td>pages are not given access to real hardware devices.</td></tr><tr><td><code>device.nfc</code></td><td>Web NFC exists only on Android.</td></tr><tr><td><code>extension.permission_request</code></td><td>AgentGo runs the content scripts of extensions (extension.install); the chrome.* extension APIs for toolbar buttons, menus and native messaging are not part of the embedded engine.</td></tr><tr><td><code>extension.browser_actions</code></td><td>AgentGo runs the content scripts of extensions (extension.install); the chrome.* extension APIs for toolbar buttons, menus and native messaging are not part of the embedded engine.</td></tr><tr><td><code>extension.context_menu</code></td><td>AgentGo runs the content scripts of extensions (extension.install); the chrome.* extension APIs for toolbar buttons, menus and native messaging are not part of the embedded engine.</td></tr><tr><td><code>native_messaging.list</code></td><td>AgentGo runs the content scripts of extensions (extension.install); the chrome.* extension APIs for toolbar buttons, menus and native messaging are not part of the embedded engine.</td></tr><tr><td><code>native_messaging.invoke</code></td><td>AgentGo runs the content scripts of extensions (extension.install); the chrome.* extension APIs for toolbar buttons, menus and native messaging are not part of the embedded engine.</td></tr><tr><td><code>debug.breakpoint</code></td><td>a page paused at a breakpoint also stops the agent's own control of it; open the DevTools window (debug.devtools_open) to debug.</td></tr></table>
+
+<h2>Known limits and open points</h2>
+<ul>
+  <li>Google shows a CAPTCHA to brand-new profiles after many automated runs. AgentGo hands it to the person (by design, never solved); the person's real profile, or Bing/DuckDuckGo in Settings, avoids most of them.</li>
+  <li>Extensions run their content scripts only; toolbar buttons, pop-ups, background workers and native messaging of Chrome extensions are not part of the embedded engine.</li>
+  <li>OAuth API connectors were tested end to end against a mock provider (PKCE, refresh, forged and replayed answers). Real Google, GitHub and Yandex sign-in needs the person's own OAuth client id and was not tried live.</li>
+  <li>Camera, microphone and location now ask the person; notifications are still refused by the embedded engine even when granted.</li>
+  <li>Some older end-to-end files (<code>ui_surface_smoke</code>, <code>windows_e2e</code>, <code>rest_e2e</code>) were not re-run for this release; the Rust suite and the files listed in the changelog were.</li>
+  <li>The VPN was removed from this release; the Settings card says "coming soon".</li>
+  <li>The ad blocker bundles EasyList (CC BY-SA 3.0 / GPLv3) as data; notices ship in <code>licenses/</code>.</li>
+  <li>The executable is not code-signed; Windows SmartScreen may ask once. There is no auto-update.</li>
+  <li>Every open tab keeps rendering so agents can work in background tabs; very many tabs cost memory.</li>
+</ul>
+
+<h2>Next phase: Laya and the experiment</h2>
+<p>The browser is ready for the graduation experiment (configurations A, B, C0, C1). What is already in place for it:</p>
+<ul>
+  <li><b>Decision record</b> (<code>decision.record</code> / <code>decision.apply</code>, schema <code>agentgo.laya.decision/0</code>): the subgoal, compact state, every possible step as a candidate, supplied values and recent outcomes — exactly what Laya will be given. Documented in <code>skills/agentgo/references/laya.md</code>.</li>
+  <li><b>Training data</b>: <code>workflow.record</code> writes every step, including full decision records and their outcomes, as JSON lines.</li>
+  <li><b>Measurement</b>: <code>metrics.*</code> (latency, errors, recoveries, handoffs, reply tokens, task success, tokens per success, turns) and <code>benchmark.*</code> (record, compare, regression, replay a recording N times).</li>
+  <li><b>Setting</b>: "Laya, the local choice model" in Settings (off by default; your own model decides when it is off).</li>
+</ul>
+<p>Still to do: build the local worker that loads a Laya checkpoint and answers decision records; collect trajectories; fine-tune; run the A/B/C0/C1 comparison (BrowserGym tasks plus AgentGo fixtures).</p>
+
+<h2>Starting again</h2>
+<ul>
+  <li>Read <code>README.md</code>, then <code>docs/HANDOFF-OPUS.md</code> and <code>docs/issues-log.md</code> (every problem met and how it was solved).</li>
+  <li>Build: <code>powershell -File scripts\build.ps1 -Runtime</code> (CEF is fetched by <code>scripts\bootstrap.ps1</code> from <code>scripts\pins.json</code>). Test: <code>node scripts\dev\run-integration.js</code>. Package: <code>scripts\package.ps1 -Release</code>.</li>
+  <li>Add a tool: one line in <code>scripts/dev/tools-spec.js</code> (plus a function in <code>tools.js</code> if it reads the page), then <code>gen-tools.js</code>, <code>gen-skill.js</code>, build, <code>tools_e2e</code>.</li>
+</ul>
+</body></html>

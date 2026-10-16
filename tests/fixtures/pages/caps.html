@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AgentGo capability fixture</title>
+<meta name="description" content="Fixture for extended capability tests">
+<style>
+  body { font: 15px system-ui; margin: 24px; }
+  #hover-target { padding: 8px; border: 1px solid #999; display: inline-block; }
+  .filler { height: 900px; }
+</style>
+</head>
+<body>
+  <main>
+  <h1>Capability checks</h1>
+  <table aria-label="Prices">
+    <tr><th>Item</th><th>Price</th></tr>
+    <tr><td>Widget</td><td>$4.00</td></tr>
+    <tr><td>Gadget</td><td>$9.50</td></tr>
+  </table>
+  <button id="dbl">Double target</button>
+  <button id="ctx">Context target</button>
+  <span id="hover-target" tabindex="0">Hover target</span>
+  <label><input id="opt" type="checkbox" checked> Option</label>
+  <input id="free" aria-label="Free text">
+  <button id="confirm">Ask confirm</button>
+  <button id="prompt">Ask prompt</button>
+  <button id="late-show">Show panel</button>
+  <div id="panel" hidden>Panel is open <button id="panel-close">Close panel</button></div>
+  <pre id="log"></pre>
+  <ul id="feed"></ul>
+  <div class="filler"></div>
+  </main>
+<script>
+  const log = (text) => { document.getElementById('log').textContent += text + '\n'; };
+  console.log('fixture console message');
+  document.getElementById('dbl').addEventListener('dblclick', (e) => log(`dblclick detail=${e.detail} trusted=${e.isTrusted}`));
+  document.getElementById('ctx').addEventListener('contextmenu', (e) => { e.preventDefault(); log(`contextmenu button=${e.button}`); });
+  document.getElementById('ctx').addEventListener('mousedown', (e) => { if (e.button === 1) { e.preventDefault(); log(`mousedown button=1 trusted=${e.isTrusted}`); } });
+  document.getElementById('hover-target').addEventListener('mouseenter', () => log('hovered'));
+  document.getElementById('opt').addEventListener('change', (e) => log(`option=${e.target.checked}`));
+  document.getElementById('free').addEventListener('keydown', (e) => { if (e.ctrlKey && e.key.toLowerCase() === 'b') log('shortcut ctrl+b'); });
+  document.getElementById('confirm').addEventListener('click', () => log(`confirm=${confirm('Proceed?')}`));
+  document.getElementById('prompt').addEventListener('click', () => log(`prompt=${prompt('Your name?', 'nobody')}`));
+  document.getElementById('late-show').addEventListener('click', () => setTimeout(() => { document.getElementById('panel').hidden = false; }, 500));
+  document.getElementById('panel-close').addEventListener('click', () => setTimeout(() => { document.getElementById('panel').hidden = true; }, 300));
+  document.addEventListener('click', (e) => { if (e.detail === 3) log('tripleclick'); });
+  // A feed that grows while scrolling, with a duplicate link in every batch.
+  let batch = 0;
+  const grow = () => {
+    if (batch >= 4) return;
+    batch += 1;
+    for (let i = 1; i <= 5; i += 1) {
+      const li = document.createElement('li');
+      li.innerHTML = `<a href="https://example.com/item/${batch}-${i}">Feed item ${batch}-${i}</a>`;
+      document.getElementById('feed').appendChild(li);
+    }
+    const dup = document.createElement('li');
+    dup.innerHTML = '<a href="https://example.com/item/1-1">Feed item 1-1 again</a>';
+    document.getElementById('feed').appendChild(dup);
+  };
+  grow();
+  addEventListener('scroll', () => { if (innerHeight + scrollY >= document.body.scrollHeight - 50) grow(); });
+  // One request that fails, for network.failures.
+  fetch('http://127.0.0.1:9/unreachable').catch(() => {});
+</script>
+</body>
+</html>

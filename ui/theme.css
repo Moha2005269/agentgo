@@ -1,0 +1,102 @@
+/* AgentGo design system: "live wire".
+   Orange is current: it marks where energy and attention are. Everything
+   else is warm black (dark) or warm paper (light). Two palettes only. */
+
+@font-face { font-family: 'Manrope'; font-weight: 400 800; font-display: block; src: url('fonts/manrope-latin.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Mono'; font-weight: 400; font-display: block; src: url('fonts/ibm-plex-mono-400.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Mono'; font-weight: 500; font-display: block; src: url('fonts/ibm-plex-mono-500.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Mono'; font-weight: 600; font-display: block; src: url('fonts/ibm-plex-mono-600.woff2') format('woff2'); }
+@font-face { font-family: 'Instrument Serif'; font-style: normal; font-display: block; src: url('fonts/instrument-serif-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Instrument Serif'; font-style: italic; font-display: block; src: url('fonts/instrument-serif-italic.woff2') format('woff2'); }
+
+[hidden] { display: none !important; }
+
+@property --spin { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+
+:root {
+  color-scheme: dark;
+  /* dark: ember on black */
+  --bg: #0A0A0B;
+  --bg-2: #0F0F11;
+  --surface: #141416;
+  --surface-2: #1B1B1E;
+  --surface-3: #232327;
+  --line: rgba(255, 238, 226, .085);
+  --line-2: rgba(255, 238, 226, .05);
+  --ink: #F6F0E9;
+  --ink-2: #D9D2CA;
+  --muted: #A49D95;
+  --faint: #6E6862;
+  --accent: #FF6A2B;
+  --accent-hi: #FF9259;
+  --accent-deep: #D94A12;
+  --accent-ink: #1A0A03;              /* text on orange */
+  --hot: #FF4D1F;                     /* needs you / danger, still the orange family */
+  --glow: rgba(255, 106, 43, .55);
+  --glow-soft: rgba(255, 106, 43, .16);
+  --tint: color-mix(in srgb, var(--accent) 12%, transparent);
+  --shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 18px 50px -12px rgba(0,0,0,.75), 0 2px 8px rgba(0,0,0,.5);
+  --grain-opacity: .07;
+
+  /* compatibility with older page code */
+  --ok: var(--accent); --bad: var(--hot); --warn: var(--accent-hi);
+  --raise: var(--surface-2); --edge: var(--line); --edge2: var(--line-2);
+  --panel: var(--surface); --deep: var(--bg-2);
+
+  --ui: 'Manrope', "Segoe UI", system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', Consolas, monospace;
+  --serif: 'Instrument Serif', Georgia, serif;
+
+  /* motion: quick to start, soft to land; springs only where touch is felt */
+  --out: cubic-bezier(.16, 1, .3, 1);
+  --spring: cubic-bezier(.34, 1.56, .64, 1);
+  --inout: cubic-bezier(.65, 0, .35, 1);
+  --fast: .16s;
+  --mid: .32s;
+  --slow: .6s;
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+  /* light: ember on paper */
+  --bg: #F5F1EB;
+  --bg-2: #EFEAE2;
+  --surface: #FFFDFA;
+  --surface-2: #F2EDE6;
+  --surface-3: #E8E1D8;
+  --line: rgba(40, 22, 10, .11);
+  --line-2: rgba(40, 22, 10, .06);
+  --ink: #17110C;
+  --ink-2: #3B322B;
+  --muted: #6B6159;
+  --faint: #9C928A;
+  --accent: #F05A16;
+  --accent-hi: #FF7A3A;
+  --accent-deep: #C9440B;
+  --accent-ink: #FFF8F3;
+  --hot: #E23B0E;
+  --glow: rgba(240, 90, 22, .38);
+  --glow-soft: rgba(240, 90, 22, .1);
+  --shadow: 0 1px 0 rgba(255,255,255,.8) inset, 0 18px 40px -14px rgba(60,30,10,.28), 0 2px 6px rgba(60,30,10,.08);
+  --grain-opacity: .05;
+}
+
+/* Film grain: a fixed noise layer, cheap (one static image). */
+.grain::after {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 1000;
+  opacity: calc(var(--grain-opacity) * .55); will-change: transform; transform: translateZ(0);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .5  0 0 0 0 .5  0 0 0 0 .5  0 0 0 1 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+/* Theme change: one circle spreads across the whole window from the click
+   (driven by theme.js on the new snapshot; the default crossfade is off). */
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-group(root) { animation: none; }
+
+@keyframes ag-spin { to { transform: rotate(360deg); } }
+@keyframes ag-pulse { 50% { opacity: .45; } }
+@keyframes ag-rise { from { opacity: 0; transform: translate3d(0, 8px, 0); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+}

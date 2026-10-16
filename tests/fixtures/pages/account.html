@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Jobs account</title>
+<h1>Jobs account</h1>
+<p id="who"></p>
+<button id="signin" type="button">Sign in</button>
+<button id="apply" type="button">Apply now</button>
+<p id="out">nothing applied</p>
+<script>
+  // A stand-in for a site with accounts: the session is one cookie.
+  const show = () => {
+    document.getElementById("who").textContent = /(^|; )sid=/.test(document.cookie) ? "signed in as ada" : "signed out";
+  };
+  document.getElementById("signin").addEventListener("click", () => { document.cookie = "sid=ada-session; path=/"; show(); });
+  document.getElementById("apply").addEventListener("click", () => { document.getElementById("out").textContent = "application sent"; });
+  show();
+</script>
