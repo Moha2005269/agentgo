@@ -57,8 +57,18 @@ if ($runToolchain) {
         Pop-Location
     }
 
-    foreach ($component in $pins.rust.components) {
-        & $rustup "component" "add" $component 2>$null | Out-Null
+    # rustup writes progress ("component ... is up to date") to stderr; under
+    # $ErrorActionPreference = "Stop" Windows PowerShell 5.1 turns that into a
+    # terminating error, so judge success by the exit code instead.
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        foreach ($component in $pins.rust.components) {
+            & $rustup "component" "add" $component 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "rustup could not add component $component" }
+        }
+    } finally {
+        $ErrorActionPreference = $previousPreference
     }
     Write-Host "[bootstrap] toolchain ok" -ForegroundColor Green
 }
