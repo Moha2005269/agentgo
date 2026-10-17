@@ -69,4 +69,4 @@ jobs:
 
       - name: Version report (gate evidence)
         shell: pwsh
-        run: target\release\agentgo.exe version
+        run: .\target\release\agentgo.exe version
