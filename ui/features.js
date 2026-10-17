@@ -246,6 +246,8 @@ const stepWelcome = () => `
   ${flowArt()}<p class="wiz-lead">Two quick things and you are set: bring your stuff over from your old browser, and connect the agent you already use. Everything stays on this computer.</p>
   <div class="wiz-theme"><span>Look</span>${['dark', 'light', 'system'].map(v => `<button type="button" class="pill${(settingsCache.theme || 'dark') === v ? ' on' : ''}" data-f="theme" data-v="${v}">${v}</button>`).join('')}</div>`;
 
+const csvRow = () => `<div class="wiz-csv"><button type="button" class="btn" data-f="csv">Import passwords from a CSV file</button><input type="file" id="wizCsv" accept=".csv,text/csv" hidden><span>From the password export of Chrome, Edge, Firefox or another manager. Delete the file afterwards.</span></div>`;
+
 const stepImport = () => {
   if (!wizScan) return `<p class="wiz-kicker">Step 1 of 2</p><h2 class="wiz-title">Bring your <em>stuff</em></h2>${flowArt()}<p class="wiz-lead">Looking for Chrome, Edge, Brave and Firefox on this computer…</p>`;
   const profiles = wizScan.profiles || [];
@@ -255,7 +257,7 @@ const stepImport = () => {
       <div class="wiz-stats">${[['Bookmarks', c.bookmarks], ['History', c.history], ['Passwords', c.logins], ['Tabs opened', c.tabs]].map(([n, v], i) => `<div style="--r:${i}"><b>${v ?? 0}</b><span>${n}</span></div>`).join('')}</div>
       ${(wizResult.notes || []).map(n => `<p class="wiz-note">${esc(n)}</p>`).join('')}`;
   }
-  if (!profiles.length) return `<p class="wiz-kicker">Step 1 of 2</p><h2 class="wiz-title">Bring your <em>stuff</em></h2>${flowArt()}<p class="wiz-lead">No other browser was found on this computer, so there is nothing to import right now. You can come back any time from Settings.</p>`;
+  if (!profiles.length) return `<p class="wiz-kicker">Step 1 of 2</p><h2 class="wiz-title">Bring your <em>stuff</em></h2>${flowArt()}<p class="wiz-lead">No other browser was found on this computer, so there is nothing to import right now. You can come back any time from Settings.</p>${csvRow()}`;
   const p = profiles[Math.min(wizPick, profiles.length - 1)];
   const c = p.counts || {};
   const box = (key, label, n, note = '') => `<label class="wiz-opt${n ? '' : ' none'}"><input type="checkbox" data-f="opt" data-k="${key}"${wizOpts[key] && n ? ' checked' : ''}${n ? '' : ' disabled'}><i></i><span><b>${label}</b><em>${n ? `${n.toLocaleString()} found${note}` : 'none found'}</em></span></label>`;
@@ -263,7 +265,7 @@ const stepImport = () => {
     <div class="wiz-profiles">${profiles.map((q, i) => `<button type="button" class="wiz-prof${i === wizPick ? ' on' : ''}" data-f="pick" data-i="${i}" style="--r:${i}"><span class="glyph">${BROWSER_GLYPH[q.browser] || '•'}</span><span><b>${esc(q.browser)}</b><em>${esc(q.name)}</em></span></button>`).join('')}</div>
     <div class="wiz-opts">${box('bookmarks', 'Bookmarks', c.bookmarks)}${box('history', 'History', c.history, ' (latest 5,000 used)')}${box('logins', 'Saved passwords', c.logins, ' (encrypted again for this Windows account)')}${box('tabs', 'Open tabs', c.tabs, ' (opened as new tabs)')}</div>
     ${wizBusy ? `<div class="wiz-busy"><i></i><i></i><i></i> Importing…</div>` : ''}
-    <p class="wiz-fine">Close ${esc(p.browser)} first for the most complete copy. Nothing leaves this computer.</p>`;
+    <p class="wiz-fine">Close ${esc(p.browser)} first for the most complete copy. Nothing leaves this computer.</p>${csvRow()}`;
 };
 
 const stepAgent = () => `
@@ -332,6 +334,7 @@ const wizClick = async event => {
   else if (f === 'theme') { await settingsPatch({ theme: el.dataset.v }); settingsCache.theme = el.dataset.v; renderWizardNow(); }
   else if (f === 'pick') { wizPick = Number(el.dataset.i); renderWizardNow(); }
   else if (f === 'opt') { wizOpts[el.dataset.k] = el.checked; }
+  else if (f === 'csv') { document.getElementById('wizCsv')?.click(); }
   else if (f === 'import') {
     const p = wizScan.profiles[wizPick];
     wizBusy = true; renderWizardNow();
@@ -405,7 +408,20 @@ const reportClick = async event => {
 };
 
 toolBody.addEventListener('click', event => { wizClick(event); reportClick(event); });
-toolBody.addEventListener('change', event => { if (event.target.dataset?.f === 'opt') wizOpts[event.target.dataset.k] = event.target.checked; });
+toolBody.addEventListener('change', async event => {
+  if (event.target.dataset?.f === 'opt') wizOpts[event.target.dataset.k] = event.target.checked;
+  if (event.target.id === 'wizCsv' && event.target.files?.[0]) {
+    const file = event.target.files[0];
+    wizBusy = true; renderWizardNow();
+    try {
+      if (file.size > 5 * 1024 * 1024) throw new Error('That file is too large to be a password export.');
+      wizResult = await callBridge('ui.import_run', { csv: await file.text() });
+    } catch (error) {
+      wizResult = { imported: {}, notes: [error.message] };
+    }
+    wizBusy = false; renderWizardNow();
+  }
+});
 
 toolBody.addEventListener('click', async event => {
   const el = event.target.closest('[data-f2]');

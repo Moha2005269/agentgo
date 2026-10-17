@@ -54,6 +54,9 @@ pub async fn run(params: &Value) -> Reply {
     if let Some(host) = params["connect"].as_str() {
         return connect(host).await;
     }
+    if let Some(csv) = params["csv"].as_str() {
+        return import_csv(csv);
+    }
     let browser = params["browser"].as_str().unwrap_or("");
     let id = params["id"].as_str().unwrap_or("");
     let profile = find(browser, id).ok_or_else(|| Fail::params("that browser profile is gone"))?;
@@ -124,6 +127,37 @@ pub async fn run(params: &Value) -> Reply {
         "imported": {"bookmarks": bookmarks, "history": history, "logins": logins.saved, "tabs": opened},
         "notes": notes,
     }))
+}
+
+/// Imports a password-manager CSV export into the sign-in vault.
+fn import_csv(csv: &str) -> Reply {
+    if csv.len() > 5 * 1024 * 1024 {
+        return Err(Fail::params(
+            "that file is too large to be a password export",
+        ));
+    }
+    let parsed = agentgo_import::parse_password_csv(csv);
+    if parsed.is_empty() {
+        return Ok(json!({
+            "imported": {"logins": 0},
+            "notes": ["No sign-ins were found. The file needs url, username and password columns."],
+        }));
+    }
+    let logins = accounts::import_logins(
+        parsed
+            .into_iter()
+            .map(|login| (login.origin, login.username, login.password))
+            .collect(),
+    );
+    let mut notes = Vec::new();
+    if logins.skipped > 0 {
+        notes.push(format!(
+            "{} sign-ins were skipped (the vault holds up to 200 sign-ins, one per site).",
+            logins.skipped
+        ));
+    }
+    state::notify_shell_state();
+    Ok(json!({"imported": {"logins": logins.saved}, "notes": notes}))
 }
 
 /// Registers AgentGo with an agent host through `agentgo-tool setup <host>`.

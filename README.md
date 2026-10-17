@@ -88,7 +88,7 @@ act.fill {ref: 1, text: "…"} →
 ## Everyday browsing, done well
 
 - **Command palette** (Ctrl+K): search settings, tabs, history, bookmarks and actions.
-- **First-run welcome and import** of history, bookmarks and open tabs from Chrome, Edge, Brave and Firefox.
+- **First-run welcome and import** of history, bookmarks, saved passwords and open tabs from Chrome, Edge, Brave and Firefox, plus password CSV files.
 - **Dark mode for websites** with brightness and contrast sliders and a per-site exclusion list.
 - **Translation** of a selection or a whole page into the language you pick (Settings → Languages).
 - **Site permissions that ask**: camera, microphone and location are blocked until you choose *Allow this time* or *Always allow*, and you can block a site again any time.
@@ -131,7 +131,7 @@ Agents should read `skills/agentgo/SKILL.md` first (over MCP: `browser_guide`). 
 
 - Windows 11 x64 only.
 - The ad blocker and security claims above come from our own testing. Independent benchmarks against other browsers are not published yet.
-- Import does not bring over Firefox passwords or Chrome's newest (v20) encrypted passwords.
+- Chrome's newest app-bound (v20) passwords can't be decrypted by any other program; export them as CSV and use *Import passwords from a CSV file*. Firefox passwords import only when no primary password is set.
 - Translation uses Google's translation service. Notifications are refused for every site. There is no VPN in this release.
 - Cross-origin iframes are not observed or acted in.
 - Laya is not bundled yet.

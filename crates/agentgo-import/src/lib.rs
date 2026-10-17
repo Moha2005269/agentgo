@@ -4,6 +4,9 @@
 //! data may be locked while a browser is running; SQLite files are copied,
 //! including their WAL files, before they are read.
 
+mod firefox;
+mod snss;
+
 use ring::aead::{Aad, LessSafeKey, Nonce, UnboundKey, AES_256_GCM};
 use rusqlite::{Connection, OpenFlags};
 use serde_json::Value;
@@ -201,7 +204,7 @@ pub fn count(profile: &Profile) -> Counts {
             bookmarks,
             history,
             logins: json_array_len(&profile.path.join("logins.json"), "logins"),
-            tabs: 0,
+            tabs: firefox::session_tabs(&profile.path).len(),
         };
     }
 
@@ -211,15 +214,7 @@ pub fn count(profile: &Profile) -> Counts {
     let logins = open_readonly(&profile.path.join("Login Data"))
         .map(|conn| scalar_count(&conn, "SELECT COUNT(*) FROM logins"))
         .unwrap_or(0);
-    let mut tabs = HashSet::new();
-    for file in session_files(&profile.path) {
-        if let Ok(bytes) = fs::read(file) {
-            tabs.extend(extract_printable_urls(&bytes));
-        }
-        if tabs.len() >= 50 {
-            break;
-        }
-    }
+    let tabs = chromium_tabs(&profile.path).0;
     Counts {
         bookmarks: chromium_bookmarks(&profile.path.join("Bookmarks"))
             .map_or(0, |items| items.len()),
@@ -348,34 +343,58 @@ fn import_chromium(profile: &Profile, options: &Options, out: &mut Imported) {
     }
 
     if options.tabs {
-        let files = session_files(&profile.path);
-        let mut seen = HashSet::new();
-        for file in files {
-            if let Ok(bytes) = fs::read(file) {
-                for url in extract_printable_urls(&bytes) {
-                    if seen.insert(url.clone()) {
-                        out.tabs.push(url);
-                        if out.tabs.len() >= 50 {
-                            break;
-                        }
-                    }
-                }
-            }
-            if out.tabs.len() >= 50 {
-                break;
-            }
-        }
+        let (tabs, approximate) = chromium_tabs(&profile.path);
+        out.tabs = tabs;
         if !out.tabs.is_empty() {
-            note_once(out, "Open tabs were approximated by extracting printable HTTP(S) URLs from session files; tab boundaries and the active navigation may be incomplete.");
+            if approximate {
+                note_once(out, "Open tabs were approximated by extracting printable HTTP(S) URLs from session files; tab boundaries and the active navigation may be incomplete.");
+            }
         } else if profile.path.join("Sessions").exists() {
             note_once(
                 out,
-                "Open tabs could not be reliably parsed from browser session files.",
+                "No open tabs were found in the browser's session files.",
             );
         }
     }
 }
 
+/// Open tabs of a Chromium profile, newest session file first. The flag is
+/// true when the structured parser failed and URLs were scraped instead.
+fn chromium_tabs(profile: &Path) -> (Vec<String>, bool) {
+    const LIMIT: usize = 50;
+    let files: Vec<Vec<u8>> = session_files(profile)
+        .into_iter()
+        .filter_map(|file| fs::read(file).ok())
+        .collect();
+    let mut urls: Vec<String> = Vec::new();
+    for bytes in &files {
+        for url in snss::tabs(bytes).unwrap_or_default() {
+            if !urls.contains(&url) {
+                urls.push(url);
+            }
+        }
+        if urls.len() >= LIMIT {
+            urls.truncate(LIMIT);
+            return (urls, false);
+        }
+    }
+    if !urls.is_empty() {
+        return (urls, false);
+    }
+    for bytes in &files {
+        for url in extract_printable_urls(bytes) {
+            if !urls.contains(&url) {
+                urls.push(url);
+            }
+        }
+        if urls.len() >= LIMIT {
+            break;
+        }
+    }
+    urls.truncate(LIMIT);
+    let approximate = !urls.is_empty();
+    (urls, approximate)
+}
 fn import_chromium_logins(profile: &Profile, out: &mut Imported) {
     let key = fs::read(
         profile
@@ -506,18 +525,24 @@ fn import_firefox(profile: &Profile, options: &Options, out: &mut Imported) {
         }
     }
     if options.logins {
-        note_once(out, "Firefox passwords can't be imported automatically; export them from about:logins as CSV");
+        match firefox::read_logins(&profile.path) {
+            firefox::LoginsResult::Logins(logins) => out.logins.extend(logins),
+            firefox::LoginsResult::NoLogins => {}
+            firefox::LoginsResult::PrimaryPassword => note_once(
+                out,
+                "Firefox passwords are locked by a primary password; remove it temporarily or export them from about:logins as CSV.",
+            ),
+            firefox::LoginsResult::Unreadable => note_once(
+                out,
+                "Firefox passwords could not be decrypted; export them from about:logins as CSV.",
+            ),
+        }
     }
-    if options.tabs
-        && profile
-            .path
-            .join("sessionstore-backups/recovery.jsonlz4")
-            .exists()
-    {
-        note_once(out, "Firefox open tabs use compressed recovery.jsonlz4; this build does not decode that format.");
+    if options.tabs {
+        out.tabs = firefox::session_tabs(&profile.path);
+        out.tabs.truncate(50);
     }
 }
-
 fn read_firefox_bookmarks(conn: &Connection, out: &mut Imported) {
     let mut folder_names = std::collections::HashMap::<i64, (String, i64)>::new();
     if let Ok(mut stmt) = conn.prepare("SELECT id, title, parent FROM moz_bookmarks WHERE type=2") {
@@ -1094,5 +1119,42 @@ mod tests {
         );
         assert_eq!(firefox.len(), 1);
         assert_eq!(firefox[0].origin, "https://mozilla.org");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    #[allow(unsafe_code)]
+    fn dpapi_roundtrip_recovers_chrome_style_key() {
+        use windows_sys::Win32::Foundation::LocalFree;
+        use windows_sys::Win32::Security::Cryptography::{
+            CryptProtectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
+        };
+        let secret = [0x42u8; 32];
+        let data = CRYPT_INTEGER_BLOB {
+            cbData: secret.len() as u32,
+            pbData: secret.as_ptr() as *mut u8,
+        };
+        let mut out = CRYPT_INTEGER_BLOB {
+            cbData: 0,
+            pbData: std::ptr::null_mut(),
+        };
+        // SAFETY: data points at a live slice; Windows allocates `out`.
+        let ok = unsafe {
+            CryptProtectData(
+                &data,
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null(),
+                CRYPTPROTECT_UI_FORBIDDEN,
+                &mut out,
+            )
+        };
+        assert_ne!(ok, 0);
+        // SAFETY: on success `out` is a Windows-owned buffer of cbData bytes.
+        let blob = unsafe { std::slice::from_raw_parts(out.pbData, out.cbData as usize) }.to_vec();
+        // SAFETY: allocated by CryptProtectData above.
+        unsafe { LocalFree(out.pbData.cast()) };
+        assert_eq!(dpapi_unprotect(&blob).unwrap(), secret);
     }
 }

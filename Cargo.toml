@@ -58,6 +58,9 @@ clap = { version = "4", features = ["derive"] }
 anyhow = "1"
 rusqlite = { version = "0.37", features = ["bundled"] }
 ring = "0.17"
+aes = "0.8"
+cbc = "0.1"
+des = "0.8"
 windows-sys = "0.61.2"
 
 # Pinned CEF runtime (Milestone 1 spike). Exact revision of
