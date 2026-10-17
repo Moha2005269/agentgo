@@ -85,7 +85,10 @@ try {
             Copy-Item -LiteralPath (Join-Path $AgentGoRoot "target\$profile\$tool") -Destination $bundle -Force
         }
         Get-ChildItem -LiteralPath $cefRoot -File | Where-Object { $_.Extension -ne ".exe" } | Copy-Item -Destination $bundle -Force
-        Copy-Item -LiteralPath (Join-Path $cefRoot "locales") -Destination (Join-Path $bundle "locales") -Recurse -Force
+        # Copying onto an existing locales folder would nest a second one inside it.
+        $bundleLocales = Join-Path $bundle "locales"
+        if (Test-Path -LiteralPath $bundleLocales) { Remove-Item -LiteralPath $bundleLocales -Recurse -Force }
+        Copy-Item -LiteralPath (Join-Path $cefRoot "locales") -Destination $bundleLocales -Recurse -Force
         $bundleUi = Join-Path $bundle "ui"
         New-Item -ItemType Directory -Force -Path $bundleUi | Out-Null
         Get-ChildItem -LiteralPath (Join-Path $AgentGoRoot "ui") -Force |

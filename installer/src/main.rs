@@ -238,7 +238,7 @@ fn hash_reader(mut reader: impl Read, mut tick: impl FnMut(u64)) -> std::io::Res
 
 /// The version in a package name such as `AgentGo-0.1.0-win64/`.
 fn version_in(name: &str) -> Option<String> {
-    let rest = name.split('/').next()?.strip_prefix("AgentGo-")?;
+    let rest = name.split(['/', '\\']).next()?.strip_prefix("AgentGo-")?;
     Some(rest.split("-win64").next()?.to_string())
 }
 
@@ -565,14 +565,19 @@ fn extract(proxy: &Proxy, reader: Box<dyn ReadSeek>, dir: &Path) -> Result<(), S
     let mut zip =
         zip::ZipArchive::new(reader).map_err(|e| format!("The package is damaged ({e})"))?;
     // The package has one top folder (AgentGo-<version>-win64/); drop it.
-    let top = zip
+    // Compared by path component: packages made by Windows PowerShell's
+    // Compress-Archive (0.1.1 as first published) separate with `\`.
+    let top: Option<PathBuf> = zip
         .by_index(0)
         .ok()
-        .and_then(|f| f.name().split('/').next().map(|s| format!("{s}/")));
+        .and_then(|f| f.enclosed_name())
+        .and_then(|p| p.components().next().map(|c| PathBuf::from(c.as_os_str())));
     let strip = top.filter(|top| {
         (0..zip.len()).all(|i| {
             zip.by_index(i)
-                .is_ok_and(|f| f.name().starts_with(top.as_str()))
+                .ok()
+                .and_then(|f| f.enclosed_name())
+                .is_some_and(|p| p.starts_with(top))
         })
     });
     let total: u64 = (0..zip.len())
@@ -588,7 +593,7 @@ fn extract(proxy: &Proxy, reader: Box<dyn ReadSeek>, dir: &Path) -> Result<(), S
             continue;
         };
         let name = match &strip {
-            Some(top) => match name.strip_prefix(top.trim_end_matches('/')) {
+            Some(top) => match name.strip_prefix(top) {
                 Ok(rest) => rest.to_path_buf(),
                 Err(_) => continue,
             },

@@ -18,7 +18,7 @@
 - The toolbar names agents the way people know them ("Claude Code connected").
 - The browser window (and AgentGo Setup) open in the middle of the screen, sized to fit it, instead of the top-left corner.
 - CI: the capability-manifest hash ignores line endings and the lockstep test checks each capability's own integration test file.
-- AgentGo Setup: `--uninstall --silent` removes the whole folder and its temporary copy (it exited 1 and left both behind, D91).
+- AgentGo Setup: `--uninstall --silent` removes the whole folder and its temporary copy (it exited 1 and left both behind, D91), and installs flat into its folder so the shortcuts, PATH and agent registrations find AgentGo (D93). The package no longer carries duplicate locales or SDK build leftovers (220 MB to 198 MB).
 - New live test `security_live_e2e` (badssl certificate errors, WebRTC, adblock-tester.com, fingerprint modes on real sites, CreepJS, EFF Cover Your Tracks).
 
 ## 0.1.0 (2026-10-16)

@@ -56,6 +56,8 @@ Copy-Item -Recurse (Join-Path $source "locales") (Join-Path $out "locales")
 Copy-Item -Recurse (Join-Path $AgentGoRoot "ui") (Join-Path $out "ui")
 Copy-Item -Recurse (Join-Path $AgentGoRoot "skills") (Join-Path $out "skills")
 Copy-Item -Recurse (Join-Path $AgentGoRoot "sdk") (Join-Path $out "sdk")
+# Local SDK builds leave target\ folders behind; they are not part of the SDK.
+Get-ChildItem -Recurse -Directory -Filter "target" (Join-Path $out "sdk") | Remove-Item -Recurse -Force
 New-Item -ItemType Directory -Force (Join-Path $out "schemas") | Out-Null
 Copy-Item (Join-Path $AgentGoRoot "schemas\capability-manifest.json") (Join-Path $out "schemas")
 foreach ($doc in @("README.md", "CHANGELOG.md", "LICENSE", "docs\threat-model.md")) {
@@ -96,7 +98,18 @@ $sums | Out-File -Encoding ascii (Join-Path $out "SHA256SUMS.txt")
 
 $zip = "$out.zip"
 if (Test-Path $zip) { Remove-Item -Force $zip }
-Compress-Archive -Path $out -DestinationPath $zip
+# Entry names separated by `/` as the zip format requires: Windows PowerShell's
+# Compress-Archive writes `\`, which other unpackers read as part of the name.
+Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+$archive = [IO.Compression.ZipFile]::Open($zip, [IO.Compression.ZipArchiveMode]::Create)
+try {
+    Get-ChildItem -Recurse -File $out | Sort-Object FullName | ForEach-Object {
+        $entry = "$name/" + $_.FullName.Substring($out.Length + 1).Replace('\', '/')
+        [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $_.FullName, $entry, [IO.Compression.CompressionLevel]::Optimal)
+    }
+} finally {
+    $archive.Dispose()
+}
 $zipHash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
 "$zipHash  $name.zip" | Out-File -Encoding ascii "$zip.sha256"
 
