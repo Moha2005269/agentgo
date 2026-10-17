@@ -914,34 +914,39 @@ fn uninstall(proxy: &Proxy, remove_profile: bool) -> Result<String, String> {
     if (dir.join("agentgo.exe").exists() || dir.join("AgentGo-Setup.exe").exists())
         && !touches_user_data(&dir)
     {
-        std::fs::remove_dir_all(&dir).or_else(|e| {
-            // A silent uninstall's caller keeps running AgentGo-Setup.exe from
-            // this folder while it waits for the result: once that is the only
-            // file left, remove the folder shortly after the caller exits.
-            let rest: Vec<_> = std::fs::read_dir(&dir)
-                .into_iter()
-                .flatten()
-                .flatten()
-                .map(|e| e.file_name())
-                .collect();
-            if rest.len() == 1 && rest[0].eq_ignore_ascii_case("AgentGo-Setup.exe") {
-                let _ = hidden("cmd")
-                    .arg("/C")
-                    .raw_arg(format!(
-                        "ping 127.0.0.1 -n 4 >nul & rmdir /s /q \"{}\"",
-                        dir.display()
-                    ))
-                    .current_dir(std::env::temp_dir())
-                    .creation_flags(NO_WINDOW | DETACHED)
-                    .spawn();
-                Ok(())
+        let cannot = |e: std::io::Error| {
+            format!(
+                "{} could not be removed ({e}). Close any window using it and try again.",
+                dir.display()
+            )
+        };
+        // A silent uninstall's caller keeps running AgentGo-Setup.exe from this
+        // folder while it waits for the result, and remove_dir_all stops at the
+        // first file it cannot delete: remove everything else first, then the
+        // folder itself shortly after the caller exits.
+        for entry in std::fs::read_dir(&dir).map_err(cannot)?.flatten() {
+            if entry.file_name().eq_ignore_ascii_case("AgentGo-Setup.exe") {
+                continue;
+            }
+            let path = entry.path();
+            if entry.file_type().is_ok_and(|t| t.is_dir()) {
+                std::fs::remove_dir_all(&path)
             } else {
-                Err(format!(
-                    "{} could not be removed ({e}). Close any window using it and try again.",
+                std::fs::remove_file(&path)
+            }
+            .map_err(cannot)?;
+        }
+        if std::fs::remove_dir_all(&dir).is_err() {
+            let _ = hidden("cmd")
+                .arg("/C")
+                .raw_arg(format!(
+                    "ping 127.0.0.1 -n 4 >nul & rmdir /s /q \"{}\"",
                     dir.display()
                 ))
-            }
-        })?;
+                .current_dir(std::env::temp_dir())
+                .creation_flags(NO_WINDOW | DETACHED)
+                .spawn();
+        }
     }
     log(proxy, format!("Removed {}", dir.display()));
     progress(proxy, 65.0);
