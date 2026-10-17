@@ -97,10 +97,11 @@ try {
         New-Item -ItemType Directory -Force -Path (Join-Path $bundle "schemas") | Out-Null
         Copy-Item -LiteralPath (Join-Path $AgentGoRoot "schemas\capability-manifest.json") -Destination (Join-Path $bundle "schemas") -Force
         Write-Host "[sandbox] packaged bootstrap runtime: $bundle\agentgo.exe" -ForegroundColor Green
-    } elseif ($Release) {
-        Write-Host "[build] release binary: target\release\agentgo.exe" -ForegroundColor Green
     } else {
-        Write-Host "[build] debug binary: target\debug\agentgo.exe" -ForegroundColor Green
+        # Without -Runtime there is no agentgo.exe (it needs the runtime feature).
+        $exe = if ($Runtime) { "agentgo.exe" } else { "agentgo-tool.exe" }
+        $kind = if ($Release) { "release" } else { "debug" }
+        Write-Host "[build] $kind binary: target\$kind\$exe" -ForegroundColor Green
     }
 } finally {
     Pop-Location

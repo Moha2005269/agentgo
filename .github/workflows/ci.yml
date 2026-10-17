@@ -69,4 +69,5 @@ jobs:
 
       - name: Version report (gate evidence)
         shell: pwsh
-        run: .\target\release\agentgo.exe version
+        # Without -Runtime the build makes agentgo-tool.exe (agentgo.exe needs the runtime feature).
+        run: .\target\release\agentgo-tool.exe version
