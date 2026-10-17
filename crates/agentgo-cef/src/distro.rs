@@ -50,7 +50,7 @@ const REQUIRED: &[&str] = &[
     "chrome_100_percent.pak",
     "locales",
     "libcef.lib",
-    "include/include_cef_api.h",
+    "include/cef_api_hash.h",
     "libcef_dll",
     "cmake",
 ];
@@ -79,8 +79,15 @@ pub fn verify_distribution(dir: &Path) -> Result<DistroReport, DistroError> {
         root: root.clone(),
         missing: "CEF_VERSION macro".into(),
     })?;
-    let chromium_version =
-        header_value(&header, "CHROMIUM_VERSION").ok_or_else(|| DistroError::Missing {
+    // Older headers define CHROMIUM_VERSION; current ones (152) only carry it
+    // inside CEF_VERSION, after "chromium-".
+    let chromium_version = header_value(&header, "CHROMIUM_VERSION")
+        .or_else(|| {
+            cef_version
+                .split_once("chromium-")
+                .map(|(_, c)| c.to_string())
+        })
+        .ok_or_else(|| DistroError::Missing {
             root: root.clone(),
             missing: "CHROMIUM_VERSION macro".into(),
         })?;
@@ -154,6 +161,19 @@ mod tests {
         let report = verify_distribution(&dir).unwrap();
         assert_eq!(report.chromium_version, "152.0.7977.54");
         assert!(report.cef_version.starts_with("152.0.5+"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn reads_chromium_version_from_cef_version() {
+        // The shape of CEF 152's cef_version.h: no CHROMIUM_VERSION macro.
+        let dir = fixture(
+            "cef152",
+            REQUIRED,
+            "#define CEF_VERSION \"152.0.5+gb129680+chromium-152.0.7977.54\"\n#define CHROME_VERSION_MAJOR 152\n",
+        );
+        let report = verify_distribution(&dir).unwrap();
+        assert_eq!(report.chromium_version, "152.0.7977.54");
         std::fs::remove_dir_all(&dir).ok();
     }
 
