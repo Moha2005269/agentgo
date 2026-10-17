@@ -25,6 +25,49 @@ if (/^(https?|file):/i.test(url)) {
   retry.hidden = false;
 }
 
+// A dangerous site: stopped before it loaded. "Go back" is the way out; the
+// person (never an agent) may open it anyway with a click on this page.
+if (/^AGENTGO_(DANGEROUS|DECEPTIVE)/.test(error)) {
+  document.body.classList.add('danger');
+  const brand = (query.get('brand') || '').slice(0, 40);
+  const agent = query.get('agent') === '1';
+  const phishing = error === 'AGENTGO_DANGEROUS_PHISHING';
+  const deceptive = error === 'AGENTGO_DECEPTIVE_SITE';
+  document.title = 'Dangerous site blocked';
+  document.querySelector('.kicker').textContent = deceptive ? 'Deceptive site blocked' : 'Dangerous site blocked';
+  document.getElementById('headline').innerHTML = deceptive ? 'Not who it <em>says.</em>' : 'Stopped at <em>the door.</em>';
+  document.getElementById('reason').textContent = deceptive
+    ? (brand && brand !== 'a well-known site'
+      ? `This address imitates ${brand}, but the site is not ${brand}'s. Pages like this copy a sign-in page to steal what you type.`
+      : 'This address mixes letters from different alphabets so it looks like another site. Pages like this copy a sign-in page to steal what you type.')
+    : phishing
+      ? 'This site is on public lists of phishing pages: pages built to steal passwords, codes and card numbers. AgentGo stopped it before anything loaded.'
+      : 'This site is on public lists of sites that spread malware, fake updates and scams. AgentGo stopped it before anything loaded.';
+  document.getElementById('retry').hidden = true;
+  const actions = document.querySelector('.actions');
+  const back = document.createElement('a');
+  back.className = 'retry';
+  back.href = '#';
+  back.textContent = 'Go back to safety';
+  back.addEventListener('click', event => {
+    event.preventDefault();
+    if (history.length > 1) history.back(); else location.href = 'agentgo://shell/index.html?embedded=1';
+  });
+  actions.prepend(back);
+  const more = document.createElement('p');
+  more.className = 'danger-more';
+  if (agent) {
+    more.textContent = 'An agent is connected, so this page stays closed. If you need it, stop the agent and open the address yourself.';
+  } else if (/^https?:/i.test(url)) {
+    more.append('Checked on this computer with open lists and look-alike detection. ');
+    const open = document.createElement('a');
+    open.href = url;
+    open.textContent = 'I understand the risk, open it anyway';
+    more.append(open);
+  }
+  actions.after(more);
+}
+
 // No connection at all: say so plainly, and offer a game until it is back.
 const offline = /INTERNET_DISCONNECTED|NETWORK_CHANGED|NETWORK_IO_SUSPENDED|ADDRESS_UNREACHABLE/.test(error) || !navigator.onLine;
 if (offline) {

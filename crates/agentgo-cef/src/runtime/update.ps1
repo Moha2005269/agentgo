@@ -10,7 +10,8 @@ param(
   [string]$Relaunch = ''
 )
 $ErrorActionPreference = 'Stop'
-if ($WaitPid -gt 0) { try { Wait-Process -Id $WaitPid -Timeout 120 -ErrorAction Stop } catch {} }
+# Wait as long as AgentGo stays open (an update applied on exit can wait hours).
+if ($WaitPid -gt 0) { try { Wait-Process -Id $WaitPid -ErrorAction Stop } catch {} }
 Start-Sleep -Milliseconds 300
 $log = Join-Path $Install 'updates\swap.log'
 function Note($text) { Add-Content -LiteralPath $log -Value ("{0:o} {1}" -f (Get-Date), $text) }
@@ -32,6 +33,21 @@ try {
     Get-ChildItem -LiteralPath $Backup -Force | ForEach-Object { Move-Item -LiteralPath $_.FullName -Destination (Join-Path $Install $_.Name) -Force }
     throw
   }
+  # Files AgentGo Setup added (its uninstaller) are not in a release package:
+  # keep them, and tell Windows the new version number.
+  foreach ($kept in @('AgentGo-Setup.exe')) {
+    $old = Join-Path $Backup $kept
+    if ((Test-Path -LiteralPath $old) -and -not (Test-Path -LiteralPath (Join-Path $Install $kept))) {
+      Copy-Item -LiteralPath $old -Destination (Join-Path $Install $kept) -Force
+    }
+  }
+  try {
+    $entry = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\AgentGo'
+    $info = Get-Content -LiteralPath (Join-Path $Install 'BUILD-INFO.json') -Raw -ErrorAction Stop | ConvertFrom-Json
+    if ((Get-ItemProperty -Path $entry -ErrorAction Stop).InstallLocation.TrimEnd('\') -eq $Install.TrimEnd('\')) {
+      Set-ItemProperty -Path $entry -Name DisplayVersion -Value $info.version
+    }
+  } catch {}
   Remove-Item -LiteralPath (Join-Path $Install 'updates\pending.json') -Force -ErrorAction SilentlyContinue
   Set-Content -LiteralPath (Join-Path $Install 'updates\applied.json') -Value (@{ from = $Staged; backup = $Backup; at = (Get-Date).ToString('o') } | ConvertTo-Json -Compress)
   Note "swapped in $Staged (previous kept in $Backup)"

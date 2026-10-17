@@ -362,7 +362,9 @@ pub fn parse_inventory(inventory_text: &str) -> Result<Manifest, ManifestError> 
     Ok(Manifest {
         manifest_version: 1,
         source: "docs/capability-inventory.md".into(),
-        source_sha256: sha256_hex(inventory_text.as_bytes()),
+        // Hashed with LF line endings, so a Windows checkout (autocrlf)
+        // and a Unix one agree.
+        source_sha256: sha256_hex(inventory_text.replace("\r\n", "\n").as_bytes()),
         agentgo_version: env!("CARGO_PKG_VERSION").into(),
         protocol_version: PROTOCOL_VERSION.into(),
         skill_version: SKILL_VERSION.into(),

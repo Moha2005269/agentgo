@@ -441,6 +441,10 @@ wrap_app! {
                     "disable-features",
                     "SpareRendererForSitePerProcess,OptimizationHints,OptimizationGuideModelDownloading,MediaRouter",
                 );
+                // No back/forward cache: it kept a whole renderer (100-250 MB)
+                // alive for every site visited and nearly doubled memory over
+                // ten sites (2.6 GB against 1.5 GB). Back reloads the page.
+                merge_switch_list(command_line, "disable-features", "BackForwardCache");
                 // The executable embeds a modern Windows compatibility
                 // manifest, which allows Chromium to detect and use the real
                 // GPU correctly. Keep explicit software modes as diagnostics
@@ -667,6 +671,7 @@ fn attach_first_tab(ui_root: &std::path::Path, content_context: RequestContext) 
     state::log_event("AG-RUNTIME isolated-content-context-created");
     // A proxy left behind by the removed VPN is put back to the system setting.
     super::profiles::route_context(&content_context, "main", None);
+    super::profiles::apply_cookie_policy(&content_context);
     state::set_content_context(content_context);
     if let Err(error) = state::create_first_tab() {
         state::log_event(&format!(
@@ -677,6 +682,7 @@ fn attach_first_tab(ui_root: &std::path::Path, content_context: RequestContext) 
     }
     state::log_event("AG-RUNTIME content-browser-view-created");
     state::start_transports();
+    super::lifecycle::start_update_checks();
 }
 
 /// Builds the trusted chrome, the tools overlay and the top-level window.
@@ -825,11 +831,17 @@ wrap_client! {
         }
 
         fn display_handler(&self) -> Option<DisplayHandler> {
+            if matches!(self.surface, Surface::DevTools) {
+                return Some(DevToolsDisplayHandler::new());
+            }
             matches!(self.surface, Surface::Content)
                 .then(|| AgentGoDisplayHandler::new(self.tab_id.clone()))
         }
 
         fn life_span_handler(&self) -> Option<LifeSpanHandler> {
+            if matches!(self.surface, Surface::DevTools) {
+                return Some(DevToolsLifeSpanHandler::new());
+            }
             matches!(self.surface, Surface::Content).then(AgentGoLifeSpanHandler::new)
         }
 
@@ -1042,6 +1054,33 @@ cef::wrap_keyboard_handler! {
     }
 }
 
+cef::wrap_life_span_handler! {
+    struct DevToolsLifeSpanHandler;
+
+    impl LifeSpanHandler {
+        fn on_after_created(&self, browser: Option<&mut Browser>) {
+            #[cfg(target_os = "windows")]
+            if state::devtools_anchor_opening() {
+                if let Some(host) = browser.and_then(|b| b.host()) {
+                    state::hide_devtools_window(host.window_handle().0 as isize);
+                }
+            }
+        }
+    }
+}
+
+cef::wrap_display_handler! {
+    struct DevToolsDisplayHandler;
+
+    impl DisplayHandler {
+        fn on_title_change(&self, _browser: Option<&mut Browser>, title: Option<&CefString>) {
+            if title.is_some_and(|t| t.to_string() == "agentgo:close-devtools") {
+                state::close_devtools();
+            }
+        }
+    }
+}
+
 cef::wrap_display_handler! {
     struct AgentGoDisplayHandler {
         tab_id: String,
@@ -1122,7 +1161,7 @@ cef::wrap_request_handler! {
             _browser: Option<&mut Browser>,
             frame: Option<&mut Frame>,
             request: Option<&mut cef::Request>,
-            _user_gesture: i32,
+            user_gesture: i32,
             is_redirect: i32,
         ) -> i32 {
             // A web page must never reach AgentGo's own documents (they carry
@@ -1136,9 +1175,12 @@ cef::wrap_request_handler! {
             let allowed_shell = !shell_page
                 || state::is_navigable_url(&target)
                 || target.split(['?', '#']).next() == Some("agentgo://shell/error.html");
-            let from_web = frame
+            let frame_url = frame
+                .as_ref()
                 .map(|f| CefString::from(&f.url()).to_string())
-                .is_some_and(|u| u.starts_with("http://") || u.starts_with("https://"));
+                .unwrap_or_default();
+            let is_main = frame.as_ref().is_some_and(|f| f.is_main() != 0);
+            let from_web = frame_url.starts_with("http://") || frame_url.starts_with("https://");
             let web_to_file = lower.starts_with("file:") && from_web && is_redirect != 0;
             if !allowed_shell || web_to_file {
                 state::log_event(&format!(
@@ -1146,6 +1188,26 @@ cef::wrap_request_handler! {
                     target.chars().take(120).collect::<String>()
                 ));
                 return 1;
+            }
+            // Known malware, phishing and look-alike sites get a warning
+            // instead of the page; tracking parameters never reach the site.
+            if is_main
+                && (lower.starts_with("http://") || lower.starts_with("https://"))
+                && !self.tab_id.is_empty()
+            {
+                let method = CefString::from(&request.method()).to_string();
+                if method.eq_ignore_ascii_case("GET") {
+                    if let Some(clean) = super::safesite::without_tracking(&target) {
+                        state::navigate_tab(&self.tab_id, &clean);
+                        return 1;
+                    }
+                }
+                if let Some(warning) =
+                    super::safesite::check(&self.tab_id, &target, &frame_url, user_gesture != 0)
+                {
+                    state::navigate_tab(&self.tab_id, &warning);
+                    return 1;
+                }
             }
             0
         }
@@ -1689,6 +1751,14 @@ wrap_window_delegate! {
             state::set_tool_overlay(tool_overlay);
             let (views, tab_ids) = state::main_window_tabs();
             layout_composition(window, &views, &tab_ids, &shell);
+            // Open in the middle of the screen, never larger than it.
+            let mut size = Size { width: INITIAL_WIDTH, height: INITIAL_HEIGHT };
+            if let Some(display) = window.display() {
+                let area = display.work_area();
+                size.width = size.width.min(area.width * 92 / 100).max(area.width.min(800));
+                size.height = size.height.min(area.height * 92 / 100).max(area.height.min(600));
+            }
+            window.center_window(Some(&size));
             if state::state().options.background() {
                 show_without_activation(window);
             } else {

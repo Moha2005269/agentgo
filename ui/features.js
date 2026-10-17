@@ -248,6 +248,13 @@ const stepWelcome = () => `
 
 const csvRow = () => `<div class="wiz-csv"><button type="button" class="btn" data-f="csv">Import passwords from a CSV file</button><input type="file" id="wizCsv" accept=".csv,text/csv" hidden><span>From the password export of Chrome, Edge, Firefox or another manager. Delete the file afterwards.</span></div>`;
 
+// Chrome's newest passwords are sealed to Chrome itself (app-bound
+// encryption). The only way out is Chrome's own CSV export: guide it.
+const exportGuide = browser => `<div class="wiz-guide">
+  <b>Bring the rest of your ${esc(browser)} passwords</b>
+  <ol><li>Open ${esc(browser)}'s password export and choose <em>Export passwords</em>.</li><li>Pick the saved file here.</li><li>Delete the file afterwards.</li></ol>
+  <div class="wiz-csv"><button type="button" class="btn" data-f="export" data-b="${esc(browser)}">Open ${esc(browser)} export</button><button type="button" class="btn primary" data-f="csv">Choose the CSV file</button><input type="file" id="wizCsv" accept=".csv,text/csv" hidden></div></div>`;
+
 const stepImport = () => {
   if (!wizScan) return `<p class="wiz-kicker">Step 1 of 2</p><h2 class="wiz-title">Bring your <em>stuff</em></h2>${flowArt()}<p class="wiz-lead">Looking for Chrome, Edge, Brave and Firefox on this computer…</p>`;
   const profiles = wizScan.profiles || [];
@@ -255,7 +262,8 @@ const stepImport = () => {
     const c = wizResult.imported || {};
     return `<p class="wiz-kicker">Imported</p><h2 class="wiz-title">All <em>moved in</em>.</h2>
       <div class="wiz-stats">${[['Bookmarks', c.bookmarks], ['History', c.history], ['Passwords', c.logins], ['Tabs opened', c.tabs]].map(([n, v], i) => `<div style="--r:${i}"><b>${v ?? 0}</b><span>${n}</span></div>`).join('')}</div>
-      ${(wizResult.notes || []).map(n => `<p class="wiz-note">${esc(n)}</p>`).join('')}`;
+      ${(wizResult.notes || []).map(n => `<p class="wiz-note">${esc(n)}</p>`).join('')}
+      ${(wizResult.notes || []).some(n => /app-bound/.test(n)) ? exportGuide(wizScan.profiles[Math.min(wizPick, wizScan.profiles.length - 1)]?.browser || 'Chrome') : ''}`;
   }
   if (!profiles.length) return `<p class="wiz-kicker">Step 1 of 2</p><h2 class="wiz-title">Bring your <em>stuff</em></h2>${flowArt()}<p class="wiz-lead">No other browser was found on this computer, so there is nothing to import right now. You can come back any time from Settings.</p>${csvRow()}`;
   const p = profiles[Math.min(wizPick, profiles.length - 1)];
@@ -263,7 +271,7 @@ const stepImport = () => {
   const box = (key, label, n, note = '') => `<label class="wiz-opt${n ? '' : ' none'}"><input type="checkbox" data-f="opt" data-k="${key}"${wizOpts[key] && n ? ' checked' : ''}${n ? '' : ' disabled'}><i></i><span><b>${label}</b><em>${n ? `${n.toLocaleString()} found${note}` : 'none found'}</em></span></label>`;
   return `<p class="wiz-kicker">Step 1 of 2</p><h2 class="wiz-title">Bring your <em>stuff</em></h2>
     <div class="wiz-profiles">${profiles.map((q, i) => `<button type="button" class="wiz-prof${i === wizPick ? ' on' : ''}" data-f="pick" data-i="${i}" style="--r:${i}"><span class="glyph">${BROWSER_GLYPH[q.browser] || '•'}</span><span><b>${esc(q.browser)}</b><em>${esc(q.name)}</em></span></button>`).join('')}</div>
-    <div class="wiz-opts">${box('bookmarks', 'Bookmarks', c.bookmarks)}${box('history', 'History', c.history, ' (latest 5,000 used)')}${box('logins', 'Saved passwords', c.logins, ' (encrypted again for this Windows account)')}${box('tabs', 'Open tabs', c.tabs, ' (opened as new tabs)')}</div>
+    <div class="wiz-opts">${box('bookmarks', 'Bookmarks', c.bookmarks)}${box('history', 'History', c.history, c.history > 20000 ? ' (latest 20,000 used)' : '')}${box('logins', 'Saved passwords', c.logins, ' (encrypted again for this Windows account)')}${box('tabs', 'Open tabs', c.tabs, ' (opened as new tabs)')}</div>
     ${wizBusy ? `<div class="wiz-busy"><i></i><i></i><i></i> Importing…</div>` : ''}
     <p class="wiz-fine">Close ${esc(p.browser)} first for the most complete copy. Nothing leaves this computer.</p>${csvRow()}`;
 };
@@ -335,6 +343,7 @@ const wizClick = async event => {
   else if (f === 'pick') { wizPick = Number(el.dataset.i); renderWizardNow(); }
   else if (f === 'opt') { wizOpts[el.dataset.k] = el.checked; }
   else if (f === 'csv') { document.getElementById('wizCsv')?.click(); }
+  else if (f === 'export') { try { await callBridge('ui.import_run', { openExport: el.dataset.b }); el.textContent = 'Opened. Export, then choose the file'; } catch (error) { el.textContent = error.message; } }
   else if (f === 'import') {
     const p = wizScan.profiles[wizPick];
     wizBusy = true; renderWizardNow();
@@ -408,6 +417,22 @@ const reportClick = async event => {
 };
 
 toolBody.addEventListener('click', event => { wizClick(event); reportClick(event); });
+toolBody.addEventListener('click', async event => {
+  const button = event.target.closest('[data-update-check]');
+  if (!button) return;
+  const status = document.getElementById('updateStatus');
+  button.disabled = true;
+  status.textContent = 'Checking…';
+  try {
+    const found = await callBridge('browser.update_check');
+    status.textContent = found.available
+      ? `AgentGo ${found.latest} is available. Use the Update button in the toolbar${settingsCache.autoUpdate !== false ? ', or close AgentGo once it has downloaded' : ''}.`
+      : `You have the latest version (${found.current}).`;
+  } catch (error) {
+    status.textContent = `Could not check: ${error.message || error}`;
+  }
+  button.disabled = false;
+});
 toolBody.addEventListener('change', async event => {
   if (event.target.dataset?.f === 'opt') wizOpts[event.target.dataset.k] = event.target.checked;
   if (event.target.id === 'wizCsv' && event.target.files?.[0]) {

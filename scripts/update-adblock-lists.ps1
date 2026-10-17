@@ -29,6 +29,8 @@ $sources = [ordered]@{
     "adguard-mobile"     = "https://filters.adtidy.org/extension/ublock/filters/11.txt"
     "ubo-cookies"        = "https://ublockorigin.github.io/uAssets/filters/annoyances-cookies.txt"
     "easylist-cookie"    = "https://secure.fanboy.co.nz/fanboy-cookiemonster_ubo.txt"
+    # Not a blocking list: the source of the dangerous-site check (threats.txt).
+    "phishing"           = "https://malware-filter.gitlab.io/malware-filter/phishing-filter-agh.txt"
 }
 foreach ($name in $sources.Keys) {
     $tmp = Join-Path $env:TEMP "agentgo-$name.txt"
@@ -52,6 +54,9 @@ Copy-Item $res (Join-Path $data "resources.json") -Force
 
 Push-Location $AgentGoRoot
 try {
+    # Known malware and phishing hosts for the dangerous-site check.
+    & node (Join-Path $PSScriptRoot "dev\build-threats.js")
+    if ($LASTEXITCODE -ne 0) { throw "building threats.txt failed" }
     & cargo run --release -p agentgo-adblock --example build_snapshot
     if ($LASTEXITCODE -ne 0) { throw "building the snapshot failed" }
 } finally { Pop-Location }

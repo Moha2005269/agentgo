@@ -320,6 +320,9 @@ pub fn unlink(params: &Value) -> Reply {
 }
 
 #[cfg(windows)]
+/// Most sign-ins the vault keeps (one per site).
+pub const VAULT_LIMIT: usize = 5000;
+
 fn logins() -> core::LoginStore<core::Dpapi> {
     core::LoginStore::new(dir().join("logins.bin"), core::Dpapi)
 }
@@ -376,6 +379,12 @@ pub fn page_report(tab: &str, payload: &str) {
     let Ok(report) = serde_json::from_str::<Value>(payload) else {
         return;
     };
+    if report["kind"] == "extInstall" {
+        if let Some(id) = report["id"].as_str() {
+            super::extensions::store_request(tab, id);
+        }
+        return;
+    }
     if report["kind"] != "login" || state::settings_snapshot()["offerToSavePasswords"] == false {
         return;
     }
@@ -470,8 +479,8 @@ pub fn credentials_save(params: &Value) -> Reply {
     let store = logins();
     let mut all = store.load().map_err(vault_fail)?;
     all.retain(|known| known.origin != login.origin);
-    if all.len() >= 200 {
-        return Err(Fail::params("the vault is limited to 200 sign-ins"));
+    if all.len() >= VAULT_LIMIT {
+        return Err(Fail::params("the vault is limited to 5000 sign-ins"));
     }
     all.push(login);
     store.save(&all).map_err(vault_fail)?;
@@ -504,7 +513,7 @@ pub fn import_logins(incoming: Vec<(String, String, String)>) -> LoginImport {
             continue;
         };
         all.retain(|known| known.origin != login.origin);
-        if all.len() >= 200 {
+        if all.len() >= VAULT_LIMIT {
             skipped += 1;
             continue;
         }

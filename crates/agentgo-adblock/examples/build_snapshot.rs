@@ -11,6 +11,9 @@ fn main() {
         .expect("data/lists")
         .filter_map(|entry| entry.ok().map(|entry| entry.path()))
         .filter(|path| path.extension().is_some_and(|ext| ext == "txt"))
+        // The phishing list feeds the dangerous-site check (threats.txt,
+        // scripts/dev/build-threats.js), not the request blocker.
+        .filter(|path| path.file_name().is_none_or(|name| name != "phishing.txt"))
         .collect();
     names.sort();
     let lists: Vec<String> = names

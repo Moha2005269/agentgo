@@ -3313,6 +3313,12 @@ const METHODS: &[(&str, &str, u8, &str)] = &[
         "integration.rest_e2e",
     ),
     (
+        "browser.update_status",
+        "What the automatic update knows: a newer version found, whether it is downloaded and ready, and whether updates are automatic.",
+        12,
+        "integration.autoupdate_e2e",
+    ),
+    (
         "browser.update_stage",
         "Operator only: download a newer version, verify its SHA-256, unpack it beside the install; apply: on_exit or now.",
         12,

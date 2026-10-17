@@ -1,0 +1,868 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AgentGo Setup</title>
+<style>
+@property --fg{syntax:'<color>';inherits:true;initial-value:#f1ede6}
+@property --fg2{syntax:'<color>';inherits:true;initial-value:#b3aca1}
+@property --fg3{syntax:'<color>';inherits:true;initial-value:#7a746b}
+@property --rule{syntax:'<color>';inherits:true;initial-value:#2a2724}
+@property --surf{syntax:'<color>';inherits:true;initial-value:#1a1816}
+@property --base{syntax:'<color>';inherits:true;initial-value:#0b0a09}
+@property --ok{syntax:'<color>';inherits:true;initial-value:#3ccf7d}
+:root{--accent:#ff5b1f;--e:cubic-bezier(.16,1,.3,1);--e2:cubic-bezier(.65,0,.35,1);--W:560px;--H:620px}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:transparent;
+  font:14px/1.5 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;user-select:none;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+input{font:inherit;color:inherit}
+.mono{font-family:"Cascadia Mono","Cascadia Code",Consolas,monospace;font-size:11px;letter-spacing:.04em}
+
+/* ---------- stage ---------- */
+#float{position:fixed;left:50%;top:50%;width:var(--W);height:var(--H);margin:calc(var(--H)/-2) 0 0 calc(var(--W)/-2)}
+#card{position:absolute;inset:0;border-radius:14px;overflow:clip;background:var(--base);color:var(--fg);isolation:isolate;
+  box-shadow:0 0 0 1px rgba(255,255,255,.06) inset,0 0 0 1px rgba(0,0,0,.35),0 26px 50px -20px rgba(0,0,0,.7),0 2px 8px rgba(0,0,0,.25);
+  clip-path:inset(50% 50% round 2px);
+  transition:--fg 1.8s var(--e2),--fg2 1.8s var(--e2),--fg3 1.8s var(--e2),--rule 1.8s var(--e2),--surf 1.8s var(--e2),--base 1.8s var(--e2),--ok 1.8s var(--e2)}
+#card.lit{--fg:#141312;--fg2:#55514b;--fg3:#8d887f;--rule:#d5d0c6;--surf:#e3dfd6;--base:#efece6;--ok:#1f8a4c}
+#card.nogl{background:radial-gradient(90% 60% at 30% -10%,rgba(255,91,31,.22),transparent 60%),radial-gradient(60% 40% at 80% 110%,rgba(255,91,31,.12),transparent 70%),var(--base)}
+#gl{position:absolute;inset:0;width:100%;height:100%;display:block;z-index:0}
+#inner{position:absolute;inset:0;display:flex;flex-direction:column;padding:22px 30px 26px;opacity:0;z-index:2}
+
+/* projector slit + CRT spark, outside the clipped card */
+#slit{position:absolute;left:-10px;right:-10px;top:50%;height:2px;margin-top:-1px;border-radius:2px;z-index:6;pointer-events:none;opacity:0;transform:scaleX(0);
+  background:linear-gradient(90deg,transparent,#ff6a2c 18%,#ffd9c2 46%,#fff 50%,#ffd9c2 54%,#ff6a2c 82%,transparent);
+  box-shadow:0 0 22px 5px rgba(255,98,36,.55),0 0 90px 14px rgba(255,91,31,.28)}
+#spark{position:absolute;left:50%;top:50%;width:8px;height:8px;margin:-4px;border-radius:50%;background:#fff;opacity:0;z-index:6;pointer-events:none;
+  box-shadow:0 0 16px 6px rgba(255,140,80,.9),0 0 60px 16px rgba(255,91,31,.5)}
+
+/* opening titles */
+#title{position:absolute;inset:0;display:grid;place-items:center;z-index:3;pointer-events:none;opacity:0}
+#title .wrap{display:flex;flex-direction:column;align-items:center}
+#title .pre{color:var(--fg3);letter-spacing:.32em;text-transform:uppercase;font-size:10px;margin-bottom:30px;opacity:0}
+#title svg{width:78px;height:78px;margin-bottom:22px;overflow:visible}
+#title svg path{stroke-dasharray:1 1;stroke-dashoffset:1}
+#title .word{font:600 46px/1 "Segoe UI Variable Display","Segoe UI",sans-serif;letter-spacing:-.03em;opacity:0}
+#title .sub{margin-top:16px;color:var(--fg3);font-size:10px;letter-spacing:.26em;text-transform:uppercase;opacity:0}
+#title .skip{position:absolute;bottom:24px;left:0;right:0;text-align:center;color:var(--fg3);font-size:10px;letter-spacing:.2em;opacity:0}
+
+/* cinematic overlays */
+.lb{position:absolute;left:0;right:0;height:0;background:#040303;z-index:30;pointer-events:none}
+.lb.t{top:0}.lb.b{bottom:0}
+#flare{position:absolute;left:-25%;right:-25%;top:50%;height:2px;margin-top:-1px;z-index:31;pointer-events:none;opacity:0;mix-blend-mode:screen;
+  background:linear-gradient(90deg,transparent 5%,#ff6a2c 32%,#fff1e6 50%,#ff6a2c 68%,transparent 95%);box-shadow:0 0 18px 4px rgba(255,110,50,.5)}
+#leak{position:absolute;inset:-40%;z-index:29;pointer-events:none;opacity:0;mix-blend-mode:screen;
+  background:radial-gradient(30% 34% at 50% 50%,rgba(255,120,50,.55),rgba(255,70,20,.18) 45%,transparent 70%)}
+
+/* ---------- top ---------- */
+.top{display:flex;align-items:center;gap:10px;height:28px}
+.top .mark{width:22px;height:22px;border-radius:6px;background:var(--fg);color:var(--base);display:grid;place-items:center}
+.top .mark svg{width:14px;height:14px}
+.top .name{font-weight:600;letter-spacing:-.01em}
+.top .sp{flex:1;height:100%}
+.count{color:var(--fg3)}
+.count b{color:var(--fg);font-weight:400}
+.tc{color:var(--fg3);font-variant-numeric:tabular-nums;margin-right:6px}
+.tc::before{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--accent);margin-right:7px;vertical-align:1px;animation:blink 1.6s steps(2) infinite}
+.wb{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;color:var(--fg3);transition:background .2s,color .2s}
+.wb:hover{background:var(--surf);color:var(--fg)}
+.wb svg{width:10px;height:10px}
+#snd svg{width:12px;height:12px}
+#snd .x{display:none}#snd.off .x{display:inline}#snd.off .wv{display:none}
+.rule{height:1px;background:var(--rule);margin:14px -30px 0;transform-origin:left;transform:scaleX(0);transition:transform 1.4s var(--e) .1s}
+.ready .rule{transform:none}
+
+/* ---------- pages ---------- */
+#pages{position:relative;flex:1;margin-top:26px}
+.page{position:absolute;inset:0;display:flex;flex-direction:column;visibility:hidden}
+.page.on{visibility:visible}
+.page::before{content:attr(data-n);position:absolute;right:-6px;top:-34px;font:600 210px/1 "Segoe UI Variable Display","Segoe UI",sans-serif;letter-spacing:-.07em;
+  color:transparent;-webkit-text-stroke:1px var(--rule);opacity:.75;pointer-events:none;z-index:-1;font-variant-numeric:tabular-nums}
+.page.on::before{animation:numIn 1.6s var(--e) backwards}
+.page.out::before{animation:numOut .45s var(--e2) forwards}
+@keyframes numIn{from{opacity:0;transform:translateX(40px);filter:blur(10px)}}
+@keyframes numOut{to{opacity:0;transform:translateX(-30px);filter:blur(8px)}}
+.k{color:var(--fg3);margin-bottom:14px;display:flex;gap:10px;white-space:nowrap}
+.k i{font-style:normal;color:var(--accent)}
+h1{font:600 40px/1.04 "Segoe UI Variable Display","Segoe UI",sans-serif;letter-spacing:-.035em;margin-bottom:16px;color:var(--fg)}
+h1 .ln{display:block;padding-bottom:.06em}
+h1 .w{display:inline-block;white-space:nowrap}
+h1 .c{display:inline-block;transform-origin:50% 100%}
+.page.on h1 .c{animation:cIn 1.1s var(--e) backwards;animation-delay:calc(.06s + var(--i) * 22ms)}
+.page.out h1 .c{animation:cOut .38s var(--e2) forwards;animation-delay:calc(var(--i) * 6ms)}
+@keyframes cIn{from{opacity:0;transform:translate3d(0,.55em,0) rotate(7deg) scale(.92);filter:blur(10px)}}
+@keyframes cOut{to{opacity:0;transform:translate3d(0,-.3em,0);filter:blur(8px)}}
+.p{color:var(--fg2);max-width:430px}
+.page.on .fx{animation:fxIn 1.1s var(--e) backwards;animation-delay:calc(.28s + var(--d,0) * .07s)}
+.page.on .st8{animation:rIn .9s var(--e) backwards;animation-delay:calc(.42s + var(--r,0) * .045s)}
+.page.out .fx{animation:fxOut .36s var(--e2) forwards}
+@keyframes fxIn{from{opacity:0;transform:translateY(14px);filter:blur(7px)}}
+@keyframes rIn{from{opacity:0;transform:translateX(-12px)}}
+@keyframes fxOut{to{opacity:0;transform:translateY(-8px);filter:blur(6px)}}
+
+/* lists */
+.facts{margin-top:auto;border-top:1px solid var(--rule)}
+.fact{display:grid;grid-template-columns:44px 1fr auto;align-items:baseline;padding:13px 0;border-bottom:1px solid var(--rule);position:relative}
+.fact .n{color:var(--fg3)}
+.fact b{font-weight:600;letter-spacing:-.01em}
+.fact span{color:var(--fg3);font-size:12.5px}
+.fact::after{content:"";position:absolute;left:0;bottom:-1px;height:1px;width:100%;background:var(--accent);transform:scaleX(0);transform-origin:left;transition:transform .7s var(--e)}
+.fact:hover::after{transform:none}
+
+/* license */
+.lic{flex:1;margin-top:6px;overflow:auto;padding-right:16px;color:var(--fg2);font-size:12.5px;line-height:1.75;user-select:text;border-top:1px solid var(--rule);padding-top:12px;
+  -webkit-mask-image:linear-gradient(#000 80%,transparent)}
+.lic h4{color:var(--fg);font-size:12.5px;margin:12px 0 2px}
+.lic::-webkit-scrollbar,.scroll::-webkit-scrollbar{width:3px}
+.lic::-webkit-scrollbar-thumb,.scroll::-webkit-scrollbar-thumb{background:var(--fg3)}
+
+/* controls */
+.sq{width:18px;height:18px;border:1.5px solid var(--fg);border-radius:3px;position:relative;flex:none;transition:background .25s,border-color .2s}
+.sq::after{content:"";position:absolute;inset:3px;background:var(--accent);transform:scale(0);transition:transform .35s var(--e)}
+.on>.sq{background:var(--fg)}
+.on>.sq::after{transform:scale(1)}
+.agree{display:flex;align-items:center;gap:12px;margin-top:16px;cursor:pointer;font-size:13.5px}
+.tog{width:34px;height:18px;border:1.5px solid var(--fg3);border-radius:3px;position:relative;flex:none;transition:background .3s,border-color .2s}
+.tog::after{content:"";position:absolute;top:2px;left:2px;width:11px;height:11px;background:var(--fg3);transition:transform .45s var(--e),background .3s}
+.on>.tog{background:var(--fg);border-color:var(--fg)}
+.on>.tog::after{transform:translateX(16px);background:var(--accent);box-shadow:0 0 10px rgba(255,91,31,.6)}
+.scroll{flex:1;overflow:auto;margin-right:-14px;padding-right:14px;-webkit-mask-image:linear-gradient(#000 88%,transparent)}
+.row{display:flex;align-items:center;gap:14px;padding:11px 0;border-bottom:1px solid var(--rule);cursor:pointer;position:relative}
+.row .tx{flex:1;min-width:0}
+.row .tx b{font-weight:600;font-size:13.5px;letter-spacing:-.005em;transition:transform .5s var(--e);display:inline-block}
+.row:hover .tx b{transform:translateX(3px)}
+.row .tx span{display:block;color:var(--fg3);font-size:12px;line-height:1.35}
+.row .st{color:var(--fg3)}
+.row .st.yes{color:var(--ok)}
+.row.dis{opacity:.4;pointer-events:none}
+.row:hover .tog,.agree:hover .sq{border-color:var(--accent)}
+.grp{color:var(--fg3);padding:16px 0 4px;border-bottom:1px solid var(--rule)}
+.scroll>.grp:first-child{padding-top:0}
+.path{display:flex;align-items:center;gap:10px;border-bottom:1.5px solid var(--fg);padding:6px 0 8px;position:relative;transition:border-color .4s}
+.path::after{content:"";position:absolute;left:0;right:0;bottom:-1.5px;height:1.5px;background:var(--accent);transform:scaleX(0);transform-origin:left;transition:transform .7s var(--e);box-shadow:0 0 12px var(--accent)}
+.path.bad{border-color:transparent}
+.path.bad::after{transform:none}
+.path input::placeholder{color:var(--fg3);opacity:1}
+.path.bad input::placeholder{color:#ff8a5c}
+.path.bad .link{color:var(--accent);animation:nudge 1.4s var(--e) .5s 2}
+@keyframes nudge{0%,100%{transform:none}30%{transform:translateX(-4px)}60%{transform:translateX(2px)}}
+.pmsg{display:flex;align-items:center;gap:10px;height:0;overflow:hidden;opacity:0;color:#ff8a5c;transition:height .5s var(--e),opacity .4s,margin .5s var(--e)}
+.lit .pmsg{color:#c62f12}
+.pmsg.on{height:18px;opacity:1;margin-top:10px}
+.pmsg i{font-style:normal;color:var(--accent);animation:blink .8s steps(2) infinite}
+.pmsg.fixed{color:var(--ok)}.pmsg.fixed i{color:var(--ok);animation:none}
+.path input{flex:1;border:0;outline:0;background:none;font-family:"Cascadia Mono",Consolas,monospace;font-size:12px;user-select:text}
+.link{color:var(--fg);font-weight:600;font-size:12.5px;position:relative}
+.link::after{content:"";position:absolute;left:0;right:0;bottom:-2px;height:1.5px;background:var(--accent);transform:scaleX(0);transform-origin:right;transition:transform .4s var(--e)}
+.link:hover::after{transform:none;transform-origin:left}
+.choice{display:flex;gap:8px;padding:10px 0 4px}
+.chip{display:flex;flex-direction:column;gap:8px;cursor:pointer;flex:1}
+.chip .sw{height:46px;border-radius:4px;border:1.5px solid var(--rule);position:relative;transition:border-color .25s,transform .5s var(--e)}
+.chip:hover .sw{transform:translateY(-2px)}
+.chip.on .sw{border-color:var(--fg)}
+.chip .sw::after{content:"";position:absolute;right:6px;top:6px;width:8px;height:8px;background:var(--accent);transform:scale(0);transition:transform .35s var(--e)}
+.chip.on .sw::after{transform:none}
+.chip span{font-size:12px;color:var(--fg2)}
+.chip[data-theme=dark] .sw{background:#141312}
+.chip[data-theme=light] .sw{background:#faf9f6}
+.chip[data-theme=system] .sw{background:linear-gradient(90deg,#141312 50%,#faf9f6 50%)}
+.tabs{display:flex;gap:20px;padding:10px 0 4px;position:relative}
+.tabs button{color:var(--fg3);font-size:13px;padding-bottom:5px;transition:color .25s}
+.tabs button.on{color:var(--fg)}
+.tabs .bar{position:absolute;bottom:4px;height:1.5px;background:var(--accent);transition:left .5s var(--e),width .5s var(--e)}
+
+/* ---------- install ---------- */
+.big{position:relative;margin-top:auto;height:104px;font:600 120px/.85 "Segoe UI Variable Display","Segoe UI",sans-serif;letter-spacing:-.06em;font-variant-numeric:tabular-nums}
+.big .n{position:absolute;left:-4px;bottom:0;white-space:nowrap}
+.big .h{color:transparent;-webkit-text-stroke:1px var(--fg3)}
+.big .s{color:var(--fg);clip-path:inset(var(--cp,100%) 0 0 0);text-shadow:0 0 40px rgba(255,120,60,.25)}
+.big small{font-size:36px;letter-spacing:-.02em;margin-left:6px}
+.big .h small{-webkit-text-stroke:1px var(--fg3)}
+.big .s small{color:var(--accent)}
+.stages{position:relative;margin-top:14px;height:150px;overflow:hidden;
+  -webkit-mask-image:linear-gradient(transparent,#000 32%,#000 68%,transparent)}
+.roll{transition:transform 1s var(--e)}
+.stg{display:grid;grid-template-columns:44px 1fr auto;align-items:center;height:30px;color:var(--fg3);font-size:13px;opacity:.6;
+  transition:color .5s,opacity .5s,transform .7s var(--e)}
+.stg .s{font-family:"Cascadia Mono",Consolas,monospace;font-size:11px}
+.stg.run{color:var(--fg);opacity:1;transform:translateX(8px)}
+.stg.run .s::after{content:"";display:inline-block;width:7px;height:7px;background:var(--accent);margin-left:6px;animation:blink .8s steps(2) infinite;box-shadow:0 0 8px var(--accent)}
+@keyframes blink{50%{opacity:0}}
+.stg.ok{opacity:.75}
+.stg.ok .s{color:var(--ok)}
+.stg.skip{opacity:.4}
+#logline{margin-top:6px;color:var(--fg3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:16px}
+#logline::before{content:"› ";color:var(--accent)}
+.err{display:none;margin-top:12px;padding:10px 12px;border-left:3px solid #ff5a3a;background:rgba(198,47,18,.16);color:#ffb7a6;font-size:12.5px;user-select:text}
+.lit .err{background:#f5dcd2;color:#7a1d0b;border-color:#c62f12}
+.err.on{display:block;animation:fxIn .6s var(--e)}
+
+/* ---------- import ---------- */
+.prof{display:flex;align-items:center;gap:14px;padding:11px 0;border-bottom:1px solid var(--rule);cursor:pointer}
+.prof .rd{width:16px;height:16px;border:1.5px solid var(--fg);border-radius:50%;position:relative;flex:none}
+.prof .rd::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--accent);transform:scale(0);transition:transform .35s var(--e)}
+.prof.on .rd::after{transform:none}
+.prof .tx{flex:1;min-width:0}.prof .tx b{font-weight:600;font-size:13.5px}
+.prof .tx .sub{display:block;color:var(--fg3);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prof .tx .who{color:var(--fg3);margin-left:6px}
+.page.on #profs .prof{animation:rIn .8s var(--e) backwards}
+.what{display:grid;grid-template-columns:1fr 1fr;gap:0 20px}
+.what .row{padding:9px 0}
+.res{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);margin-top:4px}
+.res div{padding:14px 0 12px 12px;border-right:1px solid var(--rule);animation:fxIn .9s var(--e) backwards}
+.res div:nth-child(2){animation-delay:.07s}.res div:nth-child(3){animation-delay:.14s}.res div:nth-child(4){animation-delay:.21s}
+.res div:first-child{padding-left:0}.res div:last-child{border-right:0}
+.res b{display:block;font:600 30px/1 "Segoe UI Variable Display","Segoe UI",sans-serif;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.res span{font-size:11.5px;color:var(--fg3)}
+.note{font-size:12px;color:var(--fg2);margin-top:10px;padding-left:12px;border-left:2px solid var(--rule)}
+.guide{margin-top:14px;padding:14px 16px;background:var(--surf);border-radius:4px;animation:fxIn .9s var(--e) .25s backwards}
+.guide b{display:block;font-size:13px;margin-bottom:4px}
+.guide ol{margin:0 0 10px 18px;color:var(--fg2);font-size:12.5px;line-height:1.7}
+.guide .acts{display:flex;gap:10px}
+.btn.line{border:1.5px solid var(--fg);height:36px;padding:0 14px;font-size:12.5px}
+.btn.line:hover{background:var(--fg);color:var(--base)}
+.btn.small{height:36px;font-size:12.5px}
+
+/* ---------- done ---------- */
+.done-mark{width:72px;height:72px;border-radius:16px;background:var(--fg);display:grid;place-items:center;margin-bottom:24px;position:relative}
+.page.on .done-mark{animation:markIn 1.2s var(--e) .1s backwards}
+@keyframes markIn{from{transform:scale(.4) rotate(-14deg);opacity:0;filter:blur(8px)}}
+.done-mark::after{content:"";position:absolute;inset:-1px;border-radius:17px;border:1.5px solid var(--accent);opacity:0}
+.page.on .done-mark::after{animation:halo 1.6s var(--e) .55s}
+@keyframes halo{from{opacity:.9;transform:scale(1)}to{opacity:0;transform:scale(1.9)}}
+.done-mark svg{width:30px;height:30px;stroke:var(--accent);stroke-width:2.5;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:20;stroke-dashoffset:20}
+.page.on .done-mark svg{stroke-dashoffset:0;transition:stroke-dashoffset .9s var(--e) .55s}
+.cmd{margin-top:auto;border-top:1px solid var(--rule)}
+.cmd div{display:grid;grid-template-columns:120px 1fr;padding:9px 0;border-bottom:1px solid var(--rule);font-size:12.5px}
+.cmd div span{color:var(--fg3)}
+.cmd code{font-family:"Cascadia Mono",Consolas,monospace;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;user-select:text}
+
+/* ---------- agent ---------- */
+#agent{position:absolute;left:0;top:0;z-index:20;pointer-events:none;opacity:0;will-change:transform;transition:opacity .6s}
+#agent svg{width:20px;height:20px;display:block;filter:drop-shadow(0 4px 10px rgba(255,91,31,.5))}
+#agent .tag{position:absolute;left:15px;top:19px;background:var(--accent);color:#1a0b04;font:600 10px/1 "Cascadia Mono",Consolas,monospace;letter-spacing:.03em;
+  padding:4px 6px 4px;border-radius:3px;white-space:nowrap;transform-origin:0 0;transition:transform .35s var(--e)}
+#agent .tag.fl{left:auto;right:12px}
+#agent .tag.up{top:-16px}
+#agent .tag.pop{animation:pop .5s var(--e)}
+@keyframes pop{from{transform:scale(.6)}}
+.ripple{position:absolute;width:38px;height:38px;margin:-19px 0 0 -19px;border:1.5px solid var(--accent);border-radius:50%;pointer-events:none;z-index:19;animation:rip .8s var(--e) forwards}
+@keyframes rip{from{transform:scale(.15);opacity:1}to{transform:scale(1.5);opacity:0}}
+
+/* ---------- foot ---------- */
+.foot{display:flex;align-items:center;gap:12px;margin-top:20px;height:44px;position:relative;z-index:2}
+.segs{display:flex;gap:4px;flex:1}
+.segs i{flex:1;max-width:34px;height:3px;background:var(--rule);position:relative;overflow:hidden}
+.segs i::after{content:"";position:absolute;inset:0;background:var(--fg);transform:scaleX(0);transform-origin:left;transition:transform .8s var(--e)}
+.segs i.on::after{transform:none}
+.segs i.cur::after{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+.btn{height:42px;padding:0 20px;border-radius:4px;font-weight:600;font-size:13px;letter-spacing:.005em;display:inline-flex;align-items:center;gap:12px;position:relative;overflow:hidden;transition:opacity .3s,transform .25s var(--e)}
+.btn.pri{background:var(--fg);color:var(--base);transform:translate(var(--mx,0px),var(--my,0px))}
+.btn.pri::before{content:"";position:absolute;inset:0;background:var(--accent);transform:translateY(101%);transition:transform .5s var(--e)}
+.btn.pri:hover::before{transform:none}
+.btn.pri:hover{color:#160904}
+.btn.pri>*{position:relative}
+.btn.pri:active{transform:translate(var(--mx,0px),var(--my,0px)) scale(.97)}
+.btn.sec{color:var(--fg2)}
+.btn.sec:hover{color:var(--fg)}
+.btn[disabled]{opacity:.25;pointer-events:none}
+.btn svg{width:14px;height:14px;transition:transform .4s var(--e)}
+.btn:hover svg{transform:translateX(3px)}
+.hide{display:none!important}
+
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<div id="float">
+  <div id="slit"></div>
+  <div id="card">
+    <canvas id="gl"></canvas>
+
+    <div id="title">
+      <div class="wrap">
+        <div class="pre mono" id="tPre">A browser for two</div>
+        <svg viewBox="0 0 96 96" fill="none" stroke-linecap="round" stroke-linejoin="round"><path pathLength="1" d="M23 79 43.3 31h9.4L73 79M32.4 63.5h31.4" stroke="#f1ede6" stroke-width="7"/><path pathLength="1" d="M20.2 71.8c16.9-6.5 32.5-18.2 48.5-34.3m-12.5 0h12.5V50" stroke="#ff5b1f" stroke-width="6"/></svg>
+        <div class="word" id="tWord">AgentGo</div>
+        <div class="sub mono" id="tSub">Setup</div>
+      </div>
+      <div class="skip mono" id="tSkip">CLICK OR PRESS ESC TO SKIP</div>
+    </div>
+
+    <div id="inner">
+      <div class="top" data-drag>
+        <span class="mark" data-drag><svg viewBox="0 0 96 96" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M23 79 43.3 31h9.4L73 79M32.4 63.5h31.4" stroke="currentColor" stroke-width="9"/><path d="M20.2 71.8c16.9-6.5 32.5-18.2 48.5-34.3" stroke="#ff5b1f" stroke-width="8"/></svg></span>
+        <span class="name" data-drag>AgentGo</span>
+        <span class="mono count" id="ver" data-drag></span>
+        <span class="sp" data-drag></span>
+        <span class="mono tc" id="tc" data-drag>00:00:00:00</span>
+        <span class="mono count" id="count" data-drag></span>
+        <button class="wb" id="snd" title="Sound"><svg viewBox="0 0 12 12" fill="none"><path d="M1.5 4.3h2.2L6.8 2v8L3.7 7.7H1.5z" fill="currentColor"/><path class="wv" d="M8.4 4.2a2.6 2.6 0 0 1 0 3.6M9.9 2.7a4.8 4.8 0 0 1 0 6.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/><path class="x" d="M8.5 4.5l3 3m0-3-3 3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg></button>
+        <button class="wb" id="min" title="Minimize"><svg viewBox="0 0 10 10"><path d="M1 5h8" stroke="currentColor" stroke-width="1.3"/></svg></button>
+        <button class="wb" id="close" title="Close"><svg viewBox="0 0 10 10"><path d="M1.5 1.5l7 7m0-7-7 7" stroke="currentColor" stroke-width="1.3"/></svg></button>
+      </div>
+      <div class="rule"></div>
+
+      <div id="pages">
+        <section class="page" data-step="Welcome">
+          <div class="k mono fx"><i>■</i><span class="kt">Windows 11 · Chromium 152 · no telemetry</span></div>
+          <h1><span class="ln"><span>A browser for you,</span></span><span class="ln"><span>and the agent</span></span><span class="ln"><span>beside you.</span></span></h1>
+          <p class="p fx" style="--d:2">Claude Code, Codex or any MCP agent browses with its own pointer, in its own window. You watch, approve and stay in charge.</p>
+          <div class="facts">
+            <div class="fact st8"><span class="mono n">01</span><b>Private by default</b><span>Brave engine · 18 lists</span></div>
+            <div class="fact st8"><span class="mono n">02</span><b>Sandboxed pages</b><span>Untrusted-integrity renderers</span></div>
+            <div class="fact st8"><span class="mono n">03</span><b>You approve the risky parts</b><span>Payments · CAPTCHAs · sign-ins</span></div>
+          </div>
+        </section>
+
+        <section class="page" data-step="License">
+          <div class="k mono fx"><i>■</i><span class="kt">Business Source License 1.1</span></div>
+          <h1><span class="ln"><span>Free for people.</span></span><span class="ln"><span>Open in 2030.</span></span></h1>
+          <div class="lic fx" style="--d:2">
+            <p>Licensor: Mhmad hassn. Licensed Work: AgentGo Browser.</p>
+            <h4>You may</h4>
+            <p>Copy, modify, redistribute and use AgentGo for personal, research, education, evaluation and development purposes, at no cost.</p>
+            <h4>You need a license for</h4>
+            <p>Production use by a commercial entity, or for commercial purposes.</p>
+            <h4>Change date</h4>
+            <p>2030-01-01, or four years after a version's first public release, whichever comes first. Each version then converts to the Apache License 2.0.</p>
+            <h4>Third parties</h4>
+            <p>Chromium and CEF (BSD), Brave adblock-rust (MPL-2.0), EasyList, uBlock Origin, AdGuard, Peter Lowe, URLhaus and HaGeZi lists under their own licenses, Dark Reader (MIT), Fuse.js (Apache-2.0). Full notices: THIRD-PARTY-CREDITS.html in the install folder.</p>
+            <h4>Privacy</h4>
+            <p>No telemetry, no account. AgentGo talks only to the sites you and your agent open and the services listed in docs/NETWORK_CALLS.md.</p>
+          </div>
+          <div class="agree fx" id="agree" style="--d:3"><span class="sq"></span>I accept the license terms</div>
+        </section>
+
+        <section class="page" data-step="Location">
+          <div class="k mono fx"><i>■</i><span class="kt">Current user · no admin rights</span></div>
+          <h1><span class="ln"><span>Where it lives.</span></span></h1>
+          <div class="path fx" style="--d:1"><input id="dir" spellcheck="false" placeholder="Choose a folder for AgentGo"><button class="link" id="browse">Change</button></div>
+          <div class="pmsg mono" id="pmsg"><i>■</i><span class="kt"></span></div>
+          <div class="scroll fx" style="--d:2;margin-top:14px">
+            <div class="row on" data-k="startMenu"><div class="tx"><b>Start menu</b></div><span class="tog"></span></div>
+            <div class="row on" data-k="desktop"><div class="tx"><b>Desktop shortcut</b></div><span class="tog"></span></div>
+            <div class="row on" data-k="path"><div class="tx"><b>Add to PATH</b><span><span class="mono">agentgo</span> in every terminal</span></div><span class="tog"></span></div>
+            <div class="mono grp" id="grpAgents">Connect your agents</div>
+            <div class="row" data-k="claude" data-host="claude"><div class="tx"><b>Claude Code</b><span>MCP server for every project</span></div><span class="mono st">—</span><span class="tog"></span></div>
+            <div class="row" data-k="codex" data-host="codex"><div class="tx"><b>Codex</b><span>MCP server</span></div><span class="mono st">—</span><span class="tog"></span></div>
+            <div class="row" data-k="droid" data-host="droid"><div class="tx"><b>Droid</b><span>MCP server</span></div><span class="mono st">—</span><span class="tog"></span></div>
+            <div class="row" data-k="skill"><div class="tx"><b>Agent guide</b><span>The AgentGo skill in ~/.claude/skills</span></div><span class="tog"></span></div>
+          </div>
+        </section>
+
+        <section class="page" data-step="Preferences">
+          <div class="k mono fx"><i>■</i><span class="kt">Change any of this later in Settings</span></div>
+          <h1><span class="ln"><span>Make it yours.</span></span></h1>
+          <div class="scroll fx" style="--d:1">
+            <div class="mono grp">Theme</div>
+            <div class="choice" id="themes">
+              <div class="chip on" data-theme="dark"><div class="sw"></div><span>Dark</span></div>
+              <div class="chip" data-theme="light"><div class="sw"></div><span>Light</span></div>
+              <div class="chip" data-theme="system"><div class="sw"></div><span>System</span></div>
+            </div>
+            <div class="mono grp">Search</div>
+            <div class="tabs" id="engine"><button data-v="Google" class="on">Google</button><button data-v="Bing">Bing</button><button data-v="DuckDuckGo">DuckDuckGo</button><span class="bar"></span></div>
+            <div class="mono grp">Privacy</div>
+            <div class="row on" data-p="adBlock"><div class="tx"><b>Block ads and trackers</b></div><span class="tog"></span></div>
+            <div class="row on" data-p="dangerousSiteProtection"><div class="tx"><b>Block dangerous sites</b><span>Malware, phishing and look-alikes, checked on this PC</span></div><span class="tog"></span></div>
+            <div class="row on" data-p="blockThirdPartyCookies"><div class="tx"><b>Block third-party cookies</b><span>No cross-site tracking cookies</span></div><span class="tog"></span></div>
+            <div class="row on" data-p="stripTracking"><div class="tx"><b>Remove tracking from links</b><span>fbclid, gclid, utm_ and more</span></div><span class="tog"></span></div>
+            <div class="row on" data-p="fingerprintProtection"><div class="tx"><b>Fingerprint protection</b><span>New noise every session and site; agents get their own</span></div><span class="tog"></span></div>
+            <div class="row" data-p="downloadsEnabled"><div class="tx"><b>Allow downloads</b><span>Scanned, never opened automatically</span></div><span class="tog"></span></div>
+            <div class="mono grp">Agents</div>
+            <div class="row" data-p="approvalFull"><div class="tx"><b>Full access</b><span>Off: ask before final submits. Payments always ask.</span></div><span class="tog"></span></div>
+            <div class="row on" data-p="motion"><div class="tx"><b>Show the agent at work</b><span>Its pointer, clicks and typing on the page</span></div><span class="tog"></span></div>
+            <div class="mono grp">Browser</div>
+            <div class="row" data-p="siteDark"><div class="tx"><b>Dark mode for websites</b></div><span class="tog"></span></div>
+            <div class="row on" data-p="hardwareAcceleration"><div class="tx"><b>Hardware acceleration</b></div><span class="tog"></span></div>
+            <div class="row on" data-p="autoUpdate"><div class="tx"><b>Update automatically</b><span>Signed releases install when you close AgentGo</span></div><span class="tog"></span></div>
+          </div>
+        </section>
+
+        <section class="page" data-step="Install">
+          <div class="k mono fx" id="instK"><i>■</i><span class="kt">Every file checked against its SHA-256</span></div>
+          <h1 id="instH"><span class="ln"><span>Installing.</span></span></h1>
+          <div class="big fx" style="--d:1" id="pct"><div class="n h"><span class="v">0</span><small>%</small></div><div class="n s"><span class="v">0</span><small>%</small></div></div>
+          <div class="stages" id="stages"></div>
+          <div class="mono" id="logline"></div>
+          <div class="err" id="err"></div>
+        </section>
+
+        <section class="page" data-step="Done">
+          <div class="done-mark"><svg viewBox="0 0 24 24"><path pathLength="20" d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+          <div class="k mono fx" id="doneK"><i>■</i><span class="kt">End of setup · start of everything</span></div>
+          <h1 id="doneH"><span class="ln"><span>Ready when</span></span><span class="ln"><span>you are.</span></span></h1>
+          <p class="p fx" style="--d:2" id="doneP">Open AgentGo from Start or your desktop. Your agent can connect right away.</p>
+          <div class="cmd fx" style="--d:3" id="cmds">
+            <div><span>Your agent</span><code>browser_guide</code></div>
+            <div><span>Any terminal</span><code>agentgo call observe.page</code></div>
+            <div><span>In the browser</span><code>Ctrl+K · Pause · Stop</code></div>
+          </div>
+        </section>
+
+        <section class="page" data-step="Remove">
+          <div class="k mono fx"><i>■</i><span class="kt">Uninstall</span></div>
+          <h1><span class="ln"><span>Remove</span></span><span class="ln"><span>AgentGo?</span></span></h1>
+          <p class="p fx" style="--d:2">The browser, its shortcuts, the PATH entry and agent registrations go. Your profile stays unless you say otherwise.</p>
+          <div class="fx" style="--d:3;margin-top:auto;border-top:1px solid var(--rule)">
+            <div class="row" data-u="removeProfile"><div class="tx"><b>Also delete my profile</b><span>History, bookmarks, cookies and saved sign-ins. This cannot be undone.</span></div><span class="tog"></span></div>
+          </div>
+        </section>
+
+        <section class="page" data-step="Import">
+          <div class="k mono fx"><i>■</i><span class="kt">Stays on this PC · nothing is uploaded</span></div>
+          <h1><span class="ln"><span>Bring your things.</span></span></h1>
+          <div class="scroll fx" style="--d:1" id="impPick">
+            <div class="mono grp">From</div>
+            <div id="profs"><div class="prof"><div class="tx"><span class="mono sub">Looking for Chrome, Edge, Brave and Firefox…</span></div></div></div>
+            <div class="mono grp">What</div>
+            <div class="what">
+              <div class="row on" data-w="bookmarks"><div class="tx"><b>Bookmarks</b></div><span class="tog"></span></div>
+              <div class="row on" data-w="history"><div class="tx"><b>History</b></div><span class="tog"></span></div>
+              <div class="row on" data-w="passwords"><div class="tx"><b>Passwords</b></div><span class="tog"></span></div>
+              <div class="row on" data-w="tabs"><div class="tx"><b>Open tabs</b></div><span class="tog"></span></div>
+            </div>
+          </div>
+          <div class="hide" id="impRes" style="flex:1;overflow:auto"></div>
+        </section>
+      </div>
+
+      <div class="foot">
+        <div class="segs" id="segs"></div>
+        <button class="btn sec" id="back">Back</button>
+        <button class="btn sec hide" id="skip">Skip</button>
+        <button class="btn pri" id="next"><span id="nextL">Begin</span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 8h12m-5-5 5 5-5 5"/></svg></button>
+      </div>
+    </div>
+
+    <div id="agent"><svg viewBox="0 0 24 24"><path d="M4 2.5l15.5 8.6-6.9 1.7-3.1 6.7z" fill="#ff5b1f" stroke="#0b0a09" stroke-width="1.3" stroke-linejoin="round"/></svg><span class="tag" id="agentTag">agent</span></div>
+    <div id="leak"></div>
+    <div id="flare"></div>
+    <div class="lb t"></div><div class="lb b"></div>
+  </div>
+  <div id="spark"></div>
+</div>
+
+<script>
+const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>[...r.querySelectorAll(s)];
+const Q=new URLSearchParams(location.search),DEMO=Q.has('demo')&&!window.ipc;
+const MODE=(DEMO&&Q.get('mode'))||'__MODE__';
+if(DEMO)installDemoHost();
+const send=(m)=>{try{window.ipc.postMessage(JSON.stringify(m))}catch(e){}};
+const wait=(ms)=>new Promise(r=>setTimeout(r,ms));
+const REDUCED=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const card=$('#card'),inner=$('#inner'),flt=$('#float'),slit=$('#slit'),spark=$('#spark'),ttl=$('#title');
+const W=560,H=620,E='cubic-bezier(.76,0,.24,1)',OUT='cubic-bezier(.16,1,.3,1)';
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),ease=(rate,dt)=>1-Math.exp(-rate*dt);
+
+/* ================= sound: synthesized, starts on the first gesture ================= */
+const SFX=(()=>{
+  let ctx=null,master=null,noise=null,on=true;
+  try{on=localStorage.getItem('agentgo.sfx')!=='0'}catch(e){}
+  function boot(){
+    if(!on)return;
+    if(ctx){if(ctx.state==='suspended')ctx.resume();return}
+    try{ctx=new (window.AudioContext||window.webkitAudioContext)();
+      const comp=ctx.createDynamicsCompressor();master=ctx.createGain();master.gain.value=.55;master.connect(comp);comp.connect(ctx.destination);
+      noise=ctx.createBuffer(1,ctx.sampleRate*2,ctx.sampleRate);const d=noise.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1}catch(e){ctx=null}}
+  const ok=()=>ctx&&on&&ctx.state==='running';
+  const env=(g,t,a,peak,dec)=>{g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(peak,t+a);g.gain.exponentialRampToValueAtTime(.0001,t+a+dec)};
+  function whoosh(up=true){if(!ok())return;const t=ctx.currentTime,s=ctx.createBufferSource(),f=ctx.createBiquadFilter(),g=ctx.createGain();
+    s.buffer=noise;f.type='bandpass';f.Q.value=1.4;f.frequency.setValueAtTime(up?240:2600,t);f.frequency.exponentialRampToValueAtTime(up?2600:200,t+.5);
+    env(g,t,.14,.2,.55);s.connect(f);f.connect(g);g.connect(master);s.start(t);s.stop(t+.9)}
+  function tick(hi=true){if(!ok())return;const t=ctx.currentTime,o=ctx.createOscillator(),g=ctx.createGain();o.type='sine';
+    o.frequency.setValueAtTime(hi?1700:1150,t);o.frequency.exponentialRampToValueAtTime(hi?2300:760,t+.05);env(g,t,.004,.07,.07);o.connect(g);g.connect(master);o.start(t);o.stop(t+.12)}
+  function boom(){if(!ok())return;const t=ctx.currentTime,o=ctx.createOscillator(),g=ctx.createGain();o.type='sine';o.frequency.setValueAtTime(82,t);o.frequency.exponentialRampToValueAtTime(34,t+1.4);
+    env(g,t,.01,.45,1.6);o.connect(g);g.connect(master);o.start(t);o.stop(t+1.8);
+    const s=ctx.createBufferSource(),f=ctx.createBiquadFilter(),g2=ctx.createGain();s.buffer=noise;f.type='lowpass';f.frequency.value=700;env(g2,t,.005,.18,.9);s.connect(f);f.connect(g2);g2.connect(master);s.start(t);s.stop(t+1.2)}
+  function chord(){if(!ok())return;const t=ctx.currentTime;[196,261.6,329.6,392,493.9,659.3].forEach((fr,i)=>{for(const det of[-6,6]){const o=ctx.createOscillator(),g=ctx.createGain();
+    o.type=i%2?'triangle':'sine';o.frequency.value=fr;o.detune.value=det;g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.028,t+.5+i*.09);g.gain.exponentialRampToValueAtTime(.0001,t+4.5);
+    o.connect(g);g.connect(master);o.start(t);o.stop(t+4.6)}})}
+  function toggle(){on=!on;try{localStorage.setItem('agentgo.sfx',on?'1':'0')}catch(e){}if(on)boot();return on}
+  return{boot,whoosh,tick,boom,chord,toggle,get on(){return on}};
+})();
+$('#snd').classList.toggle('off',!SFX.on);
+$('#snd').onclick=()=>{const v=SFX.toggle();$('#snd').classList.toggle('off',!v);if(v)setTimeout(()=>SFX.tick(),30)};
+['pointerdown','keydown'].forEach(ev=>document.addEventListener(ev,()=>SFX.boot(),true));
+
+/* ================= light: one fragment shader paints the whole scene ================= */
+const S={c:[-.5,0],p:0,l:0,k:0,d:1,e:0,f:0,m:[.72,.3]},ST={c:[-.5,0],l:0,d:0,e:0,f:0};
+const GL=(()=>{
+  const cv=$('#gl');let gl=null;
+  try{gl=cv.getContext('webgl',{alpha:false,antialias:false,depth:false,powerPreference:'low-power'})}catch(e){}
+  if(!gl){card.classList.add('nogl');cv.remove();return{frame(){}}}
+  const vs='attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
+  const fs=`precision highp float;
+uniform vec2 R,M,C;uniform float T,P,L,K,D,E,F;
+float h(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
+float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1.,0.)),f.x),mix(h(i+vec2(0.,1.)),h(i+vec2(1.,1.)),f.x),f.y);}
+float fbm(vec2 p){float s=0.,a=.5;for(int i=0;i<4;i++){s+=a*n(p);p=p*2.03+vec2(1.7,9.2);a*=.5;}return s;}
+void main(){
+  vec2 uv=gl_FragCoord.xy/R;float as=R.x/R.y;vec2 p=vec2((uv.x-.5)*as,uv.y-.5);
+  vec2 o=vec2(C.x*.48*as,.64+C.y*.14);vec2 d=p-o;float r=length(d);float a=atan(d.x,-d.y);
+  float aim=atan(-o.x,o.y+.12);
+  float rays=fbm(vec2(a*7.,T*.07))*.9+fbm(vec2(a*19.+4.,T*.11))*.45;rays=pow(rays,2.4)*1.6;
+  float beam=rays*smoothstep(.72,0.,abs(a-aim))*exp(-r*1.25);
+  float sm=fbm(p*2.4+vec2(T*.025,-T*.018)+M*.15),sm2=fbm(p*5.+vec2(-T*.04,T*.03));
+  vec3 warm=vec3(1.,.40,.14);float lit=1.-D*.8;
+  vec3 col=vec3(.040,.036,.032)+vec3(.05,.034,.025)*sm*sm2*2.;
+  col+=warm*beam*(.34+sm*.5)*lit;
+  vec2 mp=vec2((M.x-.5)*as,M.y-.5);col+=warm*.075*exp(-length(p-mp)*3.)*lit;
+  for(int i=0;i<2;i++){float fi=float(i);vec2 q=p*(16.+fi*12.)+vec2(T*.12*(fi+1.),T*(.22+fi*.14));vec2 id=floor(q),f=fract(q)-.5;
+    float rn=h(id+fi*17.);vec2 of=vec2(h(id+3.1),h(id+7.7))-.5;float tw=.5+.5*sin(T*2.+rn*40.);
+    col+=vec3(1.,.75,.55)*smoothstep(.08-fi*.02,0.,length(f-of*.6))*step(.86,rn)*tw*(.07+beam*2.2)*lit;}
+  float on=step(.002,P);float lv=-.52+P*.16;
+  float y=p.y-lv-(fbm(vec2(p.x*2.5+T*.15,T*.25))-.5)*.08;
+  float tb=fbm(p*vec2(3.,5.)+vec2(0.,-T*.35));
+  vec3 fire=mix(vec3(.26,.05,.02),vec3(.95,.34,.1),tb*tb*1.3);
+  col=mix(col,fire,smoothstep(.03,-.32,y)*on*F*.62);
+  col+=vec3(1.,.62,.36)*exp(-abs(y)*70.)*smoothstep(0.,.04,P)*F*.55;
+  col+=warm*exp(-max(y,0.)*5.)*on*F*.1;
+  col=mix(col,vec3(dot(col,vec3(.33)))*vec3(1.4,.42,.36),E*.65);
+  col+=warm*K*.2*exp(-r*.8)+vec3(1.,.7,.45)*K*exp(-abs(p.y)*30.)*.3;
+  float v=smoothstep(1.05,.25,length(p*vec2(.95,1.15)));col*=mix(.42,1.,v);
+  vec3 paper=vec3(.937,.925,.902)-vec3(.035,.04,.045)*(sm-.5)*1.3+warm*beam*.09;paper*=mix(.92,1.,v);
+  col=mix(col,paper,L);
+  col+=(h(gl_FragCoord.xy+fract(T*7.)*vec2(91.,37.))-.5)*mix(.05,.022,L);
+  gl_FragColor=vec4(col,1.);
+}`;
+  const sh=(t,src)=>{const s=gl.createShader(t);gl.shaderSource(s,src);gl.compileShader(s);return s};
+  const pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,vs));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(pr);
+  if(!gl.getProgramParameter(pr,gl.LINK_STATUS)){card.classList.add('nogl');cv.remove();return{frame(){}}}
+  gl.useProgram(pr);
+  const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+  const loc=gl.getAttribLocation(pr,'p');gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+  const u={};'R M C T P L K D E F'.split(' ').forEach(k=>u[k]=gl.getUniformLocation(pr,k));
+  const sc=Math.min(window.devicePixelRatio||1,2)*.6;cv.width=Math.round(W*sc);cv.height=Math.round(H*sc);gl.viewport(0,0,cv.width,cv.height);
+  return{frame(t){gl.uniform2f(u.R,cv.width,cv.height);gl.uniform2f(u.M,S.m[0],S.m[1]);gl.uniform2f(u.C,S.c[0],S.c[1]);
+    gl.uniform1f(u.T,t);gl.uniform1f(u.P,S.p);gl.uniform1f(u.L,S.l);gl.uniform1f(u.K,S.k);gl.uniform1f(u.D,S.d);gl.uniform1f(u.E,S.e);gl.uniform1f(u.F,S.f);
+    gl.drawArrays(gl.TRIANGLES,0,3)}};
+})();
+
+/* ================= text effects ================= */
+function title(h,lines){
+  if(lines)h.innerHTML=lines.map(l=>`<span class="ln"><span>${l}</span></span>`).join('');
+  let i=0;$$('.ln>span',h).forEach(s=>{s.innerHTML=s.textContent.split(' ').map(w=>`<span class="w">${[...w].map(c=>`<span class="c" style="--i:${i++}">${c}</span>`).join('')}</span>`).join(' ')});
+}
+const GLYPHS='!<>-_/[]{}=+*^?#01';
+function scramble(el,text,dur=650){
+  const id=(el._sc=(el._sc||0)+1),t0=performance.now(),n=text.length;
+  if(REDUCED){el.textContent=text;return}
+  (function f(){if(el._sc!==id)return;const p=Math.min(1,(performance.now()-t0)/dur);let o='';
+    for(let i=0;i<n;i++){const c=text[i];o+=(c===' '||i<p*n*1.1-2)?c:GLYPHS[(Math.random()*GLYPHS.length)|0]}
+    el.textContent=p<1?o:text;if(p<1)requestAnimationFrame(f)})();
+}
+function setK(k,text){const s=$('.kt',k);s.dataset.t=text;s.textContent=text}
+$$('h1').forEach(h=>title(h));
+$$('.kt').forEach(k=>k.dataset.t=k.textContent);
+$$('.page').forEach(pg=>$$('.row,.grp,.fact,.chip,.tabs',pg).forEach((el,i)=>{el.classList.add('st8');el.style.setProperty('--r',i)}));
+
+/* ================= the agent: a second pointer that keeps you company ================= */
+const mouse={x:0,y:0,in:false,last:-9};
+const AG={el:$('#agent'),tag:$('#agentTag'),x:W+40,y:H*.62,vx:0,vy:0,tx:0,ty:0,mode:'off',seq:0};
+function rel(el,ax=.5,ay=.5){const r=el.getBoundingClientRect(),c=card.getBoundingClientRect();return{x:r.left-c.left+r.width*ax,y:r.top-c.top+r.height*ay}}
+function home(){const nx=$('#next');if(nx&&!nx.classList.contains('hide')&&nx.offsetParent){const q=rel(nx,0,.5);return{x:q.x-64,y:q.y-38}}return{x:W-90,y:H-120}}
+function label(t){if(AG.tag.textContent===t)return;AG.tag.textContent=t;AG.tag.classList.remove('pop');void AG.tag.offsetWidth;AG.tag.classList.add('pop')}
+function ripple(){const r=document.createElement('div');r.className='ripple';r.style.left=AG.x+3+'px';r.style.top=AG.y+2+'px';card.appendChild(r);setTimeout(()=>r.remove(),900)}
+async function act(sel,{ax=.5,ay=.5,dx=0,dy=0,say,click=false,knock=false,hold=1300,delay=750,stay=false,id=++AG.seq}={}){
+  await wait(delay);if(id!==AG.seq||AG.mode==='off')return false;
+  const el=typeof sel==='string'?$(sel):sel;if(!el||!el.offsetParent)return false;
+  const q=rel(el,ax,ay);AG.mode='script';AG.tx=q.x+dx;AG.ty=q.y+dy;
+  await wait(620);if(id!==AG.seq)return false;
+  if(say)label(say);
+  if(click){ripple();SFX.tick(false)}
+  if(knock){for(let n=0;n<2;n++){ripple();SFX.tick(false);AG.vy-=240;await wait(190)}}
+  await wait(hold);if(id!==AG.seq)return false;
+  if(!stay){AG.mode='follow';label('agent')}
+  return true;
+}
+/* the agent has nowhere to live: it knocks on the empty field, then points at Change */
+let pathBad=false;
+const dirOk=()=>/^([a-zA-Z]:[\\/]|\\\\[^\\]+\\[^\\]+)/.test($('#dir').value.trim());
+async function pathError(){
+  const pa=$('.path'),m=$('#pmsg'),first=!pathBad,empty=!$('#dir').value.trim();pathBad=true;
+  pa.classList.add('bad');m.classList.remove('fixed');m.classList.add('on');
+  scramble($('.kt',m),empty?'No folder chosen · AgentGo needs somewhere to live':'Needs a full path · like C:\\Users\\you\\AgentGo',800);
+  pa.animate([{transform:'none'},{transform:'translateX(-7px)'},{transform:'translateX(6px)'},{transform:'translateX(-4px)'},{transform:'translateX(2px)'},{transform:'none'}],{duration:520,easing:'ease-out'});
+  ST.e=.5;S.k=.35;setTimeout(()=>{if(flow[at]!==4)ST.e=0},650);SFX.whoosh(false);
+  $('#next').disabled=true;setTimeout(()=>{$('#next').disabled=false},900);
+  if(AG.mode==='off')return;
+  const id=++AG.seq;
+  if(!await act('#dir',{ax:0,ay:0,dx:first?212:228,dy:-6,say:!empty?'that’s not an address…':first?'knock knock… nobody home':'still homeless here',knock:true,hold:1500,delay:60,stay:true,id}))return;
+  await act('#browse',{ax:0,ay:0,dx:-10,dy:-6,say:'pick me a home?',hold:2600,delay:0,id});
+}
+function pathFixed(){
+  if(!pathBad||!dirOk())return;pathBad=false;
+  $('.path').classList.remove('bad');const m=$('#pmsg');m.classList.add('fixed');scramble($('.kt',m),'Home found',400);
+  setTimeout(()=>{if(!pathBad)m.classList.remove('on','fixed')},1800);
+  SFX.tick(true);
+  if(AG.mode!=='off'){AG.seq++;AG.mode='follow';label('home sweet home');const id=AG.seq;setTimeout(()=>{if(id===AG.seq)label('agent')},1800)}
+}
+const SCRIPT={
+  0:()=>act('#pages .page:nth-child(1) h1 .ln:nth-child(2)',{ax:1,ay:.55,dx:10,say:'hi, that’s me',click:true,hold:1600}),
+  1:()=>act('#agree .sq',{ax:1,ay:1,dx:6,dy:4,say:'your call',hold:1800,delay:1100}),
+  2:()=>dirOk()?act('#grpAgents',{ax:0,ay:.5,dx:150,dy:-2,say:'plug me in',hold:1500})
+       :act('#dir',{ax:0,ay:.5,dx:96,dy:2,say:'hmm, no home yet',hold:1800,delay:1000}),
+  3:()=>act('.row[data-p=motion] .tx b',{ax:1,ay:.6,dx:12,say:'watch me work',hold:1600}),
+  4:()=>act('#pct',{ax:.62,ay:.25,dx:40,say:'on it',hold:2600,delay:900}),
+  5:()=>act(MODE==='uninstall'?'#doneH':'#cmds code',{ax:1,ay:.6,dx:6,say:MODE==='uninstall'?'bye for now':'ask me anything',click:MODE!=='uninstall',hold:2200,delay:1300}),
+  6:()=>act('.row[data-u] .tog',{ax:0,ay:.5,dx:-20,dy:10,say:'sure?',hold:1600}),
+  7:()=>act('#profs',{ax:.75,ay:.35,dx:0,say:'stays local',hold:1500,delay:1100}),
+};
+function agentTick(dt,t){
+  if(AG.mode==='off')return;let tx,ty;
+  if(AG.mode==='script'){tx=AG.tx;ty=AG.ty}
+  else if(mouse.in&&t-mouse.last<2.5){tx=mouse.x+24;ty=mouse.y+18}
+  else{const h=home();tx=h.x+Math.sin(t*.7)*10;ty=h.y+Math.cos(t*.95)*6}
+  tx=clamp(tx,6,W-28);ty=clamp(ty,40,H-30);
+  const tw=AG.tag.offsetWidth+22;AG.tag.classList.toggle('fl',AG.x+tw>W-6);AG.tag.classList.toggle('up',AG.y>H-48);
+  const k=AG.mode==='script'?70:30,dmp=AG.mode==='script'?14:10;
+  AG.vx+=((tx-AG.x)*k-AG.vx*dmp)*dt;AG.vy+=((ty-AG.y)*k-AG.vy*dmp)*dt;AG.x+=AG.vx*dt;AG.y+=AG.vy*dt;
+  AG.el.style.transform=`translate(${AG.x.toFixed(1)}px,${AG.y.toFixed(1)}px) rotate(${clamp(AG.vx*.025,-16,16).toFixed(1)}deg)`;
+}
+document.addEventListener('mousemove',e=>{const c=card.getBoundingClientRect();mouse.x=e.clientX-c.left;mouse.y=e.clientY-c.top;
+  mouse.in=mouse.x>=0&&mouse.y>=0&&mouse.x<=W&&mouse.y<=H;mouse.last=performance.now()/1000;
+  const nx=$('#next'),r=nx.getBoundingClientRect(),dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2),near=Math.hypot(dx,dy)<90;
+  nx.style.setProperty('--mx',(near?dx*.16:0).toFixed(1)+'px');nx.style.setProperty('--my',(near?dy*.22:0).toFixed(1)+'px')});
+document.documentElement.addEventListener('mouseleave',()=>mouse.in=false);
+
+/* ================= cuts between scenes ================= */
+function cut(dir){
+  SFX.whoosh(dir>0);S.k=1;if(REDUCED)return;
+  const y=(Math.random()*2-1)*140;
+  $('#flare').animate([{opacity:0,transform:`translateY(${y}px) scaleX(.15)`},{opacity:1,transform:`translateY(${y}px) scaleX(1)`,offset:.35},{opacity:0,transform:`translateY(${y}px) scaleX(1.35)`}],{duration:760,easing:'ease-out'});
+  $('#leak').animate([{opacity:0,transform:`translate(${-dir*55}%,${y*.3}px)`},{opacity:.9,offset:.4},{opacity:0,transform:`translate(${dir*55}%,${-y*.3}px)`}],{duration:1000,easing:'cubic-bezier(.3,0,.2,1)'});
+  $$('.lb').forEach(b=>b.animate([{height:'0px'},{height:'20px',offset:.42},{height:'0px'}],{duration:1050,easing:E}));
+}
+const CAM={0:[-.55,0],1:[.6,.15],2:[-.8,-.15],3:[.75,0],4:[0,.3],5:[0,0],6:[.1,-.25],7:[.4,.05]};
+function scene(p){
+  ST.c=CAM[p]||[0,0];ST.f=p===4?1:0;
+  const end=p===5;ST.l=end&&MODE!=='uninstall'?1:0;ST.d=MODE==='uninstall'?(end?.92:.3):0;
+  card.classList.toggle('lit',ST.l===1);
+  if(end&&MODE!=='uninstall')setTimeout(()=>SFX.chord(),250);
+}
+
+/* ================= opening titles ================= */
+let introDone=false,skipping=false;const IA=[],skipW=[];
+const iw=ms=>skipping?Promise.resolve():new Promise(r=>{const t=setTimeout(r,ms);skipW.push(()=>{clearTimeout(t);r()})});
+const ia=(el,k,o)=>{const a=el.animate(k,{fill:'forwards',...o});IA.push(a);if(skipping)try{a.finish()}catch(e){}return a};
+function skipIntro(){if(skipping||introDone)return;skipping=true;skipW.splice(0).forEach(f=>f());IA.forEach(a=>{try{a.finish()}catch(e){}})}
+async function intro(){
+  if(MODE==='uninstall'){$('#tPre').textContent='One last scene';$('#tSub').textContent='Uninstall'}
+  if(MODE==='update'){$('#tPre').textContent='A new scene';$('#tSub').textContent='Update'}
+  if(REDUCED||(DEMO&&Q.has('fast')))skipping=true;
+  const H2=H/2;
+  card.style.clipPath=`inset(${H2}px ${W/2}px round 2px)`;
+  await ia(slit,[{opacity:0,transform:'scaleX(0)'},{opacity:1,transform:'scaleX(1)'}],{duration:900,easing:OUT,delay:250}).finished;
+  ia(slit,[{opacity:1,transform:'scaleX(1) scaleY(1)'},{opacity:0,transform:'scaleX(1.06) scaleY(5)'}],{duration:1000,easing:'ease-out'});
+  ia(ttl,[{opacity:1},{opacity:1}],{duration:1});
+  const open=ia(card,[{clipPath:`inset(${H2-1}px 0px round 2px)`},{clipPath:'inset(0px 0px round 14px)'}],{duration:1250,easing:E});
+  ia($('#tPre'),[{opacity:0,letterSpacing:'.7em',filter:'blur(6px)'},{opacity:1,letterSpacing:'.32em',filter:'blur(0px)'}],{duration:1400,delay:380,easing:OUT});
+  $$('#title svg path').forEach((p,k)=>ia(p,[{strokeDashoffset:1},{strokeDashoffset:0}],{duration:1200,delay:760+k*320,easing:E}));
+  ia($('#tWord'),[{opacity:0,letterSpacing:'.55em',filter:'blur(14px)'},{opacity:1,letterSpacing:'-.03em',filter:'blur(0px)'}],{duration:1700,delay:1050,easing:OUT});
+  ia($('#tSub'),[{opacity:0},{opacity:1}],{duration:900,delay:1800});
+  ia($('#tSkip'),[{opacity:0},{opacity:.55}],{duration:700,delay:1000});
+  await open.finished;await iw(1900);
+  ia(ttl,[{opacity:1,transform:'none',filter:'blur(0px)'},{opacity:0,transform:'scale(1.3)',filter:'blur(16px)'}],{duration:850,easing:'cubic-bezier(.7,0,.84,0)'});
+  await iw(520);S.k=1;
+  card.style.clipPath='none';card.getAnimations().forEach(a=>a.cancel());ttl.style.display='none';slit.style.display='none';
+  introDone=true;
+  inner.animate([{opacity:0,filter:'blur(6px)'},{opacity:1,filter:'blur(0px)'}],{duration:skipping?300:700,fill:'forwards',easing:OUT});
+  inner.classList.add('ready');flt.classList.add('idle');
+  AG.x=W+40;AG.y=H*.62;AG.mode='follow';setTimeout(()=>AG.el.style.opacity=1,400);
+}
+async function fold(then){
+  flt.classList.remove('idle');AG.mode='off';AG.el.style.opacity=0;SFX.whoosh(false);
+  inner.animate([{opacity:1},{opacity:0}],{duration:220,fill:'forwards'});
+  await card.animate([{clipPath:'inset(0px 0px round 14px)',filter:'brightness(1)'},{clipPath:`inset(${H/2-1.5}px 0px round 2px)`,filter:'brightness(2.4)',offset:.55},{clipPath:`inset(${H/2-1.5}px ${W/2-2}px round 2px)`,filter:'brightness(3)'}],{duration:REDUCED?1:760,easing:E,fill:'forwards'}).finished;
+  card.style.visibility='hidden';
+  await spark.animate([{opacity:1,transform:'scale(1)'},{opacity:0,transform:'scale(.1)'}],{duration:REDUCED?1:420,easing:'ease-in',fill:'forwards'}).finished;
+  then&&then();
+}
+
+/* ================= pages ================= */
+const pages=$$('.page');
+const flow=MODE==='uninstall'?[6,4,5]:MODE==='update'?[4,5]:[0,1,2,3,4,7,5];
+const LABEL=MODE==='uninstall'?['Remove','','Close']:MODE==='update'?['','Open AgentGo']:['Begin','Continue','Continue','Install','','Import','Open AgentGo'];
+let at=-1,busy=false,sceneAt=0;
+$('#segs').innerHTML=flow.map(()=>'<i></i>').join('');
+flow.forEach((p,i)=>pages[p].dataset.n=String(i+1).padStart(2,'0'));
+async function show(i){
+  if(busy)return;busy=true;
+  const prev=pages[flow[at]];
+  if(prev&&at!==i){prev.classList.add('out');cut(i>at?1:-1);await wait(400);prev.classList.remove('on','out')}
+  at=i;const p=flow[i],pg=pages[p];sceneAt=performance.now();
+  scene(p);pg.classList.add('on');
+  $$('.kt',pg).forEach(k=>scramble(k,k.dataset.t));
+  $('#count').innerHTML=`SC <b>${String(i+1).padStart(2,'0')}</b>/${String(flow.length).padStart(2,'0')}`;
+  $$('#segs i').forEach((s,k)=>{s.classList.toggle('on',k<=i);s.classList.toggle('cur',k===i)});
+  $('#back').classList.toggle('hide',i===0||p===4||p===5||p===7);
+  $('#skip').classList.toggle('hide',p!==7||!!imported);
+  $('#next').classList.toggle('hide',p===4);
+  $('#nextL').textContent=LABEL[i]||'Continue';
+  $('#next').disabled=p===1&&!$('#agree').classList.contains('on');
+  if(p===7){$('#nextL').textContent=imported?'Continue':'Import';$('#next').disabled=!imported&&!$('.prof.on')}
+  if(p===3)requestAnimationFrame(placeBar);
+  if(p===1){lic.scrollTop=0;licY=0;licTouched=false}
+  AG.seq++;if(AG.mode==='script')AG.mode='follow';label('agent');SCRIPT[p]&&SCRIPT[p]();
+  busy=false;
+}
+$('#back').onclick=()=>show(Math.max(0,at-1));
+$('#next').onclick=()=>{const p=flow[at];
+  if(p===2&&!dirOk())return pathError();
+  if(p===3)return install();
+  if(p===6)return uninstall();
+  if(p===4)return MODE==='uninstall'?uninstall():MODE==='update'?update():install();
+  if(p===7)return imported?show(at+1):runImport();
+  if(p===5)return fold(()=>send({cmd:MODE==='uninstall'?'close':'launch_and_close'}));
+  show(at+1)};
+
+/* ================= controls ================= */
+$$('.row').forEach(r=>r.addEventListener('click',()=>{r.classList.toggle('on');SFX.tick(r.classList.contains('on'))}));
+$('#agree').onclick=()=>{const a=$('#agree');a.classList.toggle('on');SFX.tick(a.classList.contains('on'));$('#next').disabled=!a.classList.contains('on');
+  if(a.classList.contains('on')&&AG.mode!=='off'){AG.seq++;AG.mode='follow';label('nice')}};
+$$('#themes .chip').forEach(c=>c.onclick=()=>{$$('#themes .chip').forEach(x=>x.classList.toggle('on',x===c));SFX.tick()});
+function placeBar(){const b=$('#engine button.on'),bar=$('#engine .bar');bar.style.left=b.offsetLeft+'px';bar.style.width=b.offsetWidth+'px'}
+$$('#engine button').forEach(b=>b.onclick=()=>{$$('#engine button').forEach(x=>x.classList.toggle('on',x===b));placeBar();SFX.tick()});
+$('#min').onclick=()=>send({cmd:'minimize'});
+$('#close').onclick=()=>fold(()=>send({cmd:'close'}));
+document.addEventListener('mousedown',e=>{if(e.button===0&&e.target.closest('[data-drag]'))send({cmd:'drag'})});
+$('#browse').onclick=()=>send({cmd:'browse',dir:$('#dir').value});
+$('#dir').addEventListener('input',pathFixed);
+const lic=$('.lic');let licHover=false,licTouched=false,licY=0;
+lic.addEventListener('mouseenter',()=>licHover=true);lic.addEventListener('mouseleave',()=>licHover=false);
+['wheel','mousedown','keydown'].forEach(ev=>lic.addEventListener(ev,()=>licTouched=true,{passive:true}));
+
+/* ================= install / uninstall ================= */
+const STAGES={download:'Getting AgentGo',verify:'Checking every file',extract:'Unpacking',settings:'Your preferences',shortcuts:'Shortcuts and PATH',agents:'Your agents',register:'Registering with Windows',
+  w_wait:'Waiting for AgentGo to close',w_check:'Checking every file',w_keep:'Keeping this version for rollback',w_place:'Putting the new version in place',w_start:'Opening AgentGo',
+  u_stop:'AgentGo is closed',u_agents:'Agent registrations',u_files:'The browser',u_profile:'Your profile',u_windows:'Windows entries'};
+let shown=0,target=0,lastPct=-1;
+function stages(keys){
+  $('#stages').innerHTML='<div class="roll">'+keys.map((k,i)=>`<div class="stg" data-s="${k}"><span class="mono">${String(i+1).padStart(2,'0')}</span><span>${STAGES[k]}</span><span class="s">—</span></div>`).join('')+'</div>';
+  target=0;shown=0;lastPct=-1;ST.e=0;roll();$('#err').classList.remove('on');$('#next').classList.add('hide');
+}
+function roll(){const rows=$$('#stages .stg'),r=$('#stages .roll');if(!r)return;let idx=0;rows.forEach((x,k)=>{if(x.matches('.run,.ok,.skip'))idx=k});
+  const run=rows.findIndex(x=>x.classList.contains('run'));if(run>=0)idx=run;r.style.transform=`translateY(${60-idx*30}px)`}
+function opts(){const k=n=>$(`.row[data-k="${n}"]`).classList.contains('on'),p=n=>$(`.row[data-p="${n}"]`).classList.contains('on');
+  return{dir:$('#dir').value.trim(),startMenu:k('startMenu'),desktop:k('desktop'),path:k('path'),claude:k('claude'),codex:k('codex'),droid:k('droid'),skill:k('skill'),
+   settings:{theme:$('#themes .chip.on').dataset.theme,searchEngine:$('#engine button.on').dataset.v,adBlock:p('adBlock'),fingerprintProtection:p('fingerprintProtection'),dangerousSiteProtection:p('dangerousSiteProtection'),blockThirdPartyCookies:p('blockThirdPartyCookies'),stripTracking:p('stripTracking'),
+    controlMode:p('approvalFull')?'full':'approval',downloadsEnabled:p('downloadsEnabled'),motion:p('motion'),siteDark:p('siteDark'),hardwareAcceleration:p('hardwareAcceleration'),autoUpdate:p('autoUpdate')}}}
+async function install(){const o=opts();if(!dirOk()){await show(flow.indexOf(2));setTimeout(pathError,450);return}if(flow[at]!==4)await show(flow.indexOf(4));
+  stages(['download','verify','extract','settings','shortcuts','agents','register']);send({cmd:'install',options:o})}
+async function update(){title($('#instH'),['Updating.']);setK($('#instK'),'Signed release · checked file by file');
+  if(flow[at]!==4)await show(flow.indexOf(4));
+  stages(['w_wait','w_check','w_keep','w_place','w_start']);send({cmd:'update'})}
+async function uninstall(){title($('#instH'),['Removing.']);setK($('#instK'),'Everything AgentGo added to this PC');
+  if(flow[at]!==4)await show(flow.indexOf(4));
+  const rp=$('.row[data-u=removeProfile]').classList.contains('on');stages(['u_stop','u_agents','u_files',...(rp?['u_profile']:[]),'u_windows']);send({cmd:'uninstall',removeProfile:rp})}
+
+/* ================= import ================= */
+let profiles=[],imported=null;
+const clean=(t)=>String(t).replace(/[<>&"]/g,'');
+$('#skip').onclick=()=>show(flow.indexOf(5));
+function renderProfiles(){
+  if(!profiles.length){$('#profs').innerHTML='<div class="prof"><div class="tx"><span class="mono sub">No other browser was found on this PC.</span></div></div>';$('#next').disabled=true;return}
+  const n=(v)=>Number(v||0).toLocaleString();
+  $('#profs').innerHTML=profiles.map((p,i)=>`<div class="prof${i?'':' on'}" data-i="${i}" style="animation-delay:${i*.06}s"><span class="rd"></span><div class="tx"><b>${clean(p.browser)}</b><span class="mono who">${clean(p.name)}</span><span class="mono sub">${n(p.counts.bookmarks)} bookmarks · ${n(p.counts.history)} history · ${n(p.counts.passwords)} passwords · ${n(p.counts.tabs)} tabs</span></div></div>`).join('');
+  $$('.prof[data-i]').forEach(r=>r.onclick=()=>{$$('.prof').forEach(x=>x.classList.toggle('on',x===r));SFX.tick();if(!imported)$('#next').disabled=false});
+  if(flow[at]===7&&!imported)$('#next').disabled=false}
+function runImport(){const pr=profiles[Number($('.prof.on')?.dataset.i||0)];if(!pr)return;
+  const what=$$('.row[data-w].on').map(r=>r.dataset.w).join(',');if(!what)return;
+  $('#next').disabled=true;$('#nextL').textContent='Importing…';send({cmd:'import_run',browser:pr.browser,id:pr.id,what})}
+function countUp(el,to){const t0=performance.now(),d=REDUCED?1:1200;(function f(){const p=Math.min(1,(performance.now()-t0)/d),e=1-Math.pow(1-p,4);
+  el.textContent=Math.round(to*e).toLocaleString();if(p<1)requestAnimationFrame(f)})()}
+function showResult(r){const c=r.imported||{};imported=imported||{bookmarks:0,history:0,passwords:0,tabs:0};
+  for(const k in imported)imported[k]+=Number(c[k]||0);
+  const pr=profiles[Number($('.prof.on')?.dataset.i||0)]||{browser:'Chrome'};
+  const notes=r.notes||[],sealed=notes.some(n=>/app-bound/.test(n));
+  $('#impPick').classList.add('hide');const R=$('#impRes');R.classList.remove('hide');
+  R.innerHTML=`<div class="res">${[['bookmarks','Bookmarks'],['history','History'],['passwords','Passwords'],['tabs','Tabs']].map(([k,l])=>`<div><b data-to="${imported[k]}">0</b><span>${l}</span></div>`).join('')}</div>
+   ${notes.filter(n=>!/app-bound/.test(n)).map(n=>`<p class="note">${clean(n)}</p>`).join('')}
+   ${sealed||r.csv?`<div class="guide"><b>${r.csv?'Add another export':`The rest of your ${clean(pr.browser)} passwords`}</b>${sealed?`<ol><li>${clean(pr.browser)} seals its newest passwords so only it can read them. Open its export and choose <em>Export passwords</em>.</li><li>Choose the saved CSV here.</li><li>Delete the CSV afterwards.</li></ol>`:''}
+   <div class="acts"><button class="btn line" id="openExp">Open ${clean(pr.browser)} export</button><button class="btn pri small" id="pickCsv"><span>Choose CSV file</span></button></div></div>`:''}`;
+  $$('.res b[data-to]',R).forEach(b=>countUp(b,Number(b.dataset.to)));
+  const o=$('#openExp');if(o)o.onclick=()=>{send({cmd:'open_export',browser:pr.browser});o.textContent='Opened in '+pr.browser};
+  const c2=$('#pickCsv');if(c2)c2.onclick=()=>send({cmd:'import_csv'});
+  $('#next').disabled=false;$('#nextL').textContent='Continue';$('#skip').classList.add('hide');SFX.tick()}
+
+/* ================= host events ================= */
+window.__agentgo=(e)=>{
+  if(e.type==='info'){$('#dir').value=e.dir;$('#ver').textContent=e.version?'v'+e.version:'';if(e.version)$('#tSub').textContent=(MODE==='uninstall'?'Uninstall':MODE==='update'?'Update':'Setup')+' · v'+e.version;
+    for(const h of ['claude','codex','droid']){const r=$(`.row[data-host="${h}"]`),f=!!e.hosts[h];$('.st',r).textContent=f?'found':'not found';$('.st',r).classList.toggle('yes',f);r.classList.toggle('on',f);r.classList.toggle('dis',!f)}
+    $('.row[data-k=skill]').classList.toggle('on',!!e.hosts.claudeDir);
+    if(e.existing)LABEL[3]='Update';
+    const s=e.settings;if(s){const t=$(`#themes .chip[data-theme="${s.theme}"]`);if(t)t.click();const g=$(`#engine button[data-v="${s.searchEngine}"]`);if(g)g.click();
+      for(const k of ['adBlock','fingerprintProtection','dangerousSiteProtection','blockThirdPartyCookies','stripTracking','downloadsEnabled','motion','siteDark','hardwareAcceleration','autoUpdate'])if(k in s)$(`.row[data-p="${k}"]`).classList.toggle('on',!!s[k]);
+      $('.row[data-p=approvalFull]').classList.toggle('on',s.controlMode==='full')}}
+  else if(e.type==='dir'){if(e.dir)$('#dir').value=e.dir;pathFixed()}
+  else if(e.type==='import_scan'){profiles=e.profiles||[];renderProfiles()}
+  else if(e.type==='import_result'){if(e.cancelled){return}if(e.error){$('#nextL').textContent=imported?'Continue':'Import';$('#next').disabled=false;showResult({imported:{},notes:[e.error],csv:e.csv});return}showResult(e)}
+  else if(e.type==='stage'){const el=$(`.stg[data-s="${e.stage}"]`);if(el){el.classList.remove('run','ok','skip');el.classList.add(e.state);$('.s',el).textContent=e.state==='ok'?'done':e.state==='skip'?'skipped':'';roll();if(e.state==='ok')SFX.tick()}}
+  else if(e.type==='progress')target=Math.max(target,Math.min(100,e.pct));
+  else if(e.type==='log')$('#logline').textContent=e.text.replace(/<[^>]+>/g,'');
+  else if(e.type==='error'){const x=$('#err');x.textContent=e.message;x.classList.add('on');$$('.stg.run').forEach(s=>{s.classList.remove('run');$('.s',s).textContent='stopped'});
+    ST.e=1;$('#next').classList.remove('hide');$('#nextL').textContent='Try again'}
+  else if(e.type==='done'){target=100;setTimeout(()=>{S.k=1.4;SFX.boom()},450);setTimeout(async()=>{
+    if(MODE==='uninstall'){title($('#doneH'),['Removed.']);$('#doneP').textContent=e.note||'Thanks for trying AgentGo.';$('#cmds').classList.add('hide');setK($('#doneK'),'Fin')}
+    else if(MODE==='update'){title($('#doneH'),[e.version?`Updated to ${e.version}.`:'Updated.']);$('#doneP').textContent=e.note||'AgentGo is opening on the new version.';setK($('#doneK'),'Same story · new chapter');if(e.relaunched){setTimeout(()=>fold(()=>send({cmd:'close'})),4200)}}
+    else if(e.note)$('#doneP').textContent=e.note;
+    if(MODE==='install'){send({cmd:'import_scan'});await show(flow.indexOf(7))}else await show(flow.indexOf(5))},1100)}
+};
+
+/* ================= frame loop ================= */
+const tcEl=$('#tc'),pv=$$('#pct .v'),ps=$('#pct .s');let last=performance.now();const T0=last;
+function loop(now){
+  const dt=Math.min(.05,(now-last)/1000),t=(now-T0)/1000;last=now;
+  S.c[0]+=(ST.c[0]-S.c[0])*ease(1.1,dt);S.c[1]+=(ST.c[1]-S.c[1])*ease(1.1,dt);
+  S.l+=(ST.l-S.l)*ease(1.6,dt);S.d+=(ST.d-S.d)*ease(introDone?1.4:.9,dt);S.e+=(ST.e-S.e)*ease(3,dt);S.f+=(ST.f-S.f)*ease(2,dt);S.k*=Math.exp(-dt*3.2);
+  const mx=mouse.in?mouse.x/W:.72+Math.sin(t*.21)*.12,my=mouse.in?1-mouse.y/H:.3+Math.cos(t*.17)*.08;
+  S.m[0]+=(mx-S.m[0])*ease(2.2,dt);S.m[1]+=(my-S.m[1])*ease(2.2,dt);
+  shown+=(target-shown)*ease(4.5,dt);if(Math.abs(target-shown)<.1)shown=target;S.p=shown/100;
+  const pc=Math.floor(shown);if(pc!==lastPct){lastPct=pc;pv.forEach(v=>v.textContent=pc);ps.style.setProperty('--cp',(100-pc)+'%')}
+  if(introDone&&flow[at]===1&&!licHover&&!licTouched&&now-sceneAt>2200&&lic.scrollTop+lic.clientHeight<lic.scrollHeight-1){licY+=dt*13;lic.scrollTop=licY}
+  if(flt.classList.contains('idle')&&!REDUCED)flt.style.transform=`translateY(${(Math.sin(t*Math.PI*2/7)*-2.5).toFixed(2)}px)`;
+  agentTick(dt,t);
+  const fr=Math.floor(t*24),tc=[Math.floor(fr/86400),Math.floor(fr/1440)%60,Math.floor(fr/24)%60,fr%24].map(v=>String(v).padStart(2,'0')).join(':');
+  if(tcEl.textContent!==tc)tcEl.textContent=tc;
+  GL.frame(REDUCED?4:t);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+document.addEventListener('contextmenu',e=>{if(!e.target.closest('input,.lic,code'))e.preventDefault()});
+document.addEventListener('keydown',e=>{
+  if(!introDone){if(['Escape','Enter',' '].includes(e.key)){e.preventDefault();skipIntro()}return}
+  if(e.key==='F5'||(e.ctrlKey&&['r','p','f','u','j'].includes(e.key.toLowerCase())))e.preventDefault();
+  if(e.key==='Enter'&&e.target.tagName!=='BUTTON'&&!$('#next').disabled&&!$('#next').classList.contains('hide'))$('#next').click()});
+card.addEventListener('pointerdown',()=>{if(!introDone)skipIntro()});
+(async()=>{send({cmd:'init'});await intro();
+  if(DEMO&&Q.has('goto')){const g=+Q.get('goto');$('#agree').classList.add('on');if(MODE!=='uninstall'&&g===4)return install();if(flow[g]===7)send({cmd:'import_scan'});return show(Math.min(g,flow.length-1))}
+  if(MODE==='update')return update();
+  show(0)})();
+
+/* ================= preview host (only with ?demo, never inside the real installer) ================= */
+function installDemoHost(){
+  document.documentElement.style.background='radial-gradient(120% 90% at 20% 0%,#3b4a63,#141a26 60%,#0a0d14)';
+  const ev=e=>setTimeout(()=>window.__agentgo&&window.__agentgo(e),0);
+  let timer=null;
+  function run(keys,logs){let k=0,pct=0;clearInterval(timer);
+    const step=()=>{if(k>0)ev({type:'stage',stage:keys[k-1],state:'ok'});
+      if(k===keys.length){clearInterval(timer);ev({type:'progress',pct:100});ev({type:'done'});return}
+      ev({type:'stage',stage:keys[k],state:'run'});ev({type:'log',text:logs[k%logs.length]});k++};
+    step();timer=setInterval(()=>{pct=Math.min(100,pct+1.6);ev({type:'progress',pct});if(pct>=k/keys.length*100-1)step()},70)}
+  window.ipc={postMessage(s){const m=JSON.parse(s);setTimeout(()=>{
+    if(m.cmd==='init')ev({type:'info',dir:Q.has('nodir')?'':'C:\\Users\\you\\AppData\\Local\\Programs\\AgentGo',version:'1.4.0',hosts:{claude:true,codex:false,droid:true,claudeDir:true},existing:false,settings:null});
+    else if(m.cmd==='install')run(['download','verify','extract','settings','shortcuts','agents','register'],['agentgo-1.4.0-win64.zip · 182.4 MB','sha256 3f9a…c21e ok · 1,284 files','browser\\chrome.dll','settings.json','Start menu · Desktop · PATH','claude mcp add agentgo · droid mcp add agentgo','HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\AgentGo']);
+    else if(m.cmd==='uninstall')run(['u_stop','u_agents','u_files',...(m.removeProfile?['u_profile']:[]),'u_windows'],['agentgo.exe stopped','mcp remove agentgo','browser\\','profile\\','HKCU\\…\\Uninstall\\AgentGo']);
+    else if(m.cmd==='import_scan')setTimeout(()=>ev({type:'import_scan',profiles:[{browser:'Chrome',name:'Personal',id:'Default',counts:{bookmarks:412,history:18233,passwords:96,tabs:7}},{browser:'Edge',name:'Work',id:'Profile 1',counts:{bookmarks:88,history:5120,passwords:23,tabs:3}},{browser:'Firefox',name:'default-release',id:'ff',counts:{bookmarks:51,history:2210,passwords:0,tabs:0}}]}),700);
+    else if(m.cmd==='import_run')setTimeout(()=>ev({type:'import_result',imported:{bookmarks:412,history:18233,passwords:61,tabs:7},notes:['35 passwords use app-bound encryption.']}),1400);
+    else if(m.cmd==='browse')ev({type:'dir',dir:m.dir});
+    else if(m.cmd==='close'||m.cmd==='launch_and_close')setTimeout(()=>location.reload(),500);
+  },60)}};
+}
+</script>
+</body>
+</html>

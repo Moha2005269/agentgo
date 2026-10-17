@@ -225,6 +225,10 @@ const renderSettings = (settings, version) => {
     </section>
     <section class="section" data-section="privacy"><h3>Privacy</h3>
       ${adBlockRow(settings)}
+      ${toggle('dangerousSiteProtection', settings.dangerousSiteProtection !== false, 'Block dangerous sites', 'Warns before malware, phishing and look-alike sites open. Checked on this computer; no address is sent anywhere.')}
+      ${toggle('blockThirdPartyCookies', settings.blockThirdPartyCookies !== false, 'Block third-party cookies', 'Sites you visit cannot read or set the cookies of other sites embedded in them, the classic cross-site tracker.')}
+      ${toggle('stripTracking', settings.stripTracking !== false, 'Remove tracking from links', 'Click IDs such as fbclid, gclid and utm_ tags are removed from addresses before a page is requested.')}
+      ${toggle('fingerprintProtection', settings.fingerprintProtection !== false, 'Fingerprint protection', 'New noise every session and on every site while you browse; an agent gets its own fingerprint that never matches yours.')}
       ${vpnRow(settings)}
       <div class="setting"><div><b>Clear browsing data</b><span>Deletes cookies (signs you out of sites), the cache and the storage of sites you visited recently. History has its own button in History.</span></div>
         <button class="btn" type="button" data-clear-data>Clear data</button></div>
@@ -254,6 +258,9 @@ const renderSettings = (settings, version) => {
     </section>
     <section class="section" data-section="about"><h3>About</h3>
       <div class="setting"><div><b>AgentGo ${esc(version.agentgo)}</b><span>Chromium ${esc(version.chromium)} · protocol ${esc(version.protocol)} · no telemetry, no model calls.</span></div><span class="value">Local only</span></div>
+      ${toggle('autoUpdate', settings.autoUpdate !== false, 'Update automatically', 'New versions download in the background, are checked against the release signature and install when you close AgentGo. Off: an Update button appears in the toolbar when a new version is out.')}
+      <div class="setting"><div><b>Check for updates</b><span id="updateStatus">Releases come signed from github.com/Moha2005269/agentgo.</span></div>
+        <button class="btn" type="button" data-update-check>Check now</button></div>
     </section>`;
   toolFoot.hidden = true;
   settingsCache = settings;
@@ -780,7 +787,7 @@ const renderExtensions = list => {
     toolBody.innerHTML = list.map((ext, i) => `
       <div class="ext${ext.enabled ? '' : ' off'}" style="--i:${i}" data-ext-row="${esc(ext.id)}">
         <span class="ext-ic">${ext.icon ? `<img alt="" src="${esc(ext.icon)}">` : extInitial(ext)}</span>
-        <span class="ext-text"><b>${esc(ext.name)}</b><small>${esc(ext.description || `Version ${ext.version}`)}</small></span>
+        <span class="ext-text"><b>${esc(ext.name)}</b><small>${ext.limited ? 'Page scripts only: its background part does not run in AgentGo, so some features may not work.' : esc(ext.description || `Version ${ext.version}`)}</small></span>
         <span class="ext-ctl">
           <label class="ext-pin"><span>Toolbar</span><button class="switch${ext.pinned ? ' on' : ''}" type="button" role="switch" aria-checked="${ext.pinned}" aria-label="Show ${esc(ext.name)} in the toolbar" data-ext-pin="${esc(ext.id)}"></button></label>
           <label class="ext-pin"><span>On</span><button class="switch${ext.enabled ? ' on' : ''}" type="button" role="switch" aria-checked="${ext.enabled}" aria-label="Turn ${esc(ext.name)} on or off" data-ext-on="${esc(ext.id)}"></button></label>
@@ -789,7 +796,7 @@ const renderExtensions = list => {
       </div>`).join('');
   }
   toolFoot.hidden = false;
-  toolFoot.innerHTML = '<span class="note">Extensions run their page scripts; their pop-ups are not supported.</span><button class="btn" type="button" data-ext-store>Get extensions</button>';
+  toolFoot.innerHTML = '<span class="note">AgentGo runs the page scripts of extensions. Background pages, pop-ups and toolbar actions are not supported yet.</span><button class="btn" type="button" data-ext-store>Get extensions</button>';
 };
 const extensionList = async () => (await callBridge('extension.list')).extensions || [];
 const extChanged = async () => { await refresh(); window.__agentgoExtensionsChanged?.(); };

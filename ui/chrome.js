@@ -395,6 +395,14 @@ window.__agentgoNativeTabs = snapshot => {
 };
 
 // Pushed whenever sessions, approvals, handoffs or the control state change.
+// Client names as agents report them, said the way people know them.
+const agentName = raw => {
+  const name = String(raw || '').trim();
+  const known = [[/claude/i, 'Claude Code'], [/codex/i, 'Codex'], [/droid|factory/i, 'Droid'], [/cursor/i, 'Cursor'], [/gemini/i, 'Gemini'], [/^(stdio-agent|agent|mcp|agentgo-mcp)$/i, 'Agent']];
+  for (const [test, label] of known) if (test.test(name)) return label;
+  return name ? name.replace(/[-_]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).slice(0, 24) : 'Agent';
+};
+
 window.__agentgoAgent = status => {
   if (!status) return;
   agent = status;
@@ -410,7 +418,7 @@ window.__agentgoAgent = status => {
     : status.approvals?.length ? `${status.approvals.length} approval${status.approvals.length === 1 ? '' : 's'} waiting`
     : status.control === 'stopped' ? 'Agent stopped'
     : status.control === 'paused' ? 'Agent paused'
-    : sessions === 1 ? `${agents[0].agent} connected`
+    : sessions === 1 ? `${agentName(agents[0].agent)} connected`
     : sessions ? `${sessions} agents connected`
     : 'No agent';
 
@@ -692,3 +700,36 @@ callBridge('agent.status').then(window.__agentgoAgent).catch(() => {});
 callBridge('settings.get').then(window.__agentgoTheme).catch(() => {});
 refreshBookmarks();
 refreshExtensions();
+
+
+/* ---------- updates ---------- */
+// A new release: with automatic updates it is already downloaded and goes in
+// when AgentGo closes (a quiet "Restart to update"); without them the button
+// is the way to get it.
+let updateInfo = {};
+window.__agentgoUpdate = info => {
+  updateInfo = info || {};
+  const button = $('#updateButton');
+  if (!updateInfo.available) { button.hidden = true; return; }
+  const staged = updateInfo.staged === true;
+  button.hidden = false;
+  button.classList.toggle('quiet', staged);
+  $('#updateText').textContent = staged ? 'Restart to update' : `Update to ${updateInfo.available}`;
+  button.title = updateInfo.error
+    ? `AgentGo ${updateInfo.available} is available. The automatic download failed (${updateInfo.error}); click to try again.`
+    : staged ? `AgentGo ${updateInfo.available} is ready. It installs when you close AgentGo, or now with a restart.`
+      : `AgentGo ${updateInfo.available} is available. Click to download, check and install it (AgentGo restarts).`;
+};
+$('#updateButton').addEventListener('click', async () => {
+  const button = $('#updateButton');
+  button.disabled = true;
+  $('#updateText').textContent = updateInfo.staged ? 'Restarting…' : 'Downloading…';
+  try {
+    await callBridge('browser.update_stage', { apply: 'now' });
+  } catch (error) {
+    $('#updateText').textContent = 'Update failed';
+    button.title = String(error?.message || error);
+    button.disabled = false;
+  }
+});
+callBridge('browser.update_status').then(window.__agentgoUpdate, () => {});

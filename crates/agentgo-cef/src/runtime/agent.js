@@ -822,9 +822,14 @@
   };
   const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
   const place = (el, x, y) => `translate3d(${Math.round(x)}px,${Math.round(y)}px,0)`;
+  // The stage leaves the page a while after the agent's last action, so a
+  // page sees nothing of AgentGo while nobody is acting on it.
+  let gone = 0;
   const rest = () => {
     clearTimeout(idle);
+    clearTimeout(gone);
     idle = setTimeout(() => parts && parts.pointer.animate([{ opacity: .35 }], { duration: 600, fill: 'forwards' }), 2600);
+    gone = setTimeout(() => { if (stage) stage.remove(); stage = null; parts = null; }, 8000);
   };
 
   // Glides the agent's pointer to a point; `kind` click adds a ripple there.
@@ -915,6 +920,15 @@
     lastSignIn = seen;
     globalThis.__agReport(JSON.stringify({ kind: 'login', username: user.value, password: pass.value }));
   };
+  // The Chrome Web Store asks to install the extension of its page
+  // (webstore.js, in the page's own world).
+  addEventListener('message', event => {
+    const data = event.source === window && event.data;
+    if (!data || data.__agentgo !== 'ext-install' || location.hostname !== 'chromewebstore.google.com') return;
+    if (typeof globalThis.__agReport === 'function' && /^[a-p]{32}$/.test(String(data.id))) {
+      globalThis.__agReport(JSON.stringify({ kind: 'extInstall', id: String(data.id) }));
+    }
+  });
   addEventListener('submit', event => noticeSignIn(event.target), true);
   addEventListener('click', event => {
     const button = event.target.closest && event.target.closest('button,input[type=submit],[role=button]');

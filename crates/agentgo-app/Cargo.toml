@@ -43,7 +43,9 @@ runtime = ["agentgo-cef/runtime"]
 sandbox = ["runtime", "agentgo-cef/sandbox"]
 
 [dependencies]
+agentgo-accounts = { workspace = true }
 agentgo-artifacts = { workspace = true }
+agentgo-import = { workspace = true }
 agentgo-cef = { workspace = true }
 agentgo-cli = { workspace = true }
 agentgo-mcp = { workspace = true }

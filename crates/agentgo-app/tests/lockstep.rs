@@ -36,10 +36,17 @@ fn manifest_is_in_sync_with_inventory() {
             for s in &m.sections {
                 for c in &s.capabilities {
                     if c.status == "implemented" {
-                        assert_eq!(
-                            c.test_id.as_deref(),
-                            Some("integration.protocol_smoke"),
-                            "{} must point at its integration proof",
+                        // Every implemented capability names the end-to-end
+                        // file that proves it, and that file must exist.
+                        let test = c.test_id.as_deref().unwrap_or_default();
+                        let file = test.strip_prefix("integration.").unwrap_or_else(|| {
+                            panic!("{} must point at an integration test, got {test:?}", c.id)
+                        });
+                        assert!(
+                            root.join("tests/integration")
+                                .join(format!("{file}.js"))
+                                .exists(),
+                            "{} points at a missing test file {file}.js",
                             c.id
                         );
                     } else {

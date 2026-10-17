@@ -31,7 +31,7 @@ function Set-UserPath([bool]$add) {
 
 if ($Uninstall) {
     if (Get-Process agentgo -ErrorAction SilentlyContinue) { throw "AgentGo is running. Close it first." }
-    if (-not $NoClaude -and (Get-Command claude -ErrorAction SilentlyContinue)) { & claude mcp remove agentgo 2>$null | Out-Null }
+    if (-not $NoClaude -and (Get-Command claude -ErrorAction SilentlyContinue)) { & claude mcp remove --scope user agentgo 2>$null | Out-Null; & claude mcp remove agentgo 2>$null | Out-Null }
     if (-not $NoClaude -and (Get-Command droid -ErrorAction SilentlyContinue)) { & droid mcp remove agentgo 2>$null | Out-Null }
     foreach ($path in @($shortcut, $skill, $target)) { if (Test-Path $path) { Remove-Item -Recurse -Force $path } }
     Set-UserPath $false
@@ -84,8 +84,9 @@ if (Test-Path (Join-Path $env:USERPROFILE ".claude")) {
 }
 $claude = $false
 if (-not $NoClaude -and (Get-Command claude -ErrorAction SilentlyContinue)) {
+    & claude mcp remove --scope user agentgo 2>$null | Out-Null
     & claude mcp remove agentgo 2>$null | Out-Null
-    & claude mcp add agentgo -- $exe mcp | Out-Null
+    & claude mcp add --scope user agentgo -- $exe mcp | Out-Null
     $claude = ($LASTEXITCODE -eq 0)
 }
 
@@ -101,6 +102,6 @@ if ($droid) { Write-Host "  Droid:           registered as the MCP server 'agent
 if ($claude) {
     Write-Host "  Claude Code:     registered as the MCP server 'agentgo'. Ask Claude to use the browser."
 } else {
-    Write-Host "  Connect an agent: claude mcp add agentgo -- `"$exe`" mcp"
+    Write-Host "  Connect an agent: claude mcp add --scope user agentgo -- `"$exe`" mcp"
 }
 Write-Host "  Remove it:       powershell -ExecutionPolicy Bypass -File `"$target\Install-AgentGo.ps1`" -Uninstall"

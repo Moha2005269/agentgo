@@ -152,6 +152,8 @@
     .ctl:active { transform:scale(.94); }
     .ctl svg { width:10px; height:10px; }
     .ctl.stop { color:var(--accent-ink); background:var(--accent); box-shadow:0 6px 18px -8px var(--glow); }
+    .ctl.update { color:var(--accent-ink); background:var(--accent); box-shadow:0 6px 18px -8px var(--glow); animation:ag-rise .5s var(--out) both; }
+    .ctl.update.quiet { color:var(--ink-2); background:var(--surface); box-shadow:inset 0 0 0 1px var(--line); }
     .ctl.stop:hover { background:var(--accent-hi); }
     .ctl.go { color:var(--accent-ink); background:var(--accent); }
     .overlay-note { position:relative; display:flex; align-items:center; gap:9px; height:30px; padding:0 14px 0 11px; border-radius:99px; overflow:hidden; color:var(--ink); background:var(--tint);
@@ -285,6 +287,7 @@
       <form class="prompt" id="personPrompt" hidden><input id="personPromptText" aria-label="Message to the agent" autocomplete="off" spellcheck="true"><button type="submit">Send</button></form>
 
       <div class="agent" aria-label="Agent control">
+        <button class="ctl update" id="updateButton" type="button" hidden><svg viewBox="0 0 10 10"><path d="M5 1v6M2.5 4.8 5 7.3l2.5-2.5M1.5 9h7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="updateText">Update</span></button>
         <button class="pill" id="agentPill" type="button" title="Agents, approvals and activity"><i></i><span id="agentText">No agent</span></button>
         <button class="ctl" id="agentPause" type="button" title="Pause agent actions" hidden><svg><use id="pauseIcon" href="#i-pause"/></svg><span id="pauseText">Pause</span></button>
         <button class="ctl stop" id="agentStop" type="button" title="Stop agent: revoke input until you re-enable it" hidden><svg><use href="#i-stop"/></svg><span>Stop agent</span></button>

@@ -34,6 +34,12 @@
     a.retry:active { transform:scale(.96); }
     a.retry:focus-visible { outline:2px solid var(--ink); outline-offset:3px; }
     #code { color:var(--faint); font:500 11px var(--mono); letter-spacing:.1em; }
+    /* ---- a dangerous site: the wire is cut on purpose ---- */
+    body.danger .snap path { stroke-dasharray:6 10; }
+    body.danger .kicker { color:var(--accent); }
+    .danger-more { margin-top:18px; font-size:12.5px; color:var(--faint); animation:ag-rise .9s var(--out) .3s both; }
+    .danger-more a { color:var(--muted); text-decoration:underline; text-underline-offset:3px; }
+    .danger-more a:hover { color:var(--ink); }
     /* ---- offline: a game while the connection is down ---- */
     body.offline main { width:min(1240px, calc(100% - 64px)); display:grid; grid-template-columns:minmax(300px, 1fr) auto; align-items:center; gap:56px; padding:0; }
     body.offline .snap { display:none; }

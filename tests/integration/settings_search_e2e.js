@@ -27,12 +27,17 @@ const { launch, operator, cdpEval, delay, reservePort } = require("./harness");
     const expectations = [
       ["theme", "Theme"], ["dark", "Dark mode for websites"], ["dark theme", "Theme"], ["ads", "Block ads and trackers"], ["adblock", "Block ads and trackers"],
       ["passwrod", "Offer to save sign-ins"],
-      ["cookies", "Clear browsing data"], ["gpu", "Hardware acceleration"], ["languge", "Preferred language for pages"],
+      ["clear cookies", "Clear browsing data"], ["phishing", "Block dangerous sites"], ["fingerprint", "Fingerprint protection"],
+      ["gpu", "Hardware acceleration"], ["languge", "Preferred language for pages"],
       ["camera", "Site permissions"], ["google", "Address bar and New Tab"],
     ];
     for (const [query, title] of expectations) {
       const result = await top(query);
       assert.equal(result.hits[0], title, `"${query}" finds ${title}, got ${JSON.stringify(result.hits)}`);
+    }
+    const cookies = await top("cookies");
+    for (const title of ["Clear browsing data", "Block third-party cookies"]) {
+      assert(cookies.hits.includes(title), `"cookies" reaches ${title}: ${JSON.stringify(cookies.hits)}`);
     }
     const near = await top("advertizing");
     assert(near.hits.includes("Block ads and trackers"), `typo reaches the ad blocker: ${JSON.stringify(near.hits)}`);

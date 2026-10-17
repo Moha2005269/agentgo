@@ -12,6 +12,7 @@
 //! patched on this page ([`AdBlocker::cosmetic`]). The crate knows nothing
 //! about CEF; the runtime maps CEF's request fields onto it.
 
+pub mod threats;
 pub mod youtube;
 
 use std::collections::HashSet;

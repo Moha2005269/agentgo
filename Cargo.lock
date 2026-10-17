@@ -56,7 +56,7 @@ dependencies = [
 
 [[package]]
 name = "agentgo-accounts"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "getrandom 0.3.4",
  "serde",
@@ -68,7 +68,7 @@ dependencies = [
 
 [[package]]
 name = "agentgo-actions"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "agentgo-locate",
  "agentgo-policy",
@@ -79,19 +79,23 @@ dependencies = [
 
 [[package]]
 name = "agentgo-adblock"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "adblock",
+ "idna",
+ "psl",
  "serde_json",
 ]
 
 [[package]]
 name = "agentgo-app"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
+ "agentgo-accounts",
  "agentgo-artifacts",
  "agentgo-cef",
  "agentgo-cli",
+ "agentgo-import",
  "agentgo-mcp",
  "agentgo-native-win",
  "agentgo-observe",
@@ -110,7 +114,7 @@ dependencies = [
 
 [[package]]
 name = "agentgo-artifacts"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -120,7 +124,7 @@ dependencies = [
 
 [[package]]
 name = "agentgo-cef"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "agentgo-accounts",
  "agentgo-adblock",
@@ -143,7 +147,7 @@ dependencies = [
 
 [[package]]
 name = "agentgo-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "serde",
@@ -152,7 +156,7 @@ dependencies = [
 
 [[package]]
 name = "agentgo-import"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aes",
  "cbc",
@@ -165,7 +169,7 @@ dependencies = [
 
 [[package]]
 name = "agentgo-locate"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "thiserror 2.0.20",
@@ -173,7 +177,7 @@ dependencies = [
 
 [[package]]
 name = "agentgo-mcp"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "agentgo-protocol",
  "agentgo-shell-bridge",
@@ -184,7 +188,7 @@ dependencies = [
 
 [[package]]
 name = "agentgo-native-win"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "thiserror 2.0.20",
@@ -192,7 +196,7 @@ dependencies = [
 
 [[package]]
 name = "agentgo-observe"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -201,7 +205,7 @@ dependencies = [
 
 [[package]]
 name = "agentgo-policy"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "thiserror 2.0.20",
@@ -209,7 +213,7 @@ dependencies = [
 
 [[package]]
 name = "agentgo-protocol"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -218,7 +222,7 @@ dependencies = [
 
 [[package]]
 name = "agentgo-session"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "getrandom 0.3.4",
  "serde",
@@ -227,7 +231,7 @@ dependencies = [
 
 [[package]]
 name = "agentgo-shell-bridge"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "agentgo-policy",
  "agentgo-protocol",
@@ -237,7 +241,7 @@ dependencies = [
 
 [[package]]
 name = "agentgo-storage"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "rusqlite",
  "serde",
@@ -247,7 +251,7 @@ dependencies = [
 
 [[package]]
 name = "agentgo-workflows"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "agentgo-actions",
  "agentgo-locate",

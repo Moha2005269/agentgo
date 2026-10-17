@@ -7,6 +7,7 @@
 //! provides the tested Milestones 1-2 foundation.
 
 pub mod doctor;
+pub mod import;
 pub mod manifest;
 pub mod probe;
 pub mod quiet;

@@ -57,6 +57,9 @@ pub async fn run(params: &Value) -> Reply {
     if let Some(csv) = params["csv"].as_str() {
         return import_csv(csv);
     }
+    if let Some(browser) = params["openExport"].as_str() {
+        return open_export(browser);
+    }
     let browser = params["browser"].as_str().unwrap_or("");
     let id = params["id"].as_str().unwrap_or("");
     let profile = find(browser, id).ok_or_else(|| Fail::params("that browser profile is gone"))?;
@@ -111,7 +114,7 @@ pub async fn run(params: &Value) -> Reply {
     );
     if logins.skipped > 0 {
         notes.push(format!(
-            "{} saved passwords were skipped (the vault holds up to 200 sign-ins, one per site).",
+            "{} saved passwords were skipped (the vault keeps one sign-in per site, up to 5000).",
             logins.skipped
         ));
     }
@@ -127,6 +130,25 @@ pub async fn run(params: &Value) -> Reply {
         "imported": {"bookmarks": bookmarks, "history": history, "logins": logins.saved, "tabs": opened},
         "notes": notes,
     }))
+}
+
+/// Opens the other browser on its own password export page. Passwords that
+/// browser protects with app-bound encryption can only leave through its
+/// export, never by reading its files.
+fn open_export(browser: &str) -> Reply {
+    let (program, page) = match browser {
+        "Chrome" => ("chrome", "chrome://password-manager/settings"),
+        "Edge" => ("msedge", "edge://password-manager/settings"),
+        "Brave" => ("brave", "brave://password-manager/settings"),
+        "Firefox" => ("firefox", "about:logins"),
+        _ => return Err(Fail::params("unknown browser")),
+    };
+    // `start` finds the browser through its App Paths registration.
+    exec::hidden_command("cmd")
+        .args(["/C", "start", "", program, page])
+        .spawn()
+        .map_err(|error| Fail::internal(error.to_string()))?;
+    Ok(json!({"opened": page}))
 }
 
 /// Imports a password-manager CSV export into the sign-in vault.
@@ -152,7 +174,7 @@ fn import_csv(csv: &str) -> Reply {
     let mut notes = Vec::new();
     if logins.skipped > 0 {
         notes.push(format!(
-            "{} sign-ins were skipped (the vault holds up to 200 sign-ins, one per site).",
+            "{} sign-ins were skipped (the vault keeps one sign-in per site, up to 5000).",
             logins.skipped
         ));
     }

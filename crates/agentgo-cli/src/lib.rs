@@ -58,6 +58,27 @@ pub enum Command {
         #[arg(long)]
         instance: Option<String>,
     },
+    /// Import from another browser on this PC (Chrome, Edge, Brave,
+    /// Firefox) into the AgentGo profile. With no browser named, lists what
+    /// was found as JSON. AgentGo must be closed.
+    Import {
+        /// Chrome, Edge, Brave or Firefox. Omit to list profiles.
+        #[arg(long)]
+        browser: Option<String>,
+        /// Profile directory id from the list (default: Default).
+        #[arg(long)]
+        id: Option<String>,
+        /// What to import, comma-separated: bookmarks,history,passwords,tabs.
+        #[arg(long, default_value = "bookmarks,history,passwords,tabs")]
+        what: String,
+        /// Import sign-ins from a password-manager CSV export instead.
+        #[arg(long)]
+        csv: Option<std::path::PathBuf>,
+        /// Open this browser's own password export page (Chrome, Edge,
+        /// Brave, Firefox) and exit.
+        #[arg(long)]
+        open_export: Option<String>,
+    },
     /// Register AgentGo as an MCP server with an agent host (droid, claude,
     /// codex), using this program's full path. `json` just prints the entry.
     Setup {

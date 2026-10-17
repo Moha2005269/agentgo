@@ -24,6 +24,7 @@ reference** and is never linked, bundled, or redistributed.
 | AdGuard Base (without EasyList), Social Media and DNS filters | snapshot versions in each list header | GPLv3 (AdGuard filters) | Ad, social-widget and tracking-domain filters | none (unmodified snapshots) | crates/agentgo-adblock/data/lists |
 | Peter Lowe's ad and tracking server list (pgl.yoyo.org) | snapshot | free for use, attribution | Ad and tracking domains | none | crates/agentgo-adblock/data/lists |
 | URLhaus filter (malware-filter, abuse.ch data) | snapshot | CC0 / abuse.ch terms | Malicious URL blocklist | none | crates/agentgo-adblock/data/lists |
+| Phishing URL Blocklist (malware-filter; data from OpenPhish, PhishTank, IPThreat) | snapshot | CC0 list; PhishTank data CC BY-SA 2.5, IPThreat data CC BY-SA 4.0, OpenPhish community feed terms | Known phishing hosts for the dangerous-site check | reduced to host names in `data/threats.txt` | crates/agentgo-adblock/data/lists/phishing.txt |
 | HaGeZi Pro++ blocklist | snapshot | GPLv3 | Ad, tracker and telemetry domains | none (unmodified snapshot) | crates/agentgo-adblock/data/lists |
 | Dark Reader | 4.9.133 | MIT (licenses/darkreader-LICENSE-MIT) | Recolours web pages for dark mode on websites | none (unmodified build) | crates/agentgo-cef/src/runtime/darkreader.js |
 | Fuse.js | 7.5.0 | Apache-2.0 (licenses/fuse.js-LICENSE-Apache-2.0) | Fuzzy search in the command palette | none (wrapped as a global `Fuse`) | ui/vendor/fuse.min.js |

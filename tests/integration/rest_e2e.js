@@ -303,7 +303,9 @@ const server = http.createServer((request, response) => {
     step("another instance");
     const other = await browser.call("browser.launch", { url: "about:blank", ephemeral: true });
     assert.ok(other.instanceId && other.pid);
-    try { process.kill(other.pid); } catch (_) {}
+    // End the whole process tree: Chromium's helper processes outlive a
+    // plain kill of the main process and keep the test's job alive.
+    try { require("node:child_process").execFileSync("taskkill", ["/PID", String(other.pid), "/T", "/F"], { stdio: "ignore" }); } catch (_) {}
     console.log("rest_e2e: PASS");
   } finally {
     await browser.close();

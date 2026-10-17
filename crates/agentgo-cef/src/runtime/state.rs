@@ -30,6 +30,10 @@ fn default_settings() -> serde_json::Value {
         "downloadsEnabled": false,
         "adBlock": true,
         "fingerprintProtection": true,
+        "dangerousSiteProtection": true,
+        "autoUpdate": true,
+        "blockThirdPartyCookies": true,
+        "stripTracking": true,
         "vpn": false,
         "nativeControl": false,
         "controlMode": "approval",
@@ -2301,8 +2305,94 @@ fn clipboard_set_text(text: &str) {
     }
 }
 
-/// Native window of the docked developer tools (0 when closed).
-static DEVTOOLS_HWND: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+/// Developer tools per tab: their native window and whether they are shown.
+/// Closing only hides them. In this engine, tearing a developer tools window
+/// down also tore down the toolbar's surface, so they live as long as their
+/// tab and are shown again when asked.
+static DEVTOOLS: std::sync::Mutex<Vec<(String, isize, bool)>> = std::sync::Mutex::new(Vec::new());
+/// The tab whose developer tools are being opened (until they load), and
+/// the point to inspect.
+static DEVTOOLS_PENDING: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+static DEVTOOLS_POINT: std::sync::Mutex<(i32, i32)> = std::sync::Mutex::new((0, 0));
+/// A hidden developer tools window that stays open from the first Inspect
+/// on: 0 none, 1 opening, 2 open. Developer tools windows are the engine's
+/// only Chrome-style windows, and when the last of them closed the engine
+/// began shutting the other views down (the toolbar went blank). With this
+/// one always there, closing a tab with its tools open is safe.
+static DEVTOOLS_ANCHOR: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// Whether developer tools being created now are the hidden anchor.
+pub fn devtools_anchor_opening() -> bool {
+    DEVTOOLS_ANCHOR.load(std::sync::atomic::Ordering::Relaxed) == 1
+}
+
+/// Hides a developer tools window (the anchor) as soon as it exists.
+#[cfg(target_os = "windows")]
+pub fn hide_devtools_window(own: isize) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetAncestor, ShowWindow, GA_ROOT, SW_HIDE};
+    // SAFETY: a window of this process; only its visibility changes.
+    unsafe {
+        let root = GetAncestor(own as _, GA_ROOT);
+        ShowWindow(if root.is_null() { own as _ } else { root }, SW_HIDE);
+    }
+}
+
+/// Opens the developer tools of `tab`, after the anchor when there is none.
+fn open_devtools(tab: &str, x: i32, y: i32) {
+    if let Ok(mut pending) = DEVTOOLS_PENDING.lock() {
+        *pending = Some(tab.to_string());
+    }
+    if let Ok(mut point) = DEVTOOLS_POINT.lock() {
+        *point = (x, y);
+    }
+    match DEVTOOLS_ANCHOR.load(std::sync::atomic::Ordering::Relaxed) {
+        2 => {
+            if let Some(host) = content_host(tab) {
+                dock_devtools(&host, x, y);
+            }
+        }
+        1 => {}
+        _ => {
+            let anchor = tool_view()
+                .and_then(|view| view.browser())
+                .and_then(|b| b.host());
+            match anchor {
+                Some(host) => {
+                    DEVTOOLS_ANCHOR.store(1, std::sync::atomic::Ordering::Relaxed);
+                    dock_devtools(&host, 0, 0);
+                }
+                None => {
+                    if let Some(host) = content_host(tab) {
+                        dock_devtools(&host, x, y);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn window_alive(hwnd: isize) -> bool {
+    // SAFETY: a plain handle validity check.
+    hwnd != 0 && unsafe { windows_sys::Win32::UI::WindowsAndMessaging::IsWindow(hwnd as _) } != 0
+}
+
+/// The docked tools of a tab, when they exist: (window, shown).
+fn devtools_of(tab: &str) -> Option<(isize, bool)> {
+    let mut all = DEVTOOLS.lock().ok()?;
+    all.retain(|(_, hwnd, _)| window_alive(*hwnd));
+    all.iter()
+        .find(|(t, _, _)| t == tab)
+        .map(|(_, hwnd, shown)| (*hwnd, *shown))
+}
+
+fn set_devtools_shown(tab: &str, shown: bool) {
+    if let Ok(mut all) = DEVTOOLS.lock() {
+        for entry in all.iter_mut().filter(|(t, _, _)| t == tab) {
+            entry.2 = shown;
+        }
+    }
+}
 /// Share of the window width the docked developer tools take.
 const DEVTOOLS_SHARE: f64 = 0.36;
 
@@ -2338,7 +2428,7 @@ fn devtools_dock_rect(window: isize) -> Option<(i32, i32, i32, i32)> {
 /// Opens the developer tools docked at the bottom of the same window.
 #[cfg(target_os = "windows")]
 fn dock_devtools(host: &cef::BrowserHost, x: i32, y: i32) {
-    // The Chrome runtime opens its own window; `devtools_loaded` moves it into this one.
+    // The engine opens its own window; `devtools_loaded` moves it into this one.
     let info = cef::WindowInfo::default();
     host.show_dev_tools(
         Some(&info),
@@ -2348,13 +2438,16 @@ fn dock_devtools(host: &cef::BrowserHost, x: i32, y: i32) {
     );
 }
 
+/// Closes (hides) the developer tools of the active tab.
+pub fn close_devtools() {
+    set_devtools_shown(&active_tab_id(), false);
+    super::app::relayout_registered_content();
+    log_event("AG-RUNTIME devtools-hidden");
+}
+
 /// Height (in the units of `total`) the docked developer tools cover, 0 when closed.
 fn devtools_reserved(total: i32) -> i32 {
-    let child = DEVTOOLS_HWND.load(std::sync::atomic::Ordering::Relaxed);
-    // SAFETY: a plain handle validity check.
-    let open = child != 0
-        && unsafe { windows_sys::Win32::UI::WindowsAndMessaging::IsWindow(child as _) } != 0;
-    if open {
+    if devtools_of(&active_tab_id()).is_some_and(|(_, shown)| shown) {
         (f64::from(total) * DEVTOOLS_SHARE) as i32
     } else {
         0
@@ -2409,36 +2502,41 @@ fn adopt_devtools_window(own: isize) -> isize {
     }
 }
 
-/// Keeps the docked developer tools at the bottom after a window resize.
+/// Shows the active tab's developer tools (when they are open) beside the
+/// page, and hides every other tab's.
 #[cfg(target_os = "windows")]
 fn reposition_devtools() {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        IsWindow, SetWindowPos, SWP_NOACTIVATE, SWP_NOZORDER,
+        SetWindowPos, ShowWindow, SWP_NOACTIVATE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE,
     };
-    let child = DEVTOOLS_HWND.load(std::sync::atomic::Ordering::Relaxed);
-    if child == 0 {
-        return;
-    }
-    let Some(host) = content_host(&active_tab_id()) else {
-        return;
-    };
-    let parent = host.window_handle().0 as isize;
-    // SAFETY: plain handle checks and a move of a window of this process.
-    unsafe {
-        if IsWindow(child as _) == 0 {
-            DEVTOOLS_HWND.store(0, std::sync::atomic::Ordering::Relaxed);
-            return;
-        }
-        if let Some((x, y, w, h)) = devtools_dock_rect(parent) {
-            SetWindowPos(
-                child as _,
-                std::ptr::null_mut(),
-                x,
-                y,
-                w,
-                h,
-                SWP_NOACTIVATE | SWP_NOZORDER,
-            );
+    let active = active_tab_id();
+    let entries: Vec<(String, isize, bool)> = DEVTOOLS
+        .lock()
+        .map(|mut all| {
+            all.retain(|(_, hwnd, _)| window_alive(*hwnd));
+            all.clone()
+        })
+        .unwrap_or_default();
+    let parent = content_host(&active).map(|host| host.window_handle().0 as isize);
+    for (tab, hwnd, shown) in entries {
+        // SAFETY: windows of this process; only their placement and visibility change.
+        unsafe {
+            match (tab == active && shown, parent.and_then(devtools_dock_rect)) {
+                (true, Some((x, y, w, h))) => {
+                    SetWindowPos(
+                        hwnd as _,
+                        std::ptr::null_mut(),
+                        x,
+                        y,
+                        w,
+                        h,
+                        SWP_NOACTIVATE | SWP_NOZORDER | SWP_SHOWWINDOW,
+                    );
+                }
+                _ => {
+                    ShowWindow(hwnd as _, SW_HIDE);
+                }
+            }
         }
     }
 }
@@ -2447,11 +2545,37 @@ fn reposition_devtools() {
 /// in the browser's theme (colour tokens set on the root, which every panel
 /// inherits).
 pub fn devtools_loaded(browser: Option<&cef::Browser>, frame: &mut cef::Frame) {
+    if devtools_anchor_opening() {
+        // The anchor: stays hidden; now open the tools that were asked for.
+        if let Some(host) = browser.and_then(|b| b.host()) {
+            hide_devtools_window(host.window_handle().0 as isize);
+        }
+        DEVTOOLS_ANCHOR.store(2, std::sync::atomic::Ordering::Relaxed);
+        let tab = DEVTOOLS_PENDING.lock().ok().and_then(|t| t.clone());
+        let (x, y) = DEVTOOLS_POINT.lock().map(|p| *p).unwrap_or((0, 0));
+        if let Some(host) = tab.as_deref().and_then(content_host) {
+            dock_devtools(&host, x, y);
+        }
+        return;
+    }
     if let Some(host) = browser.and_then(|b| b.host()) {
         let own = host.window_handle().0 as isize;
         let root = adopt_devtools_window(own);
-        DEVTOOLS_HWND.store(root, std::sync::atomic::Ordering::Relaxed);
+        let tab = DEVTOOLS_PENDING
+            .lock()
+            .ok()
+            .and_then(|mut t| t.take())
+            .unwrap_or_else(active_tab_id);
+        if let Ok(mut all) = DEVTOOLS.lock() {
+            all.retain(|(t, hwnd, _)| t != &tab && *hwnd != root);
+            all.push((tab, root, true));
+        }
+        super::app::relayout_registered_content();
     }
+    // A close button in the top-right corner: the docked tools have no window
+    // frame of their own. It asks AgentGo through the document title.
+    const CLOSE: &str = r#"(()=>{if(document.getElementById('agentgo-close'))return;const b=document.createElement('button');b.id='agentgo-close';b.title='Close developer tools (F12)';b.setAttribute('aria-label','Close developer tools');b.innerHTML='<svg viewBox="0 0 10 10" width="10" height="10"><path d="M1.5 1.5l7 7m0-7-7 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';Object.assign(b.style,{position:'fixed',top:'0',right:'0',width:'30px',height:'30px',display:'grid',placeItems:'center',border:'0',margin:'0',padding:'0',background:'var(--sys-color-cdt-base-container,#0F0F11)',color:'var(--sys-color-on-surface-subtle,#A49D95)',cursor:'pointer',zIndex:'2147483647'});b.onmouseenter=()=>{b.style.color='#fff';b.style.background='#e0402b'};b.onmouseleave=()=>{b.style.color='var(--sys-color-on-surface-subtle,#A49D95)';b.style.background='var(--sys-color-cdt-base-container,#0F0F11)'};const ask=()=>{document.title='agentgo:close-devtools';setTimeout(()=>{document.title='DevTools'},250)};b.onclick=ask;const put=()=>{if(!document.body)return setTimeout(put,50);document.body.style.setProperty('width','calc(100% - 30px)','important');document.body.appendChild(b)};put();document.addEventListener('keydown',e=>{if(e.key==='F12'){e.preventDefault();ask()}},true)})()"#;
+    frame.execute_java_script(Some(&cef::CefString::from(CLOSE)), None, 0);
     let light = settings_snapshot()["theme"].as_str() == Some("light");
     let pairs: &[(&str, &str, &str)] = &[
         ("base", "#0A0A0B", "#F5F1EB"),
@@ -2619,13 +2743,21 @@ pub fn context_action(params: &serde_json::Value) -> Result<serde_json::Value, S
         "print" => print_active_tab(),
         "inspect" => {
             devtools_theme();
-            if let Some(host) = content_host(&tab) {
-                if host.has_dev_tools() != 0 {
-                    host.close_dev_tools();
-                    DEVTOOLS_HWND.store(0, std::sync::atomic::Ordering::Relaxed);
-                } else {
-                    dock_devtools(&host, x, y);
+            // Right-click Inspect names a point: inspect that element (in the
+            // tools already there). F12 and the palette show or hide them.
+            let at_point = params.get("x").is_some() && params.get("y").is_some();
+            match devtools_of(&tab) {
+                Some((_, shown)) if shown && !at_point => close_devtools(),
+                Some(_) => {
+                    set_devtools_shown(&tab, true);
+                    if let Some(host) = content_host(&tab) {
+                        if at_point {
+                            dock_devtools(&host, x, y);
+                        }
+                    }
+                    super::app::relayout_registered_content();
                 }
+                None => open_devtools(&tab, x, y),
             }
         }
         "a11y" => {
@@ -2863,6 +2995,16 @@ pub fn update_settings(patch: &serde_json::Value) -> Result<serde_json::Value, S
     super::adblock::apply(&snapshot);
     super::vpn::apply(&snapshot);
     super::sitedark::refresh(&snapshot);
+    if patch.contains_key("fingerprintProtection") {
+        super::exec::post(super::fingerprint::refresh_all);
+    }
+    if patch.contains_key("blockThirdPartyCookies") {
+        super::exec::post(|| {
+            if let Some(context) = content_context() {
+                super::profiles::apply_cookie_policy(&context);
+            }
+        });
+    }
     apply_chrome_height();
     push_theme(&snapshot);
     Ok(snapshot)
@@ -2891,6 +3033,11 @@ fn offset_of(view: Option<cef::BrowserView>) -> (i32, i32) {
     };
     let (a, b) = (view.bounds_in_screen(), chrome.bounds_in_screen());
     (a.x - b.x, a.y - b.y)
+}
+
+/// Runs a script in the toolbar document (UI thread).
+pub fn run_in_shell(script: &str) {
+    run_in(shell_view(), script);
 }
 
 fn run_in(view: Option<cef::BrowserView>, script: &str) {

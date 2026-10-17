@@ -557,7 +557,7 @@ pub async fn command(caller: &Caller, method: &str, params: &Value) -> Reply {
                 .trim()
                 .to_string();
             Ok(
-                json!({"path": skill.display().to_string(), "present": !text.is_empty(), "version": version, "mcp": "claude mcp add agentgo -- agentgo mcp", "bytes": text.len()}),
+                json!({"path": skill.display().to_string(), "present": !text.is_empty(), "version": version, "mcp": "claude mcp add --scope user agentgo -- agentgo mcp", "bytes": text.len()}),
             )
         }
         "sdk.test" => {

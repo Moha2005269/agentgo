@@ -51,6 +51,22 @@ jobs:
         shell: pwsh
         run: powershell -ExecutionPolicy Bypass -File scripts/build.ps1 -Release
 
+      - name: UI scripts parse
+        shell: pwsh
+        run: |
+          foreach ($file in Get-ChildItem ui\*.js, crates\agentgo-cef\src\runtime\*.js) {
+            node --check $file.FullName
+            if ($LASTEXITCODE -ne 0) { throw "$($file.Name) does not parse" }
+          }
+
+      - name: Installer (AgentGo Setup)
+        shell: pwsh
+        working-directory: installer
+        run: |
+          cargo fmt --check
+          cargo clippy --release --locked -- -D warnings
+          cargo build --release --locked
+
       - name: Version report (gate evidence)
         shell: pwsh
         run: target\release\agentgo.exe version

@@ -101,11 +101,22 @@ fn setup_host(host: &str) -> i32 {
             .is_ok_and(|status| status.success())
     };
     // Replace an older entry (possibly with a wrong path) rather than fail.
-    run(&["mcp", "remove", "agentgo"]);
-    let added = if host == "claude" || host == "codex" {
+    // Claude Code's default scope is the current folder only; AgentGo is
+    // registered for the user so every project sees it.
+    let added = if host == "claude" {
+        run(&["mcp", "remove", "--scope", "user", "agentgo"]);
+        run(&["mcp", "remove", "agentgo"]);
+        run(&[
+            "mcp", "add", "--scope", "user", "agentgo", "--", &exe, "mcp",
+        ])
+    } else if host == "codex" {
+        run(&["mcp", "remove", "agentgo"]);
         run(&["mcp", "add", "agentgo", "--", &exe, "mcp"])
     } else {
-        run(&["mcp", "add", "agentgo", &exe, "mcp"])
+        // Droid's command line treats backslashes as escapes and would store
+        // `C:Usersme...`; Windows takes forward slashes just as well.
+        run(&["mcp", "remove", "agentgo"]);
+        run(&["mcp", "add", "agentgo", &exe.replace('\\', "/"), "mcp"])
     };
     if added {
         println!("registered AgentGo with {host}: {exe} mcp");
@@ -113,7 +124,17 @@ fn setup_host(host: &str) -> i32 {
         0
     } else {
         eprintln!("could not run `{host} mcp add`. Add this by hand:");
-        eprintln!("  {host} mcp add agentgo \"{exe}\" mcp");
+        let scope = if host == "claude" {
+            " --scope user"
+        } else {
+            ""
+        };
+        let dashes = if host == "claude" || host == "codex" {
+            " --"
+        } else {
+            ""
+        };
+        eprintln!("  {host} mcp add{scope} agentgo{dashes} \"{exe}\" mcp");
         1
     }
 }
@@ -280,6 +301,19 @@ fn main() {
             }
         }
         Command::Setup { host } => setup_host(&host),
+        Command::Import {
+            browser,
+            id,
+            what,
+            csv,
+            open_export,
+        } => agentgo_app::import::run(
+            browser.as_deref(),
+            id.as_deref(),
+            &what,
+            csv.as_deref(),
+            open_export.as_deref(),
+        ),
         Command::Mcp {
             attach,
             fresh,

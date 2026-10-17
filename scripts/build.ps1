@@ -76,7 +76,8 @@ try {
         $pdb = Join-Path $AgentGoRoot "target\$profile\agentgo_app.pdb"
         if (Test-Path -LiteralPath $pdb) { Copy-Item -LiteralPath $pdb -Destination (Join-Path $bundle "agentgo.pdb") -Force }
         Copy-Item -LiteralPath (Join-Path $cefRoot "bootstrap.exe") -Destination (Join-Path $bundle "agentgo.exe") -Force
-        & (Join-Path $PSScriptRoot "stamp-exe.ps1") -Exe (Join-Path $bundle "agentgo.exe")
+        $version = (Select-String -Path (Join-Path $AgentGoRoot "Cargo.toml") -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+        & (Join-Path $PSScriptRoot "stamp-exe.ps1") -Exe (Join-Path $bundle "agentgo.exe") -Version $version
         # The bootstrap exe only runs the browser; it hands `call`, `mcp`, `version`
         # and the other commands to agentgo-tool.exe, and the Start menu shortcut
         # starts agentgo-browser.exe.

@@ -207,6 +207,9 @@ fn summary(extension: &Extension) -> Value {
         "source": extension.source, "permissions": extension.permissions,
         "pinned": extension.pinned, "icon": extension.icon, "description": extension.description,
         "contentScripts": extension.scripts.iter().map(|s| json!({"matches": s.matches, "jsBytes": s.js.len(), "cssBytes": s.css.len()})).collect::<Vec<_>>(),
+        // Its background page does not run in AgentGo: features that need it
+        // (pop-ups, toolbar actions, syncing) will not work.
+        "limited": needs_background(Path::new(&extension.source)),
     })
 }
 
@@ -228,7 +231,12 @@ pub fn command(method: &str, params: &Value) -> Reply {
             let folder = params["path"].as_str().ok_or_else(|| {
                 Fail::params("params.path: the extension's folder (with manifest.json)")
             })?;
-            let extension = read_folder(Path::new(folder))?;
+            let mut extension = read_folder(Path::new(folder))?;
+            if extension.name == "Extension" {
+                if let Some(name) = localized_name(Path::new(folder)) {
+                    extension.name = name;
+                }
+            }
             all.retain(|known| known.id != extension.id);
             let out = summary(&extension);
             all.push(extension);
@@ -433,10 +441,125 @@ fn glob(pattern: &str, text: &str) -> bool {
     }
 }
 
+/// The Web Store's own button asked to install `id` (webstore.js). Allowed
+/// only on the store page of that very extension, after a click by the
+/// person (never an agent's input).
+pub fn store_request(tab: &str, id: &str) {
+    let url = state::tab_url(tab);
+    let on_its_page = url.starts_with("https://chromewebstore.google.com/detail/")
+        && store_id(&url).as_deref() == Some(id);
+    let by_person = !super::sessions::agent_present() && !cdp::agent_input_recent(tab, 5_000);
+    if !on_its_page || !by_person {
+        state::log_event(&format!(
+            "AG-SECURITY extension-install-refused {id} page={on_its_page} person={by_person}"
+        ));
+        reply_to_store(tab, id, Err("refused".into()));
+        return;
+    }
+    let (tab, id) = (tab.to_string(), id.to_string());
+    super::exec::spawn(async move {
+        let result = install_from_store(&id).await.map_err(|fail| fail.message);
+        state::log_event(&format!(
+            "AG-RUNTIME extension-install-from-store {id} ok={}",
+            result.is_ok()
+        ));
+        reply_to_store(&tab, &id, result);
+        state::notify_shell_state();
+        state::run_in_shell("typeof refreshExtensions === 'function' && refreshExtensions()");
+    });
+}
+
+fn reply_to_store(tab: &str, id: &str, result: Result<Value, String>) {
+    let message = json!({
+        "__agentgo": "ext-installed", "id": id, "ok": result.is_ok(),
+        "name": result.as_ref().ok().and_then(|v| v["name"].as_str()).unwrap_or(""),
+        "error": result.as_ref().err().cloned().unwrap_or_default(),
+    });
+    let tab = tab.to_string();
+    super::exec::spawn(async move {
+        let _ = cdp::call(
+            &tab,
+            "Runtime.evaluate",
+            json!({"expression": format!("window.postMessage({message}, location.origin)")}),
+        )
+        .await;
+    });
+}
+
+/// Saves storage an extension's content script changed (extshim.js).
+pub fn storage_from_page(payload: &str) {
+    let Ok(change) = serde_json::from_str::<Value>(payload) else {
+        return;
+    };
+    let id = change["id"].as_str().unwrap_or("");
+    let mut all = load();
+    let Some(known) = all.iter_mut().find(|e| e.id == id) else {
+        return;
+    };
+    if let Some(values) = change["set"].as_object() {
+        for (key, value) in values {
+            known.storage.insert(key.clone(), value.clone());
+        }
+    }
+    for key in change["remove"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+    {
+        known.storage.remove(key);
+    }
+    // Bounded: an extension cannot fill the profile through its storage.
+    if serde_json::to_vec(&known.storage).map_or(0, |b| b.len()) <= 5 * 1024 * 1024 {
+        let _ = save(&all);
+    }
+}
+
+/// The extension's manifest and its messages in the default language.
+fn manifest_and_messages(folder: &Path) -> (Value, Value) {
+    let manifest: Value = std::fs::read(folder.join("manifest.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or(Value::Null);
+    let locale = manifest["default_locale"]
+        .as_str()
+        .unwrap_or("en")
+        .to_string();
+    let mut messages = serde_json::Map::new();
+    for lang in [locale.as_str(), "en"] {
+        let file = folder.join("_locales").join(lang).join("messages.json");
+        if let Some(Value::Object(entries)) = std::fs::read(&file)
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+        {
+            for (key, value) in entries {
+                messages.entry(key.to_lowercase()).or_insert(value);
+            }
+        }
+    }
+    (manifest, Value::Object(messages))
+}
+
+/// Whether an extension needs its background page, which AgentGo does not run.
+fn needs_background(folder: &Path) -> bool {
+    let (manifest, _) = manifest_and_messages(folder);
+    !manifest["background"].is_null()
+}
+
 /// Runs the enabled extensions' scripts that match the tab's page. Called
 /// when a document has loaded.
 pub async fn inject(tab: String) {
     let url = state::tab_url(&tab);
+    // The Web Store shows which extensions AgentGo already has.
+    if url.starts_with("https://chromewebstore.google.com/") {
+        let ids: Vec<String> = load().into_iter().map(|e| e.id).collect();
+        let _ = cdp::call(
+            &tab,
+            "Runtime.evaluate",
+            json!({"expression": format!("window.__agentgoInstalled = {}", json!(ids))}),
+        )
+        .await;
+    }
     let mut code = Vec::new();
     for extension in load().into_iter().filter(|extension| extension.enabled) {
         for script in &extension.scripts {
@@ -459,6 +582,7 @@ pub async fn inject(tab: String) {
     else {
         return;
     };
+    let mut shimmed = std::collections::HashSet::new();
     for (id, script) in code {
         let Ok(world) = cdp::call(
             &tab,
@@ -472,6 +596,32 @@ pub async fn inject(tab: String) {
         let Some(context) = world["executionContextId"].as_i64() else {
             continue;
         };
+        // chrome.runtime, chrome.i18n and chrome.storage for its scripts.
+        if shimmed.insert(id.clone()) {
+            if let Some(extension) = load().into_iter().find(|e| e.id == id) {
+                let (manifest, messages) = manifest_and_messages(Path::new(&extension.source));
+                let _ = cdp::call(
+                    &tab,
+                    "Runtime.addBinding",
+                    json!({"name": "__agExt", "executionContextId": context}),
+                )
+                .await;
+                let shim = format!(
+                    "{}({},{},{},{});",
+                    include_str!("extshim.js"),
+                    json!(id),
+                    manifest,
+                    messages,
+                    json!(extension.storage)
+                );
+                let _ = cdp::call(
+                    &tab,
+                    "Runtime.evaluate",
+                    json!({"expression": shim, "contextId": context}),
+                )
+                .await;
+            }
+        }
         let css = serde_json::to_string(&script.css).unwrap_or_default();
         let source = format!(
             "(() => {{ const css = {css}; if (css) {{ const s = document.createElement('style'); s.textContent = css; (document.head || document.documentElement).appendChild(s); }} }})();\n{}",

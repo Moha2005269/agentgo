@@ -102,10 +102,15 @@ pub(super) fn is_read_only(method: &str) -> bool {
 
 /// Settings only the human operator may change: they widen what agents can do,
 /// or they are the person's own browser preferences.
-const OPERATOR_SETTINGS: [&str; 15] = [
+const OPERATOR_SETTINGS: [&str; 20] = [
+    "autoUpdate",
+    "updateManifest",
     "vpn",
     "adBlock",
     "fingerprintProtection",
+    "dangerousSiteProtection",
+    "blockThirdPartyCookies",
+    "stripTracking",
     "nativeControl",
     "sitePermissions",
     "searchEngine",

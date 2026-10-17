@@ -138,6 +138,18 @@ wrap_dev_tools_message_observer! {
                     super::exec::spawn(super::misc::inject_user_scripts(tab));
                 }
             }
+            if method == "Runtime.executionContextCreated"
+                && params["context"]["auxData"]["isDefault"] == true
+            {
+                // A new document's own world: make sure it is protected even
+                // when it started before the protection script was registered.
+                let tab = CDP.with(|cdp| {
+                    tab_for_browser(&mut cdp.borrow_mut(), browser_id).map(|(id, _)| id.clone())
+                });
+                if let (Some(tab), Some(context)) = (tab, params["context"]["id"].as_i64()) {
+                    super::exec::spawn(super::fingerprint::ensure(tab, context));
+                }
+            }
             if method == "Runtime.bindingCalled" {
                 let tab = CDP.with(|cdp| {
                     tab_for_browser(&mut cdp.borrow_mut(), browser_id).map(|(id, _)| id.clone())
@@ -146,6 +158,10 @@ wrap_dev_tools_message_observer! {
                     (params["name"] == "__agReport", tab.clone(), params["payload"].as_str())
                 {
                     super::accounts::page_report(&tab, payload);
+                    return;
+                }
+                if let (true, Some(payload)) = (params["name"] == "__agExt", params["payload"].as_str()) {
+                    super::extensions::storage_from_page(payload);
                     return;
                 }
                 // A binding an agent added (runtime.add_binding).
@@ -392,6 +408,11 @@ fn enable(tab_id: &str, host: &BrowserHost) {
             json!({"source": AGENT_JS, "worldName": WORLD}),
         ),
     ];
+    // The Chrome Web Store's own "Add to Chrome" installs into AgentGo.
+    setup.push((
+        "Page.addScriptToEvaluateOnNewDocument",
+        json!({"source": include_str!("webstore.js")}),
+    ));
     // The page agent reports to the browser through a function that exists
     // only in its own world; pages cannot call or see it.
     setup.push((
@@ -451,7 +472,31 @@ pub fn detach(tab_id: &str) -> impl std::future::Future<Output = ()> {
     }
 }
 
+thread_local! {
+    /// When AgentGo last sent DevTools input (an agent's pointer or keys) to
+    /// each tab. A click the person makes never comes this way.
+    static LAST_INPUT: std::cell::RefCell<HashMap<String, std::time::Instant>> =
+        std::cell::RefCell::new(HashMap::new());
+}
+
+/// Whether DevTools input reached this tab within the last `ms`
+/// milliseconds: a user gesture then may have been an agent's, not the
+/// person's.
+pub fn agent_input_recent(tab_id: &str, ms: u64) -> bool {
+    LAST_INPUT.with(|last| {
+        last.borrow()
+            .get(tab_id)
+            .is_some_and(|at| at.elapsed() < std::time::Duration::from_millis(ms))
+    })
+}
+
 fn send(tab_id: &str, method: &str, params: Value) -> Result<Slot<CdpResult>, String> {
+    if method.starts_with("Input.") {
+        LAST_INPUT.with(|last| {
+            last.borrow_mut()
+                .insert(tab_id.to_string(), std::time::Instant::now())
+        });
+    }
     let host = host_for(tab_id).ok_or_else(|| format!("tab {tab_id} has no browser"))?;
     let enabled = CDP.with(|cdp| cdp.borrow().tabs.get(tab_id).is_some_and(|tab| tab.enabled));
     if !enabled {

@@ -121,6 +121,84 @@ fn install_dir() -> PathBuf {
         .unwrap_or_default()
 }
 
+thread_local! {
+    /// What the automatic update knows: {available, staged, notes, error}.
+    static UPDATE: RefCell<Value> = RefCell::new(json!({}));
+}
+
+fn set_update_state(value: Value) {
+    UPDATE.with(|u| *u.borrow_mut() = value.clone());
+    let script = format!("window.__agentgoUpdate && window.__agentgoUpdate({value});");
+    state::run_in_shell(&script);
+}
+
+/// Only an installed, packaged copy replaces its own files: never a
+/// development build or a test run.
+fn updates_itself() -> bool {
+    if std::env::var_os("AGENTGO_UPDATE_TEST").is_some() {
+        return true;
+    }
+    let options = &state::state().options;
+    !cfg!(debug_assertions)
+        && !options.stdio
+        && !options.smoke
+        && install_dir().join("SHA256SUMS.txt").is_file()
+}
+
+/// Checks for a new release shortly after start and every six hours. With
+/// automatic updates on, a new release is downloaded and checked in the
+/// background and swapped in when AgentGo closes; otherwise the toolbar
+/// offers it.
+pub fn start_update_checks() {
+    if !updates_itself() {
+        return;
+    }
+    // Tests shorten the wait before the first check.
+    let first = std::env::var("AGENTGO_UPDATE_DELAY_MS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|_| std::env::var_os("AGENTGO_UPDATE_TEST").is_some())
+        .unwrap_or(20_000);
+    exec::spawn(async move {
+        exec::sleep(first).await;
+        loop {
+            check_and_stage().await;
+            exec::sleep(6 * 60 * 60 * 1000).await;
+        }
+    });
+}
+
+async fn check_and_stage() {
+    let found = match manifest(&json!({})).await {
+        Ok(found) => found,
+        Err(fail) => {
+            state::log_event(&format!("AG-UPDATE check-failed {}", fail.message));
+            return;
+        }
+    };
+    let latest = found["version"].as_str().unwrap_or("").to_string();
+    if !newer(&latest, env!("CARGO_PKG_VERSION")) {
+        return;
+    }
+    state::log_event(&format!("AG-UPDATE available {latest}"));
+    set_update_state(json!({"available": latest, "staged": false, "notes": found["notes"]}));
+    if state::settings_snapshot()["autoUpdate"] == false {
+        return;
+    }
+    let shell = Caller::shell();
+    match command(&shell, "browser.update_stage", &json!({"apply": "on_exit"})).await {
+        Ok(_) => state::log_event(&format!(
+            "AG-UPDATE staged {latest} (swapped in when AgentGo closes)"
+        )),
+        Err(fail) => {
+            state::log_event(&format!("AG-UPDATE stage-failed {}", fail.message));
+            set_update_state(
+                json!({"available": latest, "staged": false, "error": fail.message, "notes": found["notes"]}),
+            );
+        }
+    }
+}
+
 fn version_parts(text: &str) -> Vec<u64> {
     text.trim_start_matches('v')
         .split(['.', '-'])
@@ -209,6 +287,10 @@ fn signature_valid(manifest: &Value, key_hex: &str) -> bool {
         .is_ok()
 }
 
+/// Where releases publish their signed manifest.
+const DEFAULT_MANIFEST: &str =
+    "https://github.com/Moha2005269/agentgo/releases/latest/download/update-manifest.json";
+
 async fn manifest(params: &Value) -> Result<Value, Fail> {
     let url = params["manifest"]
         .as_str()
@@ -216,13 +298,10 @@ async fn manifest(params: &Value) -> Result<Value, Fail> {
         .or_else(|| {
             state::settings_snapshot()["updateManifest"]
                 .as_str()
+                .filter(|u| !u.trim().is_empty())
                 .map(str::to_string)
         })
-        .ok_or_else(|| {
-            Fail::params(
-                "no update address: the person sets updateManifest in settings (or pass manifest)",
-            )
-        })?;
+        .unwrap_or_else(|| DEFAULT_MANIFEST.to_string());
     let body = fetch(&url, None).await?;
     let value: Value = serde_json::from_slice(&body)
         .map_err(|e| Fail::params(format!("the manifest is not JSON: {e}")))?;
@@ -278,6 +357,39 @@ fn schedule_swap(
     backup: &std::path::Path,
     relaunch: bool,
 ) -> Result<(), Fail> {
+    // Never replace a folder that holds the person's data (profiles, saved
+    // sign-ins, accounts, history, settings): those live apart from the
+    // program, in AgentGo's data folder, and an update never touches them.
+    let data = state::data_dir();
+    let data_root = data.parent().unwrap_or(&data);
+    let install = install_dir();
+    if data_root.starts_with(&install) || install.starts_with(data_root) {
+        return Err(Fail::new(
+            ErrorCode::PolicyDenied,
+            "the install folder holds AgentGo's profile data; the update was not applied",
+        ));
+    }
+    // An installed copy updates through AgentGo Setup, which shows the
+    // update (same film as installing); a portable copy swaps quietly.
+    let setup = install.join("AgentGo-Setup.exe");
+    if setup.is_file() {
+        let mut args = vec![
+            "--update".to_string(),
+            "--install".into(),
+            install.display().to_string(),
+            "--staged".into(),
+            staged.display().to_string(),
+            "--backup".into(),
+            backup.display().to_string(),
+            "--wait-pid".into(),
+            std::process::id().to_string(),
+        ];
+        if relaunch {
+            args.push("--relaunch".into());
+        }
+        spawn_detached(&setup.display().to_string(), &args, &[])?;
+        return Ok(());
+    }
     let script = swap_script()?;
     let mut args = vec![
         "-NoProfile".to_string(),
@@ -373,6 +485,7 @@ pub fn handles(method: &str) -> bool {
             | "browser.resource_budget"
             | "browser.remote_instance"
             | "browser.update_check"
+            | "browser.update_status"
             | "browser.update_stage"
             | "browser.update_rollback"
             | "security.status"
@@ -419,6 +532,10 @@ pub async fn command(caller: &Caller, method: &str, params: &Value) -> Reply {
                 &[
                     ("AGENTGO_DATA_ROOT", root.as_str()),
                     ("AGENTGO_BACKGROUND", "1"),
+                    // Start the browser itself, not a launcher that starts it
+                    // again without a console and exits: the pid reported
+                    // below must be the browser's.
+                    ("AGENTGO_NO_CONSOLE", "1"),
                     ("AGENTGO_REMOTE_DEBUGGING_PORT", ""),
                     ("AGENTGO_UNSAFE_DEVTOOLS", ""),
                 ],
@@ -431,7 +548,9 @@ pub async fn command(caller: &Caller, method: &str, params: &Value) -> Reply {
                         .is_some_and(|id| !before.iter().any(|b| b == id))
                 }) {
                     let mut out = new;
-                    out["pid"] = json!(pid);
+                    if !out["pid"].is_u64() {
+                        out["pid"] = json!(pid);
+                    }
                     out["attach"] = json!(
                         "connect to the pipe and send session.hello with the token from tokenFile"
                     );
@@ -634,10 +753,24 @@ pub async fn command(caller: &Caller, method: &str, params: &Value) -> Reply {
                 "control": sessions::status()["control"],
             }))
         }
+        "browser.update_status" => {
+            let mut status = UPDATE.with(|u| u.borrow().clone());
+            status["current"] = json!(env!("CARGO_PKG_VERSION"));
+            status["automatic"] = json!(state::settings_snapshot()["autoUpdate"] != false);
+            status["selfUpdating"] = json!(updates_itself());
+            Ok(status)
+        }
         "browser.update_check" => {
             let found = manifest(params).await?;
             let current = env!("CARGO_PKG_VERSION");
             let latest = found["version"].as_str().unwrap_or("");
+            if newer(latest, current) {
+                let staged = UPDATE
+                    .with(|u| u.borrow()["staged"] == true && u.borrow()["available"] == latest);
+                set_update_state(
+                    json!({"available": latest, "staged": staged, "notes": found["notes"]}),
+                );
+            }
             Ok(
                 json!({"current": current, "latest": latest, "available": newer(latest, current), "notes": found["notes"], "url": found["url"]}),
             )
@@ -661,6 +794,30 @@ pub async fn command(caller: &Caller, method: &str, params: &Value) -> Reply {
             }
             let updates = install_dir().join("updates");
             std::fs::create_dir_all(&updates).map_err(|e| Fail::internal(e.to_string()))?;
+            // Already downloaded and checked (the automatic update): use it.
+            let ready = updates.join(&version);
+            let pending_version = std::fs::read(updates.join("pending.json"))
+                .ok()
+                .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+                .and_then(|p| p["version"].as_str().map(str::to_string));
+            if pending_version.as_deref() == Some(version.as_str())
+                && ready.join("agentgo.exe").is_file()
+            {
+                let apply = params["apply"].as_str().unwrap_or("later");
+                if apply == "now" || apply == "on_exit" {
+                    schedule_swap(&ready, &updates.join("previous"), apply == "now")?;
+                    if apply == "now" {
+                        exec::spawn(async {
+                            exec::sleep(300).await;
+                            state::request_quit(0);
+                        });
+                    }
+                }
+                set_update_state(json!({"available": version, "staged": true, "applying": apply}));
+                return Ok(
+                    json!({"staged": true, "version": version, "path": ready.display().to_string(), "apply": apply, "reused": true}),
+                );
+            }
             let zip = updates.join(format!("{version}.zip"));
             fetch(found["url"].as_str().unwrap_or(""), Some(&zip)).await?;
             let bytes = std::fs::read(&zip).map_err(|e| Fail::internal(e.to_string()))?;
@@ -679,6 +836,9 @@ pub async fn command(caller: &Caller, method: &str, params: &Value) -> Reply {
             }
             lift_single_root(&staged);
             let pending = json!({"version": version, "staged": staged.display().to_string(), "sha256": digest});
+            set_update_state(
+                json!({"available": version, "staged": true, "notes": found["notes"]}),
+            );
             let _ = std::fs::write(updates.join("pending.json"), pending.to_string());
             let apply = params["apply"].as_str().unwrap_or("later");
             if apply == "now" || apply == "on_exit" {
@@ -703,6 +863,14 @@ pub async fn command(caller: &Caller, method: &str, params: &Value) -> Reply {
                 "devtoolsPort": super::app::devtools_port_open(),
                 "adBlock": settings["adBlock"],
                 "adBlocker": super::adblock::status(),
+                "dangerousSites": super::safesite::status(),
+                "fingerprintProtection": settings["fingerprintProtection"] != false,
+                // The hidden per-run symbol a protected page carries (for tests).
+                "fingerprintMarker": format!("{}.fp", super::adblock::page_marker()),
+                "thirdPartyCookiesBlocked": settings["blockThirdPartyCookies"] != false,
+                "trackingParametersRemoved": settings["stripTracking"] != false,
+                "globalPrivacyControl": true,
+                "webrtc": "default_public_interface_only",
                 "vpn": settings["vpn"],
                 "agentFileAccess": {
                     "folders": options.upload_dirs.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),

@@ -24,7 +24,7 @@ Over MCP the same text is served by `browser_guide` (`topic`: `start`,
 
 | You are | Do this |
 |---|---|
-| An MCP host (Claude Code, Codex, ...) | `claude mcp add agentgo -- agentgo mcp`. Use the `browser_*` tools; `browser_call` reaches every command by name. |
+| An MCP host (Claude Code, Codex, ...) | `claude mcp add --scope user agentgo -- agentgo mcp`. Use the `browser_*` tools; `browser_call` reaches every command by name. |
 | Anything that runs a shell | `agentgo call <method> '<json params>'` talks to the running browser. |
 | A program | Start `agentgo run --stdio` and exchange one JSON object per line: `{"v":1,"id":1,"method":"observe.page","params":{}}` and `{"v":1,"id":1,"ok":true,"result":{...}}`. |
 
@@ -89,6 +89,11 @@ Rules that save you turns:
 - **CAPTCHA and human checks.** You get `handoff.required`. Call
   `handoff.wait`; the person is notified and solves it in the same tab. Never
   try to solve or avoid one.
+- **Dangerous sites.** A known malware or phishing site, or an address that
+  imitates a well-known one, is stopped before it loads: the reply's load
+  error starts with `AGENTGO_DANGEROUS_` or `AGENTGO_DECEPTIVE_SITE` and the
+  tab shows a warning. Do not try another address for the same site and do
+  not click the warning; tell the person what you were trying to open.
 - **Pause and Stop.** The person can pause or stop you at any time; you then
   get `unauthorized` until they resume.
 - **Accounts.** You may use the accounts the person is signed in to, unless

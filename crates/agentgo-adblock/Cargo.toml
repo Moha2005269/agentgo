@@ -13,3 +13,6 @@ publish.workspace = true
 # for a verdict on its network threads, so it must stay off.
 adblock = { version = "0.13.3", default-features = false, features = ["embedded-domain-resolver", "full-regex-handling"] }
 serde_json = "1"
+# Look-alike site detection: IDN decoding and the public suffix list.
+idna = "1.1"
+psl = "2"

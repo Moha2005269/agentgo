@@ -22,7 +22,22 @@ same renderer sandbox the package ships.
 | Zip extraction cannot escape its folder | unit tests `zip_slip_is_refused`, `zip_extracts_normal_files` |
 | Downloads are marked and scanned; flagged files do not open | `tests/integration/safety_reader_e2e.js`, `runtime/scan.rs` unit test |
 | Renderers run sandboxed | Check by hand: start the bundle, then read each `agentgo.exe --type=renderer` token with Process Explorer; integrity must be Untrusted |
+| Fingerprint: hooks read as native code, blank iframes protected, per-site noise for the person, one stable fingerprint for an agent that differs from the person's and survives restarts | `tests/integration/fingerprint_e2e.js` |
+| Fingerprint protection on the first page of a tab and across mode switches | `security_live_e2e.js` (fingerprint checks), D80 in `docs/issues-log.md` |
+| Certificate errors are never bypassed (expired, self-signed, wrong host, untrusted root, revoked) | `tests/integration/security_live_e2e.js` (badssl.com, live) |
+| Known malware and phishing sites are stopped before the request; look-alike addresses are recognised; agents cannot open a blocked page, even after disconnecting | `security_live_e2e.js` (live), unit tests in `crates/agentgo-adblock/src/threats.rs` (homographs, brand subdomains, brand+lure, brands' own and country domains never flagged); survey over the Tranco top 100,000 with `AGENTGO_DOMAINS=... cargo test -p agentgo-adblock -- --ignored survey` (0 look-alike false positives) |
+| Tracking parameters removed, `Sec-GPC: 1` sent, third-party cookies blocked, http upgraded, notification requests refused | `security_live_e2e.js` (httpbin.org/headers for the header), `safesite.rs` unit test for the parameters |
+| WebRTC reveals no private or extra addresses | `security_live_e2e.js` (only a server-reflexive candidate) |
+| Installer: package checked against its SHA-256 and every file against `SHA256SUMS.txt`; zip entries cannot leave the install folder | `installer/src/main.rs` (`install`, `extract`, `check_sums`) |
 | Ad blocker blocks and still lets sites work | `adblock_e2e`, `adblock_live_e2e` and the public tester pages (see `docs/issues-log.md`) |
+
+Live public testers (`node scripts\dev
+un-integration.js --live security_live_e2e`,
+report in `target/security-live-report.json`), last run 2026-10-17: badssl
+5/5 blocked, WebRTC one `srflx` candidate only, adblock-tester.com 100/100,
+EFF Cover Your Tracks "strong protection against Web tracking", listed malware
+and phishing sites and a PayPal look-alike blocked before loading, GPC header
+seen by httpbin.org, tracking parameters removed, http upgraded.
 
 Not covered by automation: Alt+Tab and taskbar behaviour on a real desktop,
 and Authenticode signing.

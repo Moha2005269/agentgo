@@ -3,7 +3,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Moha2005269/agentgo/releases/latest"><b>Download for Windows 11</b></a>
+  <a href="https://github.com/Moha2005269/agentgo/releases/latest/download/AgentGo-Setup.exe"><img alt="Download AgentGo Setup for Windows 11" src="https://img.shields.io/badge/Download-AgentGo%20Setup%20for%20Windows%2011-0a66ff?style=for-the-badge&labelColor=0550d6&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAyNCAyNCc%2BPHBhdGggZmlsbD0nd2hpdGUnIGQ9J00xMSAzaDJ2OS42bDMuMy0zLjMgMS40IDEuNEwxMiAxNi40bC01LjctNS43IDEuNC0xLjQgMy4zIDMuM3pNNCAxOGgxNnYySDR6Jy8%2BPC9zdmc%2B" height="48"></a>
+</p>
+<p align="center"><sub>One click downloads the installer. Run it and it sets everything up: no zip, no release page.</sub></p>
+
+<p align="center">
+  <a href="#install">Install options</a>
   &nbsp;·&nbsp; <a href="#watch-an-agent-work">Watch it work</a>
   &nbsp;·&nbsp; <a href="#connect-your-agent">Connect your agent</a>
   &nbsp;·&nbsp; <a href="#security-and-privacy">Security</a>
@@ -37,7 +42,7 @@ Brave's open-source blocking engine with **18 filter lists**: EasyList, EasyPriv
 <td width="50%" valign="top">
 
 ### A browser that fits you and your agent
-The agent works with its own pointer and keyboard, drawn on the page and never your mouse, in a window that stays behind yours. You see every click and keystroke, and you can pause or stop it in one click. Everything else is a normal browser: tabs, bookmarks, history, downloads, extensions from the Chrome Web Store.
+The agent works with its own pointer and keyboard, drawn on the page and never your mouse, in a window that stays behind yours. You see every click and keystroke, and you can pause or stop it in one click. Everything else is a normal browser: tabs, bookmarks, history, downloads, and extensions from the Chrome Web Store (their page scripts run; background pages and pop-ups don't yet).
 
 </td>
 </tr>
@@ -97,33 +102,41 @@ act.fill {ref: 1, text: "…"} →
 
 ## Install
 
-1. Download `AgentGo-<version>-win64.zip` from the [latest release](https://github.com/Moha2005269/agentgo/releases/latest) and check it against the published SHA-256.
-2. Unzip it anywhere and run `agentgo.exe`. It works from the folder and installs nothing.
-3. Optional: run `Install-AgentGo.ps1` for a Start-menu entry, PATH and Claude Code registration (current user only, no administrator rights, `-Uninstall` removes it).
+<p>
+  <a href="https://github.com/Moha2005269/agentgo/releases/latest/download/AgentGo-Setup.exe"><img alt="Download AgentGo Setup" src="https://img.shields.io/badge/Download-AgentGo%20Setup-0a66ff?style=for-the-badge&labelColor=0550d6&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAyNCAyNCc%2BPHBhdGggZmlsbD0nd2hpdGUnIGQ9J00xMSAzaDJ2OS42bDMuMy0zLjMgMS40IDEuNEwxMiAxNi40bC01LjctNS43IDEuNC0xLjQgMy4zIDMuM3pNNCAxOGgxNnYySDR6Jy8%2BPC9zdmc%2B" height="40"></a>
+  &nbsp;
+  <a href="https://github.com/Moha2005269/agentgo/releases/latest/download/AgentGo-Setup-full.exe"><img alt="Offline installer" src="https://img.shields.io/badge/Offline%20installer-full%20package-1f2937?style=for-the-badge&labelColor=111827&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAyNCAyNCc%2BPHBhdGggZmlsbD0nd2hpdGUnIGQ9J00xMSAzaDJ2OS42bDMuMy0zLjMgMS40IDEuNEwxMiAxNi40bC01LjctNS43IDEuNC0xLjQgMy4zIDMuM3pNNCAxOGgxNnYySDR6Jy8%2BPC9zdmc%2B" height="40"></a>
+</p>
 
-```powershell
-powershell -ExecutionPolicy Bypass -File Install-AgentGo.ps1
-```
+**AgentGo Setup** (recommended). Click the blue button: it downloads `AgentGo-Setup.exe` straight away. Run it. A small card floats onto your desktop and unfolds into the installer: accept the license, pick a folder, shortcuts and PATH, connect Claude Code, Codex or Droid in one click, choose theme, search engine and privacy settings, then bring over bookmarks, history, passwords and open tabs from Chrome, Edge, Brave or Firefox. It installs for your Windows user only (no administrator rights), checks the download against its published SHA-256 and every file against `SHA256SUMS.txt`, and adds an uninstaller to *Settings, Apps*.
+
+- No internet on the target PC? Use [`AgentGo-Setup-full.exe`](https://github.com/Moha2005269/agentgo/releases/latest/download/AgentGo-Setup-full.exe), which carries the browser inside.
+- Deploying to many PCs? `AgentGo-Setup-full.exe --silent` installs with the defaults (privacy and security on) and no window; add `--dir <folder>`, `--no-shortcuts`, `--no-path` or `--no-agents`. `--uninstall --silent [--remove-profile]` removes it. The log is `%TEMP%\agentgo-setup.log`; the exit code is 0 on success.
+- Prefer a folder? Download `AgentGo-<version>-win64.zip`, unzip it anywhere and run `agentgo.exe`. `Install-AgentGo.ps1` inside it does the Start-menu entry, PATH and Claude Code registration from a terminal (`-Uninstall` removes it).
 
 Your profile (history, bookmarks, cookies, saved sign-ins) lives under `%LOCALAPPDATA%\AgentGo`. The executables are not Authenticode-signed yet, so Windows SmartScreen may ask once.
 
 ## Connect your agent
 
 ```powershell
-claude mcp add agentgo -- C:\path\to\agentgo.exe mcp     # any MCP host
+claude mcp add --scope user agentgo -- C:\path\to\agentgo.exe mcp   # Claude Code, every project
 agentgo.exe call observe.page                              # any shell
 agentgo.exe run --stdio                                    # programs: JSON lines
 ```
 
-Agents should read `skills/agentgo/SKILL.md` first (over MCP: `browser_guide`). Every command is listed in `skills/agentgo/references/commands.md`. `agentgo setup droid|claude|codex|json` registers AgentGo with an agent host for you.
+Agents should read `skills/agentgo/SKILL.md` first (over MCP: `browser_guide`). Every command is listed in `skills/agentgo/references/commands.md`. `agentgo setup claude|codex|droid|json` registers AgentGo with an agent host for you (Setup does this too). Checked with each host's own health check: `claude mcp list`, `codex mcp get agentgo` and `droid mcp list` all report it connected.
 
 ## Security and privacy
 
 - **No telemetry, no ads, no accounts.** AgentGo does not phone home. What it connects to is documented in [`docs/NETWORK_CALLS.md`](docs/NETWORK_CALLS.md).
 - **Sandboxed**: web pages render in untrusted-integrity processes (CEF `bootstrap.exe` + `agentgo.dll`).
-- **Fingerprint protection**: per-session noise on the signals trackers use to recognise you.
+- **Fingerprint protection that knows who is browsing**: while you browse, canvas, WebGL and audio read-backs get noise that changes every session and differs per site, so nothing links your visits. When an agent connects, the browser switches to the agent's own fingerprint: unique to your install, the same on every site and across restarts, and never the same as yours, so an agent's visits can't be tied to you and sites see one consistent visitor. The protection reads as native code and also covers blank iframes, popups and offscreen canvases.
+- **Dangerous sites stopped at the door**: before any page loads, AgentGo checks it against 35,000+ known malware and phishing sites and looks for imitations no list knows yet: look-alike letters from other alphabets, `paypal.com.verify-account.top`-style addresses and brand-plus-"login" domains. All on your computer: no address is ever sent to Google or anyone else. Agents can never click past the warning.
+- **Private by default**: third-party cookies blocked, tracking parameters (`fbclid`, `gclid`, `utm_*` ...) stripped from links, the Global Privacy Control signal sent, plain http upgraded to https, notifications refused.
+- **WebRTC**: pages only ever learn your public address; private networks and VPN adapters stay hidden.
+- **Checked against public testers** (`security_live_e2e`): badssl.com certificate errors 5/5 blocked, adblock-tester.com 100/100, EFF Cover Your Tracks "strong protection against Web tracking".
 - **You stay the admin**: payments always ask, CAPTCHAs are handed to you (never solved), every action is logged locally, and typed text and cookie values never enter the log.
-- **Signed updates**: updates are opt-in and only accepted when signed with the release key (Ed25519).
+- **Signed automatic updates**: new releases install themselves when you close AgentGo, only when signed with the release key (Ed25519) and matching their SHA-256. Turn it off in Settings and an Update button appears instead.
 - **Prompt-injection scanner**: page text given to an agent is checked for instructions aimed at the agent.
 - **How each claim is tested**: [`docs/SECURITY_TESTING.md`](docs/SECURITY_TESTING.md). Threat model: [`docs/threat-model.md`](docs/threat-model.md). Report a vulnerability: [`SECURITY.md`](SECURITY.md).
 
@@ -131,8 +144,9 @@ Agents should read `skills/agentgo/SKILL.md` first (over MCP: `browser_guide`). 
 
 - Windows 11 x64 only.
 - The ad blocker and security claims above come from our own testing. Independent benchmarks against other browsers are not published yet.
-- Chrome's newest app-bound (v20) passwords can't be decrypted by any other program; export them as CSV and use *Import passwords from a CSV file*. Firefox passwords import only when no primary password is set.
+- Chrome seals its newest passwords (app-bound encryption) so only Chrome can read them. The import says how many, opens Chrome's export page for you and takes the CSV it saves. Firefox passwords import only when no primary password is set.
 - Translation uses Google's translation service. Notifications are refused for every site. There is no VPN in this release.
+- Extensions run their page scripts with `chrome.runtime`, `chrome.i18n` and `chrome.storage`; background pages, pop-ups and toolbar actions are not supported yet, so extensions that depend on them (password managers, for example) do little.
 - Cross-origin iframes are not observed or acted in.
 - Laya is not bundled yet.
 - Real Google, GitHub and Yandex API sign-in has not been tried live; the OAuth flow is tested against a mock provider.
@@ -146,7 +160,9 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Runtime -Sandbox -Re
 powershell -ExecutionPolicy Bypass -File scripts\package.ps1 -Release
 ```
 
-Tests: `cargo test --workspace --offline` and `node scripts\dev\run-integration.js` (end-to-end files on a private desktop). Engine: CEF 152 (Chromium 152.0.7977.54), pinned and hash-verified; Rust 1.98.1 MSVC; cef-rs pinned by commit.
+Installers: `powershell -File scripts\build-installer.ps1` writes `dist\AgentGo-Setup.exe` and, from the newest package zip, `dist\AgentGo-Setup-full.exe` (source in `installer/`).
+
+Tests: `cargo test --workspace --offline` and `node scripts\dev\run-integration.js` (end-to-end files on a private desktop; `--live` adds public sites, including the security testers in `security_live_e2e`). Engine: CEF 152 (Chromium 152.0.7977.54), pinned and hash-verified; Rust 1.98.1 MSVC; cef-rs pinned by commit.
 
 Layout: `crates/` (Rust workspace), `ui/` (browser chrome and panels), `skills/agentgo/` (the agent's guide), `tests/integration/`, `docs/`.
 
@@ -158,7 +174,7 @@ Thank you to:
 
 - **Brave** for [adblock-rust](https://github.com/brave/adblock-rust) and [adblock-resources](https://github.com/brave/adblock-resources), the engine behind our blocker.
 - **The Chromium project and the CEF team** (Marshall Greenblatt and contributors), and **Tauri** for [cef-rs](https://github.com/tauri-apps/cef-rs).
-- **Raymond Hill and the uBlock Origin community**, **EasyList and EasyPrivacy**, **AdGuard**, **Peter Lowe**, **abuse.ch (URLhaus)** and **HaGeZi** for the filter lists.
+- **Raymond Hill and the uBlock Origin community**, **EasyList and EasyPrivacy**, **AdGuard**, **Peter Lowe**, **abuse.ch (URLhaus)** and **HaGeZi** for the filter lists, and **malware-filter** with **OpenPhish**, **PhishTank** and **IPThreat** for the phishing data.
 - **Dark Reader** (MIT) and **Fuse.js** (Apache-2.0).
 - **The Rust community** and every crate author we depend on. The full list is in [`NOTICE.md`](NOTICE.md), [`third_party/`](third_party/) and [`docs/licenses.md`](docs/licenses.md).
 

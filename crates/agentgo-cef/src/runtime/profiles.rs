@@ -188,12 +188,26 @@ pub fn route_context(context: &cef::RequestContext, name: &str, proxy: Option<&V
         }
     });
     let _ = apply(context, "proxy", &value);
+    // Without a proxy WebRTC uses only the default route's public address
+    // (like Brave), so other interfaces and VPN adapters stay hidden.
     let policy = if proxy.is_some() {
         "disable_non_proxied_udp"
     } else {
-        "default"
+        "default_public_interface_only"
     };
     let _ = apply(context, "webrtc.ip_handling_policy", &json!(policy));
+}
+
+/// Third-party cookies (cookies of other sites embedded in a page, the
+/// classic cross-site tracker) are blocked unless the person turned that off.
+pub fn apply_cookie_policy(context: &cef::RequestContext) {
+    let block = state::settings_snapshot()["blockThirdPartyCookies"] != false;
+    let _ = apply(context, "profile.block_third_party_cookies", &json!(block));
+    let _ = apply(
+        context,
+        "profile.cookie_controls_mode",
+        &json!(if block { 1 } else { 0 }),
+    );
 }
 
 /// Opens (or returns) a side profile's context.

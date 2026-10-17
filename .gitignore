@@ -34,3 +34,6 @@ Thumbs.db
 # Signing keys must never be committed
 *.pem
 .agentgo-signing/
+
+# installer build output
+installer/target/

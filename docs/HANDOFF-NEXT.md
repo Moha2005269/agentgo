@@ -1,5 +1,10 @@
 # Handoff: tools finished; next is the look and the installer (2026-10-15)
 
+> **Update 2026-10-17 (0.1.1):** the installer is done (`installer/`,
+> `scripts/build-installer.ps1`), CI is green again, fingerprint protection,
+> import and MCP registration were fixed (D78-D83 in `docs/issues-log.md`).
+> Next: benchmarks, when the owner says so; Laya after that.
+
 Read first: `docs/STATUS.md` (how to build and test), `docs/issues-log.md`
 (every problem met, D1–D53), `docs/tool-coverage.md` (regenerate with
 `node scripts/dev/coverage.js --write`).

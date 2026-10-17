@@ -163,9 +163,12 @@ cef::wrap_resource_request_handler! {
             &self,
             _browser: Option<&mut Browser>,
             _frame: Option<&mut Frame>,
-            _request: Option<&mut Request>,
+            request: Option<&mut Request>,
             _callback: Option<&mut Callback>,
         ) -> ReturnValue {
+            if let Some(request) = request {
+                add_privacy_signal(request);
+            }
             ReturnValue::CONTINUE
         }
 
@@ -301,18 +304,24 @@ pub fn inject(frame: &mut Frame, scripts: bool) {
     // Constructed style sheets are not subject to a page's content security
     // policy, unlike a <style> element; the element is the fallback. The
     // scriptlets go in as plain code, not through eval, for the same reason.
+    // "Already applied" is remembered under a hidden, per-run symbol, not a
+    // named global a page could look for.
+    let mark = format!(
+        "(()=>{{const k=Symbol.for('{}');return window[k]||(Object.defineProperty(window,k,{{value:{{}}}}),window[k])}})()",
+        page_marker()
+    );
     let mut code = format!(
-        "(function(css){{try{{if(!css||window.__agentgoCosmetic)return;\
-         const put=()=>{{if(window.__agentgoCosmetic)return true;\
+        "(function(css,m){{try{{if(!css||m.c)return;\
+         const put=()=>{{if(m.c)return true;\
          try{{const sheet=new CSSStyleSheet();sheet.replaceSync(css);\
-         document.adoptedStyleSheets=[...document.adoptedStyleSheets,sheet];window.__agentgoCosmetic=1;return true}}catch(e){{}}\
+         document.adoptedStyleSheets=[...document.adoptedStyleSheets,sheet];m.c=1;return true}}catch(e){{}}\
          const parent=document.head||document.documentElement;if(!parent)return false;\
-         const style=document.createElement('style');style.textContent=css;parent.appendChild(style);window.__agentgoCosmetic=1;return true}};\
-         if(!put()){{new MutationObserver((m,o)=>{{if(put())o.disconnect()}}).observe(document,{{childList:true,subtree:true}})}}\
-         }}catch(e){{}}}})({css});"
+         const style=document.createElement('style');style.textContent=css;parent.appendChild(style);m.c=1;return true}};\
+         if(!put()){{new MutationObserver((o2,o)=>{{if(put())o.disconnect()}}).observe(document,{{childList:true,subtree:true}})}}\
+         }}catch(e){{}}}})({css},{mark});"
     );
     if scripts && !cosmetic.script.is_empty() && !is_youtube(&url) {
-        code.push_str("if(!window.__agentgoScriptlets){window.__agentgoScriptlets=1;try{\n");
+        code.push_str(&format!("if(!{mark}.s){{{mark}.s=1;try{{\n"));
         code.push_str(&cosmetic.script);
         code.push_str("\n}catch(e){}}");
     }
@@ -320,6 +329,46 @@ pub fn inject(frame: &mut Frame, scripts: bool) {
         Some(&CefString::from(code.as_str())),
         Some(&CefString::from(url.as_str())),
         0,
+    );
+}
+
+/// A random name for this run's hidden page marker.
+pub fn page_marker() -> &'static str {
+    static MARKER: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    MARKER.get_or_init(|| {
+        let mut bytes = [0u8; 8];
+        let _ = ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut bytes);
+        bytes.iter().map(|b| format!("{b:02x}")).collect()
+    })
+}
+
+// Lets the request through with the Global Privacy Control signal
+// (`Sec-GPC: 1`): the person does not consent to their data being sold or
+// shared, which several laws (CCPA, CPA) make binding.
+cef::wrap_resource_request_handler! {
+    struct PrivacySignalHandler;
+
+    impl ResourceRequestHandler {
+        fn on_before_resource_load(
+            &self,
+            _browser: Option<&mut Browser>,
+            _frame: Option<&mut Frame>,
+            request: Option<&mut Request>,
+            _callback: Option<&mut Callback>,
+        ) -> ReturnValue {
+            if let Some(request) = request {
+                add_privacy_signal(request);
+            }
+            ReturnValue::CONTINUE
+        }
+    }
+}
+
+fn add_privacy_signal(request: &mut Request) {
+    request.set_header_by_name(
+        Some(&CefString::from("Sec-GPC")),
+        Some(&CefString::from("1")),
+        1,
     );
 }
 
@@ -346,9 +395,6 @@ pub fn handler_for(
     request: &mut Request,
     initiator: Option<&CefString>,
 ) -> Option<ResourceRequestHandler> {
-    if !ENABLED.load(Ordering::Relaxed) {
-        return None;
-    }
     let url = CefString::from(&request.url()).to_string();
     if !["http:", "https:", "ws:", "wss:"]
         .iter()
@@ -356,7 +402,12 @@ pub fn handler_for(
     {
         return None;
     }
-    let blocker = engine()?;
+    if !ENABLED.load(Ordering::Relaxed) {
+        return Some(PrivacySignalHandler::new());
+    }
+    let Some(blocker) = engine() else {
+        return Some(PrivacySignalHandler::new());
+    };
     let page = initiator
         .map(ToString::to_string)
         .filter(|origin| !origin.is_empty())
@@ -364,7 +415,12 @@ pub fn handler_for(
     if blocker.should_block(&url, &page, kind(request.resource_type())) {
         return Some(CancelHandler::new());
     }
-    youtube_rules().kind_of(&url).map(YoutubeHandler::new)
+    Some(
+        youtube_rules()
+            .kind_of(&url)
+            .map(YoutubeHandler::new)
+            .unwrap_or_else(PrivacySignalHandler::new),
+    )
 }
 
 /// Whether a page URL is YouTube's, where network-level removal replaces the

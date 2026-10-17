@@ -31,6 +31,7 @@ mod permission;
 mod pipe;
 mod profiles;
 mod recorder;
+mod safesite;
 mod scan;
 mod scheme;
 mod sdk;

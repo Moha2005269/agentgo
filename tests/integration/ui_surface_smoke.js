@@ -6,6 +6,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { launch, cdpEval, operator, serve, reservePort, fixture, rejects, refOf, delay } = require("./harness");
+const appVersion = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "..", "Cargo.toml"), "utf8").match(/^version = "(.+)"/m)[1];
 
 const landing = "agentgo://shell/index.html?embedded=1";
 const shotDir = process.argv[2] ? path.resolve(process.argv[2]) : null;
@@ -50,7 +51,7 @@ async function until(read, done, what, timeoutMs = 15_000) {
   let failed = false;
   try {
     // --- New Tab page: real data, real navigation, read-only bridge --------
-    await until(() => newtab("document.querySelector('#footVersion').textContent"), (v) => v === "0.1.0", "live New Tab state");
+    await until(() => newtab("document.querySelector('#footVersion').textContent"), (v) => v === appVersion, "live New Tab state");
     assert.match(await newtab("document.querySelector('#agentChipText').textContent"), /agent connected/);
     assert.equal(await newtab("document.querySelectorAll('.scut').length"), 8);
     assert.deepEqual(
@@ -116,7 +117,7 @@ async function until(read, done, what, timeoutMs = 15_000) {
     await delay(350);
 
     // --- Agent control from the chrome and the panel ------------------------
-    await until(() => chrome("document.querySelector('#agentText').textContent"), (t) => /agent connected$/.test(t), "agent pill");
+    await until(() => chrome("document.querySelector('#agentText').textContent"), (t) => /agent connected$/i.test(t), "agent pill");
     assert.equal(await chrome("document.querySelector('#agentStop').hidden"), false);
     const own = (await browser.call("tabs.create", { url: fixture("agent.html") })).tabId;
     const view = await browser.call("navigate.url", { tabId: own, url: fixture("agent.html") });

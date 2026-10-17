@@ -142,7 +142,7 @@ impl Default for Options {
             history: true,
             logins: true,
             tabs: true,
-            history_limit: 5000,
+            history_limit: 20_000,
         }
     }
 }
@@ -208,12 +208,23 @@ pub fn count(profile: &Profile) -> Counts {
         };
     }
 
-    let history = open_readonly(&profile.path.join("History"))
-        .map(|conn| scalar_count(&conn, "SELECT COUNT(*) FROM urls"))
+    // A running browser keeps an exclusive lock on its live databases, so
+    // counts read the same snapshot copies the import reads.
+    let history = copied_database(&profile.path.join("History"))
+        .ok()
+        .flatten()
+        .map(|db| scalar_count(&db, "SELECT COUNT(*) FROM urls"))
         .unwrap_or(0);
-    let logins = open_readonly(&profile.path.join("Login Data"))
-        .map(|conn| scalar_count(&conn, "SELECT COUNT(*) FROM logins"))
-        .unwrap_or(0);
+    let logins: usize = CHROMIUM_LOGIN_FILES
+        .iter()
+        .filter_map(|file| copied_database(&profile.path.join(file)).ok().flatten())
+        .map(|db| {
+            scalar_count(
+                &db,
+                "SELECT COUNT(*) FROM logins WHERE blacklisted_by_user = 0 AND username_value <> ''",
+            )
+        })
+        .sum();
     let tabs = chromium_tabs(&profile.path).0;
     Counts {
         bookmarks: chromium_bookmarks(&profile.path.join("Bookmarks"))
@@ -419,20 +430,64 @@ fn import_chromium_logins(profile: &Profile, out: &mut Imported) {
             None
         }
     });
-    let Ok(Some(conn)) = copied_database(&profile.path.join("Login Data")) else {
-        if profile.path.join("Login Data").exists() {
-            note_once(out, "Close Chrome and try again: saved-login database is locked or could not be copied.");
-        }
-        return;
-    };
-    let Ok(mut stmt) = conn.prepare(
-        "SELECT origin_url, username_value, password_value, blacklisted_by_user FROM logins",
-    ) else {
-        note_once(out, "Saved-login database has an unsupported format.");
-        return;
-    };
     let mut app_bound = 0usize;
     let mut unreadable = 0usize;
+    let mut seen = HashSet::new();
+    // Chrome keeps passwords saved to the Google account in a second file.
+    for file in CHROMIUM_LOGIN_FILES {
+        let path = profile.path.join(file);
+        let conn = match copied_database(&path) {
+            Ok(Some(conn)) => conn,
+            Ok(None) => continue,
+            Err(_) => {
+                note_once(
+                    out,
+                    "Close the other browser and try again: its saved-login database is locked.",
+                );
+                continue;
+            }
+        };
+        let Ok(mut stmt) = conn.prepare(
+            "SELECT origin_url, username_value, password_value, blacklisted_by_user FROM logins",
+        ) else {
+            note_once(out, "Saved-login database has an unsupported format.");
+            continue;
+        };
+        read_chromium_logins(
+            &mut stmt,
+            key.as_deref(),
+            &mut seen,
+            &mut app_bound,
+            &mut unreadable,
+            out,
+        );
+    }
+    if app_bound > 0 {
+        note_once(
+            out,
+            &format!("{app_bound} passwords use Chrome's app-bound encryption and can't be read by another program; export them from chrome://password-manager/settings as CSV and import that file"),
+        );
+    }
+    if unreadable > 0 {
+        note_once(
+            out,
+            &format!("{unreadable} saved passwords could not be decrypted for this Windows user; export them from the browser password manager as CSV."),
+        );
+    }
+}
+
+/// Saved-login databases of a Chromium profile: on this device, and saved to
+/// the browser account.
+const CHROMIUM_LOGIN_FILES: [&str; 2] = ["Login Data", "Login Data For Account"];
+
+fn read_chromium_logins(
+    stmt: &mut rusqlite::Statement<'_>,
+    key: Option<&[u8]>,
+    seen: &mut HashSet<(String, String)>,
+    app_bound: &mut usize,
+    unreadable: &mut usize,
+    out: &mut Imported,
+) {
     if let Ok(rows) = stmt.query_map([], |row| {
         Ok((
             row.get::<_, String>(0)?,
@@ -446,13 +501,15 @@ fn import_chromium_logins(profile: &Profile, out: &mut Imported) {
             if blacklisted != 0 || username.trim().is_empty() || !valid_web_url(&origin) {
                 continue;
             }
+            if !seen.insert((origin.clone(), username.clone())) {
+                continue;
+            }
             if encrypted.starts_with(b"v20") {
-                app_bound += 1;
+                *app_bound += 1;
                 continue;
             }
             let password = if encrypted.starts_with(b"v10") || encrypted.starts_with(b"v11") {
-                key.as_deref()
-                    .and_then(|key| decrypt_v10_password(key, &encrypted[3..]).ok())
+                key.and_then(|key| decrypt_v10_password(key, &encrypted[3..]).ok())
             } else {
                 dpapi_unprotect(&encrypted)
                     .ok()
@@ -465,21 +522,9 @@ fn import_chromium_logins(profile: &Profile, out: &mut Imported) {
                     password,
                 });
             } else {
-                unreadable += 1;
+                *unreadable += 1;
             }
         }
-    }
-    if app_bound > 0 {
-        note_once(
-            out,
-            &format!("{app_bound} passwords use Chrome's app-bound encryption and can't be read; export them from chrome://password-manager as CSV instead"),
-        );
-    }
-    if unreadable > 0 {
-        note_once(
-            out,
-            &format!("{unreadable} saved passwords could not be decrypted for this Windows user; export them from the browser password manager as CSV."),
-        );
     }
 }
 

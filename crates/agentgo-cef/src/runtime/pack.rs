@@ -180,8 +180,16 @@ pub fn verify_crx<'a>(bytes: &'a [u8], expected_id: &str) -> Result<&'a [u8], St
                     continue;
                 }
                 let ok = match spki_key(key) {
+                    // Extensions published long ago (Google Translate among
+                    // them) are signed with 1024-bit keys, which Chrome accepts.
                     Some(Key::Rsa(k)) if *field == 2 => {
                         UnparsedPublicKey::new(&signature::RSA_PKCS1_2048_8192_SHA256, k)
+                            .verify(&message, sig)
+                            .is_ok()
+                            || UnparsedPublicKey::new(
+                                &signature::RSA_PKCS1_1024_8192_SHA256_FOR_LEGACY_USE_ONLY,
+                                k,
+                            )
                             .verify(&message, sig)
                             .is_ok()
                     }
@@ -215,6 +223,13 @@ pub fn verify_crx<'a>(bytes: &'a [u8], expected_id: &str) -> Result<&'a [u8], St
             }
             UnparsedPublicKey::new(&signature::RSA_PKCS1_2048_8192_SHA1_FOR_LEGACY_USE_ONLY, k)
                 .verify(zip, sig)
+                .or_else(|_| {
+                    UnparsedPublicKey::new(
+                        &signature::RSA_PKCS1_1024_8192_SHA1_FOR_LEGACY_USE_ONLY,
+                        k,
+                    )
+                    .verify(zip, sig)
+                })
                 .map_err(|_| "the package signature is not valid".to_string())?;
             Ok(zip)
         }

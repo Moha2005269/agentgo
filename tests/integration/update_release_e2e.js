@@ -12,7 +12,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { launch, operator, reservePort, rejects } = require("./harness");
 
-const zip = process.env.AGENTGO_RELEASE_ZIP || path.join(__dirname, "..", "..", "dist", "AgentGo-0.1.0-win64.zip");
+const zip = process.env.AGENTGO_RELEASE_ZIP || path.join(__dirname, "..", "..", "dist", `AgentGo-${fs.readFileSync(path.join(__dirname, "..", "..", "Cargo.toml"), "utf8").match(/^version = "(.+)"/m)[1]}-win64.zip`);
 const keyFile = process.env.AGENTGO_UPDATE_KEY || path.join(os.homedir(), ".agentgo-signing", "update-ed25519.pem");
 if (!fs.existsSync(zip) || !fs.existsSync(keyFile)) {
   console.log("update_release_e2e skipped (no packaged zip or signing key)");
