@@ -129,6 +129,7 @@ dependencies = [
  "agentgo-accounts",
  "agentgo-adblock",
  "agentgo-artifacts",
+ "agentgo-gomini",
  "agentgo-import",
  "agentgo-policy",
  "agentgo-protocol",
@@ -152,6 +153,16 @@ dependencies = [
  "clap",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "agentgo-gomini"
+version = "0.1.1"
+dependencies = [
+ "serde_json",
+ "sha2",
+ "windows-sys 0.61.2",
+ "zip",
 ]
 
 [[package]]

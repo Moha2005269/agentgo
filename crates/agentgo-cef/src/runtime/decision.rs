@@ -1,9 +1,9 @@
-//! The decision interface for Laya, the local choice model.
+//! The decision interface for GoMini, the local choice model.
 //!
-//! Laya is a small model that will pick the next browser step so the large
-//! external model does not have to read every page. It is not part of the
-//! browser yet (the checkpoints still need fine-tuning), but what it will be
-//! fed is fixed here so agents, traces and training data all use one shape:
+//! GoMini is a small model that picks the next browser step so the large
+//! external model does not have to read every page (gomini.rs runs it).
+//! What it is fed is fixed here so agents, traces and training data all use
+//! one shape:
 //!
 //! - a **subgoal** from the planner, with its constraints and the exact
 //!   text values it may type (a chooser never invents text);
@@ -24,7 +24,7 @@ use std::collections::HashMap;
 use serde_json::{json, Value};
 
 /// Version of the record. Change it whenever a field changes meaning.
-pub const SCHEMA: &str = "agentgo.laya.decision/0";
+pub const SCHEMA: &str = "agentgo.gomini.decision/1";
 
 /// (session, tab) -> (page revision, candidates offered, values supplied).
 type Offered = HashMap<(String, String), (String, Vec<Value>, Value)>;

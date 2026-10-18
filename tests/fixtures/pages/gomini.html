@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Travel draft</title>
+  <style>body{font:16px system-ui;margin:24px} input,select{margin-left:10px;padding:5px} button{padding:8px;margin:10px} nav a{margin-right:8px}</style>
+</head>
+<body>
+  <h1>Travel form</h1>
+  <p role="status" id="status">Draft is incomplete. Fields must match before saving.</p>
+  <nav id="links"></nav>
+  <section>
+    <label style="padding:10px;display:block">Primary City<input id="city" aria-label="Primary City" value=""></label>
+    <label style="padding:10px;display:block">Postal code<input id="postal" aria-label="Postal code" value=""></label>
+    <label style="padding:10px;display:block">Country<select id="country" aria-label="Country"><option>Choose</option><option>Egypt</option><option>Jordan</option></select></label>
+    <button type="button" onclick="saveDraft()">Save draft</button>
+    <button type="button" onclick="publish()">Publish</button>
+    <button type="button" onclick="pay()">Pay now</button>
+  </section>
+  <script>
+    // Forty distractor links: a page bigger than GoMini's 24 choices.
+    const nav = document.getElementById('links');
+    for (let i = 1; i <= 40; i++) {
+      const a = document.createElement('a');
+      a.href = '#article-' + i;
+      a.textContent = 'Article ' + i;
+      nav.appendChild(a);
+    }
+    window.events = [];
+    function value(id) { return document.getElementById(id).value; }
+    function saveDraft() {
+      const ok = value('city') === 'Maple-3321' && value('postal') === '11511';
+      window.events.push({ saved: ok });
+      document.getElementById('status').textContent = ok ? 'Draft saved successfully.' : 'Required values are missing or incorrect.';
+    }
+    function publish() { window.events.push({ published: true }); document.getElementById('status').textContent = 'Published.'; }
+    function pay() { window.events.push({ paid: true }); document.getElementById('status').textContent = 'Paid.'; }
+  </script>
+</body>
+</html>

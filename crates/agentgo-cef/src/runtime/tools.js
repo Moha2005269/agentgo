@@ -120,6 +120,8 @@
     'runtime.get_html': p => ({ html: target(p).outerHTML.slice(0, p.max || 20000) }),
     'runtime.get_value': p => { const el = target(p); return { value: el.type === 'password' ? null : el.value ?? el.innerText ?? null }; },
     'runtime.get_rect': p => rect(target(p)),
+    // Visible status, alert and live-region text (a compact outline leaves it out).
+    'observe.status': () => ({ status: [...new Set(all('[role=status],[role=alert],[aria-live]:not([aria-live=off]),output').filter(visible).map(el => clean(el.innerText || el.textContent || '', 200)).filter(Boolean))].slice(0, 5) }),
 
     // ---- storage of the page's own origin ----------------------------------
     'storage.local_get': p => p.key === undefined ? { keys: Object.keys(localStorage) } : { value: localStorage.getItem(p.key) },

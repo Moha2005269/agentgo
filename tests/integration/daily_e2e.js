@@ -130,15 +130,15 @@ const { launch, serve, rejects, refOf, reservePort, delay, operator } = require(
     assert.deepEqual(await stage(), [false, 1]);
     await browser.call("settings.set", { settings: { agentAnimations: true } });
 
-    // The decision interface (what Laya, the local choice model, will be fed):
+    // The decision interface (what GoMini, the local choice model, is fed):
     // a subgoal becomes a record of candidates; a choice runs only against the
     // state it was made for and only with text the planner supplied.
     assert.deepEqual([(await browser.call("decision.status")).available, (await browser.call("decision.status")).enabled], [false, false]);
-    await rejects(browser.call("settings.set", { settings: { layaEnabled: true } }), "policy.denied");
+    await rejects(browser.call("settings.set", { settings: { gominiEnabled: true } }), "policy.denied");
     await browser.call("navigate.url", { url: site.url("daily.html") });
     const values = { note: "chosen by candidate" };
     const record = await browser.call("decision.record", { subgoal: "write the note into the paste target", values, completion: "the page says pasted" });
-    assert.equal(record.schema, "agentgo.laya.decision/0");
+    assert.equal(record.schema, "agentgo.gomini.decision/1");
     const fillTarget = record.candidates.find((c) => c.op === "fill" && /Paste target/.test(c.target));
     assert(fillTarget, "the field is not among the candidates");
     assert(["scroll_down", "back", "wait", "done", "escalate"].every((id) => record.candidates.some((c) => c.id === id)));

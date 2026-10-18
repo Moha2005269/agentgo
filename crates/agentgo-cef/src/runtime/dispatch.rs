@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 
 use super::sessions::{self, Caller, Control, Fail, Reply};
 use super::{
-    accounts, cdp, decision, dialogs, exec, extras, inspect, lifecycle, misc, native, page,
+    accounts, cdp, decision, dialogs, exec, extras, gomini, inspect, lifecycle, misc, native, page,
     profiles, recorder, sdk, shell, skills, state, suite, tasks, winmgr,
 };
 
@@ -49,6 +49,7 @@ fn read_only(method: &str) -> bool {
         "agent.connect",
         "agent.disconnect",
         "decision.status",
+        "gomini.status",
         "connectors.list",
         "credentials.list",
         "clipboard.read",
@@ -116,7 +117,7 @@ const OPERATOR_SETTINGS: [&str; 20] = [
     "searchEngine",
     "startup",
     "languages",
-    "layaEnabled",
+    "gominiEnabled",
     "downloadsEnabled",
     "controlMode",
     "uploadDirs",
@@ -1211,23 +1212,41 @@ async fn run_ungated(caller: &Caller, method: &str, params: Value) -> Reply {
         }
         "workflow.disable" => recorder::disable(&params),
         "workflow.replay" => replay(caller, &params).await,
-        "decision.status" => Ok(json!({
-            "schema": decision::SCHEMA,
-            // The person's switch, and whether a model is there to honor it.
-            "enabled": state::settings_snapshot()["layaEnabled"] == true,
-            "available": false,
-            "model": null,
-            "note": "Laya, the local choice model, is not bundled yet: its checkpoints still need fine-tuning. Until then your own model chooses; decision.record and decision.apply already use the format Laya will be given.",
-        })),
+        "decision.status" => {
+            let gomini = gomini::status();
+            Ok(json!({
+                "schema": decision::SCHEMA,
+                // The person's switch, and whether the model is there to honor it.
+                "enabled": gomini["enabled"],
+                "available": gomini["installed"],
+                "active": gomini["active"],
+                "model": if gomini["installed"] == true { gomini["model"].clone() } else { Value::Null },
+                "gomini": gomini,
+                "note": if gomini["active"] == true {
+                    "GoMini is on: hand routine steps to gomini.delegate {subgoal, values, completion}; it returns done, needs_help or stopped."
+                } else {
+                    "GoMini is off or not downloaded: your own model chooses; decision.record and decision.apply work the same."
+                },
+            }))
+        }
         "decision.record" => {
             let tab = page::tab_of(caller, &params)?;
             let view = page::observe_page(caller, &json!({"tabId": tab, "max": params.get("max").and_then(Value::as_u64).unwrap_or(120)})).await?;
             let revision = page_revision(&tab, &view);
+            // Only this session's own recent commands: another agent's
+            // activity is not this caller's to see (AG-001).
             let recent: Vec<Value> = sessions::status()["activity"]
                 .as_array()
-                .map(|items| items.iter().take(5).cloned().collect())
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter(|item| item["session"] == caller.session.as_str())
+                        .take(5)
+                        .cloned()
+                        .collect()
+                })
                 .unwrap_or_default();
-            decision::record(
+            let mut record = decision::record(
                 &caller.session,
                 &tab,
                 revision,
@@ -1235,7 +1254,18 @@ async fn run_ungated(caller: &Caller, method: &str, params: Value) -> Reply {
                 json!(recent),
                 &params,
             )
-            .map_err(Fail::params)
+            .map_err(Fail::params)?;
+            // Visible status, alert and live-region text, which a compact
+            // outline leaves out (AG-L01).
+            let status = page::agent(&tab, "tool", json!(["observe.status", {}]), 5_000)
+                .await
+                .map(|out| out["status"].clone())
+                .unwrap_or_else(|_| json!([]));
+            record["state"]["status"] = status;
+            Ok(record)
+        }
+        "gomini.status" | "gomini.install" | "gomini.cancel" | "gomini.remove" | "gomini.delegate" => {
+            gomini::command(caller, method, &params).await
         }
         "decision.apply" => {
             let tab = page::tab_of(caller, &params)?;

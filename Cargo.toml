@@ -19,6 +19,7 @@ members = [
     "crates/agentgo-accounts",
     "crates/agentgo-adblock",
     "crates/agentgo-import",
+    "crates/agentgo-gomini",
 ]
 
 [workspace.package]
@@ -34,6 +35,7 @@ agentgo-accounts = { path = "crates/agentgo-accounts" }
 agentgo-actions = { path = "crates/agentgo-actions" }
 agentgo-adblock = { path = "crates/agentgo-adblock" }
 agentgo-import = { path = "crates/agentgo-import" }
+agentgo-gomini = { path = "crates/agentgo-gomini" }
 agentgo-app = { path = "crates/agentgo-app" }
 agentgo-artifacts = { path = "crates/agentgo-artifacts" }
 agentgo-cef = { path = "crates/agentgo-cef" }

@@ -1,0 +1,25 @@
+[package]
+name = "agentgo-gomini"
+description = "GoMini, AgentGo's local choice model: pinned downloads, the llama-server worker, the gomini.agentgo/1 packing contract and the independent gate"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
+
+[lints]
+workspace = true

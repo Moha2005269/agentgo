@@ -106,6 +106,8 @@ function launch({ args = [], env = {}, dataRoot, stdio = true, debugPort } = {})
     env: {
       ...process.env,
       AGENTGO_DATA_ROOT: root,
+      // GoMini under the test's own data root, never the person's install.
+      AGENTGO_GOMINI_ROOT: path.join(root, "gomini"),
       // No first-run wizard and no permission prompts: tests answer by policy.
       AGENTGO_SKIP_SETUP: "1",
       AGENTGO_NO_PROMPTS: "1",

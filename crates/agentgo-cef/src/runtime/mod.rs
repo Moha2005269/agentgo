@@ -17,6 +17,7 @@ mod extensions;
 mod extras;
 mod features;
 mod fingerprint;
+mod gomini;
 mod guard;
 mod inspect;
 mod lifecycle;

@@ -28,6 +28,7 @@ runtime = [
     "dep:ring",
     "dep:zip",
     "dep:agentgo-import",
+    "dep:agentgo-gomini",
 ]
 # Windows sandbox build: the app is bundled behind CEF's bootstrap.exe
 # launcher (cefsimple model) and links cef_sandbox.lib.
@@ -40,6 +41,7 @@ thiserror = { workspace = true }
 agentgo-accounts = { workspace = true, optional = true }
 agentgo-adblock = { workspace = true, optional = true }
 agentgo-import = { workspace = true, optional = true }
+agentgo-gomini = { workspace = true, optional = true }
 agentgo-policy = { workspace = true, optional = true }
 agentgo-protocol = { workspace = true, optional = true }
 agentgo-shell-bridge = { workspace = true, optional = true }

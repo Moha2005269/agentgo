@@ -962,7 +962,7 @@ const METHODS: &[(&str, &str, u8, &str)] = &[
     ),
     (
         "workflow.record",
-        "Record this session's commands into a named recording (stop:true finishes). Recordings are also Laya training data.",
+        "Record this session's commands into a named recording (stop:true finishes). Recordings are also GoMini training data.",
         9,
         "integration.daily_e2e",
     ),
@@ -992,13 +992,13 @@ const METHODS: &[(&str, &str, u8, &str)] = &[
     ),
     (
         "decision.status",
-        "Whether Laya, the local choice model, is switched on and available, and the decision record version.",
+        "Whether GoMini, the local choice model, is switched on and downloaded, and the decision record version.",
         12,
         "integration.daily_e2e",
     ),
     (
         "decision.record",
-        "Build the Laya decision record for a subgoal: compact state, every possible step as a candidate, supplied values, recent outcomes.",
+        "Build the decision record for a subgoal: compact state with visible status lines, every possible step as a candidate, supplied values, this session's recent outcomes.",
         12,
         "integration.daily_e2e",
     ),
@@ -1007,6 +1007,36 @@ const METHODS: &[(&str, &str, u8, &str)] = &[
         "Run one chosen candidate, only if the page is still at the revision the choice was made for.",
         12,
         "integration.daily_e2e",
+    ),
+    (
+        "gomini.delegate",
+        "Hand one small subgoal to GoMini (when on): it takes the routine steps (fill supplied values, click, scroll, wait) within a budget and returns done, needs_help or stopped with evidence. Sensitive steps always come back to you.",
+        12,
+        "integration.gomini_e2e",
+    ),
+    (
+        "gomini.status",
+        "GoMini's state: downloaded, switched on, worker running, runtime and device, download progress.",
+        12,
+        "integration.gomini_e2e",
+    ),
+    (
+        "gomini.install",
+        "Operator only: download GoMini (model and runtime, checked by SHA-256) and switch it on.",
+        12,
+        "integration.gomini_e2e",
+    ),
+    (
+        "gomini.cancel",
+        "Operator only: stop a GoMini download (a retry resumes).",
+        12,
+        "integration.gomini_e2e",
+    ),
+    (
+        "gomini.remove",
+        "Operator only: switch GoMini off and delete its files.",
+        12,
+        "integration.gomini_e2e",
     ),
     (
         "credentials.offer_accept",
