@@ -7,7 +7,7 @@
 //! the page as it is now, so a recording survives a reload or a new session,
 //! where reference numbers differ.
 //!
-//! The same files are the training data for Laya: a `decision.record` step
+//! The same files are the training data for GoMini: a `decision.record` step
 //! holds the full decision record (state and candidates) and the following
 //! `decision.apply` step holds the choice and its outcome.
 
@@ -62,7 +62,7 @@ pub fn active(session: &str) -> bool {
 
 /// Commands that are not part of a recording: the recorder itself and
 /// reading commands that change nothing (except the decision record, which
-/// is what Laya will be trained on).
+/// is what GoMini is trained on).
 fn recorded(method: &str) -> bool {
     !method.starts_with("workflow.record")
         && !matches!(

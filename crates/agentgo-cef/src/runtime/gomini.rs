@@ -329,17 +329,28 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
             .chars()
             .take(600)
             .collect();
+        // Compact for the planner: each step as `choice` (failures say why),
+        // and the page excerpt only when it has to look itself.
+        let compact: Vec<Value> = steps
+            .iter()
+            .map(|s| match (s["ok"].as_bool(), s.get("error")) {
+                (_, Some(error)) => json!({"choice": s["choice"], "error": error}),
+                (Some(false), None) => json!({"choice": s["choice"], "ok": false}),
+                _ => s["choice"].clone(),
+            })
+            .collect();
+        let mut evidence = json!({"status": record["state"]["status"]});
+        if status != "done" {
+            evidence["outline"] = json!(outline);
+        }
         json!({
             "status": status,
             "reason": reason,
             "verified": false,
-            "attempts": steps.len(),
-            "steps": steps,
-            "lastChoice": steps.last().map(|s| s["choice"].clone()),
+            "steps": compact,
             "url": record["state"]["url"],
             "title": record["state"]["title"],
-            "evidence": {"status": record["state"]["status"], "outline": outline},
-            "model": agentgo_gomini::artifacts::MODEL_NAME,
+            "evidence": evidence,
             "modelMs": model_ms as u64,
             "ms": started.elapsed().as_millis() as u64,
         })

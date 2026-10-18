@@ -93,6 +93,12 @@ pub fn mcp_render(result: &Value) -> String {
     };
     let mut out = Vec::new();
     let mut rest = map.clone();
+    let view = ["page", "text", "changes"].iter().any(|key| map.contains_key(*key));
+    if !view {
+        if let Some(tab) = rest.remove("tabId").filter(|value| !value.is_null()) {
+            out.push(format!("tabId: {}", tab.as_str().map_or_else(|| tab.to_string(), str::to_string)));
+        }
+    }
     let mut take = |key: &str| rest.remove(key).filter(|value| !value.is_null());
     if let (Some(url), title) = (take("url"), take("title")) {
         let title = title.and_then(|t| t.as_str().map(str::to_string)).unwrap_or_default();

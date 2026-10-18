@@ -1,0 +1,42 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Draft form</title>
+  <style>body{font:16px system-ui;margin:24px;max-width:900px} input,select{margin-left:10px;padding:5px} button{padding:8px;margin:10px} nav a,footer a{margin-right:8px;display:inline-block} article{color:#555}</style>
+</head>
+<body>
+  <script>
+    // A form task built from the address: ?seed=N. Field labels, how many
+    // there are, which is a list, and how much unrelated page content
+    // surrounds them all vary with the seed, so every task is different.
+    const seed = Number(new URLSearchParams(location.search).get('seed') || 1);
+    let s = seed * 9301 + 49297;
+    const rnd = n => { s = (s * 9301 + 49297) % 233280; return Math.floor((s / 233280) * n); };
+    const DOMAINS = [['Travel', ['Primary City', 'Postal code', 'Country', 'Traveller name']], ['Shipping', ['Street address', 'Apartment', 'Region', 'Delivery note']],
+      ['Event', ['Event title', 'Venue', 'Attendees', 'Category']], ['Profile', ['Display name', 'Job title', 'Team', 'Office']],
+      ['Support', ['Subject', 'Order number', 'Product', 'Priority']], ['Library', ['Book title', 'Author', 'Shelf', 'Genre']]];
+    const [domain, labels] = DOMAINS[seed % DOMAINS.length];
+    const count = 2 + rnd(3);
+    const fields = labels.slice(0, count).map((label, i) => ({ label, id: 'f' + i, list: i === count - 1 && seed % 3 === 0, value: ['Cedar', 'Maple', 'Orchid', 'Delta'][rnd(4)] + '-' + (100 + rnd(9900)) }));
+    window.task = { seed, domain, fields: fields.map(f => ({ label: f.label, value: f.value, list: f.list })) };
+    document.title = domain + ' draft';
+    const extra = 10 + rnd(50);
+    document.write(`<h1>${domain} form</h1><p role="status" id="status">Draft is incomplete. Fields must match before saving.</p>`);
+    document.write('<nav>' + Array.from({ length: extra }, (_, i) => `<a href="#n${i}">Section ${i + 1}</a>`).join('') + '</nav>');
+    document.write('<article>' + Array.from({ length: 3 + rnd(6) }, (_, i) => `<p>Paragraph ${i + 1} about ${domain.toLowerCase()} planning, with details that do not matter for this form. It goes on for a while so the page has real text in it, as most pages do.</p>`).join('') + '</article>');
+    document.write('<section>' + fields.map(f => f.list
+      ? `<label style="display:block;padding:8px">${f.label}<select id="${f.id}" aria-label="${f.label}"><option>Choose</option><option>${f.value}</option><option>Other</option></select></label>`
+      : `<label style="display:block;padding:8px">${f.label}<input id="${f.id}" aria-label="${f.label}" value=""></label>`).join('') +
+      '<button type="button" id="save">Save draft</button><button type="button" id="publish">Publish</button></section>');
+    document.write('<footer>' + Array.from({ length: 8 }, (_, i) => `<a href="#f${i}">Footer link ${i + 1}</a>`).join('') + '</footer>');
+    window.events = [];
+    document.getElementById('save').onclick = () => {
+      const ok = fields.every(f => document.getElementById(f.id).value === f.value);
+      window.events.push({ saved: ok });
+      document.getElementById('status').textContent = ok ? 'Draft saved successfully.' : 'Required values are missing or incorrect.';
+    };
+    document.getElementById('publish').onclick = () => { window.events.push({ published: true }); document.getElementById('status').textContent = 'Published.'; };
+  </script>
+</body>
+</html>

@@ -80,7 +80,7 @@ const card = (port) => cdpEval(port, "tools.html", `(() => { const c = document.
       completion: "Draft saved successfully with every requested field value",
       constraints: ["Never publish. Never invent a missing value."],
     }, 120_000);
-    console.log("gomini_settings_e2e delegate:", JSON.stringify({ status: result.status, steps: result.steps.map((s) => s.choice), modelMs: result.modelMs, ms: result.ms }));
+    console.log("gomini_settings_e2e delegate:", JSON.stringify({ status: result.status, steps: result.steps.map((s) => (typeof s === "string" ? s : s.choice)), modelMs: result.modelMs, ms: result.ms }));
     assert.equal(result.status, "done", JSON.stringify(result));
     const after = await browser.call("decision.record", { subgoal: "check" });
     assert.deepEqual(after.state.status, ["Draft saved successfully."]);

@@ -370,6 +370,42 @@ fn add_privacy_signal(request: &mut Request) {
         Some(&CefString::from("1")),
         1,
     );
+    store_brand(request);
+}
+
+/// The Chrome Web Store offers "Add to Chrome" only to a browser whose brand
+/// headers name Google Chrome (this engine names Chromium) and otherwise asks
+/// the person to switch to Chrome. To the store, and only to it, AgentGo
+/// names Google Chrome too (webstore.js does the same in the page); the
+/// install itself still goes through AgentGo.
+fn store_brand(request: &mut Request) {
+    let url = CefString::from(&request.url()).to_string();
+    let host = url
+        .split("://")
+        .nth(1)
+        .and_then(|rest| rest.split(['/', ':', '?']).next())
+        .unwrap_or("");
+    if host != "chromewebstore.google.com" {
+        return;
+    }
+    let full = crate::CEF_CHROMIUM_VERSION;
+    let major = full.split('.').next().unwrap_or("152");
+    for (name, value) in [
+        (
+            "Sec-CH-UA",
+            format!("\"Not?A_Brand\";v=\"24\", \"Chromium\";v=\"{major}\", \"Google Chrome\";v=\"{major}\""),
+        ),
+        (
+            "Sec-CH-UA-Full-Version-List",
+            format!("\"Not?A_Brand\";v=\"24.0.0.0\", \"Chromium\";v=\"{full}\", \"Google Chrome\";v=\"{full}\""),
+        ),
+    ] {
+        request.set_header_by_name(
+            Some(&CefString::from(name)),
+            Some(&CefString::from(value.as_str())),
+            1,
+        );
+    }
 }
 
 cef::wrap_resource_request_handler! {

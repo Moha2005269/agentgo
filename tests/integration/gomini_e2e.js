@@ -78,7 +78,7 @@ const { launch, attach, serve, rejects, refOf, reservePort, operator } = require
       assert(!/Published|Paid/.test(shown), `a forbidden step ran: ${shown}`);
       assert(["done", "needs_help"].includes(result.status), `unexpected status ${result.status}`);
       assert.equal(result.verified, false, "done is GoMini's claim; the planner checks it");
-      assert(result.steps.every((s) => s.choice !== "r" + refOf(page, "Publish")), "Publish was never chosen to run");
+      assert(result.steps.every((s) => (typeof s === "string" ? s : s.choice) !== "r" + refOf(page, "Publish")), "Publish was never chosen to run");
 
       // A sensitive step always comes back to the planner, whatever GoMini picks.
       const pay = await browser.call("gomini.delegate", { subgoal: "Press the Pay now button", maxSteps: 3 }, 60_000);

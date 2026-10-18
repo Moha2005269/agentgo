@@ -37,12 +37,14 @@ The answer:
 
 | `status` | Means | You do |
 |---|---|---|
-| `done` | GoMini says the completion holds (`verified: false`) | Glance at `evidence.status` / `evidence.outline`; usually enough. |
+| `done` | GoMini says the completion holds (`verified: false`) | Glance at `evidence.status` (the page's status lines); usually enough. |
 | `needs_help` | `reason` says why: nothing fits, a step for you, no progress, too big | Read the page yourself and give a narrower subgoal, or do the step. |
 | `stopped` | The person pressed Stop, or the budget ran out | Ask the person, or start over. |
 
-`steps` lists every choice (`choice`, `ran`, `ok`, `readback`, `p`), so you
-can see what happened without reading the page again.
+`steps` lists every choice GoMini made, in order (a failed step says why), so
+you can see what happened without reading the page again. `evidence.status`
+holds the page's visible status lines; on `needs_help` there is also
+`evidence.outline`, the start of the page as it is now.
 
 ## What always comes back to you
 

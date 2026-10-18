@@ -443,16 +443,23 @@ fn glob(pattern: &str, text: &str) -> bool {
 
 /// The Web Store's own button asked to install `id` (webstore.js). Allowed
 /// only on the store page of that very extension, after a click by the
-/// person (never an agent's input).
+/// person: a click that came with an agent's input is refused. (An agent
+/// merely being connected does not stop the person's own click; it used to,
+/// and the store then showed "Download error: undefined".)
 pub fn store_request(tab: &str, id: &str) {
     let url = state::tab_url(tab);
     let on_its_page = url.starts_with("https://chromewebstore.google.com/detail/")
         && store_id(&url).as_deref() == Some(id);
-    let by_person = !super::sessions::agent_present() && !cdp::agent_input_recent(tab, 5_000);
+    let by_person = !cdp::agent_input_recent(tab, 5_000);
     if !on_its_page || !by_person {
         state::log_event(&format!(
             "AG-SECURITY extension-install-refused {id} page={on_its_page} person={by_person}"
         ));
+        state::notify_operator(if by_person {
+            "The extension was not installed: install it from its own store page."
+        } else {
+            "The extension was not installed: only your own click can install an extension, not an agent's."
+        });
         reply_to_store(tab, id, Err("refused".into()));
         return;
     }
@@ -463,6 +470,11 @@ pub fn store_request(tab: &str, id: &str) {
             "AG-RUNTIME extension-install-from-store {id} ok={}",
             result.is_ok()
         ));
+        if let Err(reason) = &result {
+            // The reason without the folder it was checked in.
+            let reason = reason.rsplit(": ").next().unwrap_or(reason);
+            state::notify_operator(&format!("The extension was not installed: {reason}"));
+        }
         reply_to_store(&tab, &id, result);
         state::notify_shell_state();
         state::run_in_shell("typeof refreshExtensions === 'function' && refreshExtensions()");

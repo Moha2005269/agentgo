@@ -63,8 +63,8 @@ Create accounts just for your agent, or let it use yours. Saved sign-ins are enc
 <tr>
 <td colspan="2" valign="top">
 
-### Laya, a model that knows the browser
-Laya is a small custom model we are pre-training on how this browser works, so agents spend fewer tokens and browsing feels effortless. **Status: in training.** The interface is already in the browser (`decision.record` and `decision.apply`, plus step recording and metrics for training data), and the model itself is not bundled yet.
+### GoMini, a model that knows the browser
+GoMini is a small model (322M parameters) trained on how this browser works. It runs on your computer (your graphics card through Vulkan when it can, else the processor) and takes the routine steps of a task, filling the values your agent supplies, clicking through, scrolling, so your agent hands over one subgoal instead of reading every page. It only picks between steps the browser offers; payments, sign-ins and final submissions always go back to your agent. Setup offers it (on by default, about 390 MB), or get it later in Settings > GoMini. Model: [huggingface.co/Mhmadhassnz/GoMini](https://huggingface.co/Mhmadhassnz/GoMini).
 
 </td>
 </tr>
@@ -148,7 +148,7 @@ Agents should read `skills/agentgo/SKILL.md` first (over MCP: `browser_guide`). 
 - Translation uses Google's translation service. Notifications are refused for every site. There is no VPN in this release.
 - Extensions run their page scripts with `chrome.runtime`, `chrome.i18n` and `chrome.storage`; background pages, pop-ups and toolbar actions are not supported yet, so extensions that depend on them (password managers, for example) do little.
 - Cross-origin iframes are not observed or acted in.
-- Laya is not bundled yet.
+- GoMini is trained and checked on AgentGo's own forms, single actions and navigation; on arbitrary sites it is not proven yet, and its confidence is not calibrated. That is why every step it picks is checked by the browser, sensitive steps go back to your agent, and "done" is a claim your agent can verify.
 - Real Google, GitHub and Yandex API sign-in has not been tried live; the OAuth flow is tested against a mock provider.
 
 ## Build from source

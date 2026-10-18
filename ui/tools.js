@@ -71,7 +71,11 @@ const renderHistory = () => {
       <span class="row-side">${esc(when(item.visitedAt))}</span>
     </button>`).join('');
   clearFoot('Clear history', 'history');
+  // How far back Clear goes, as in Chrome; the last choice is kept.
+  toolFoot.firstElementChild.innerHTML = `<select class="btn sm" data-history-range aria-label="Time range to clear">${HISTORY_RANGES.map(([value, label]) => `<option value="${value}"${value === historyRange ? ' selected' : ''}>${esc(label)}</option>`).join('')}</select>`;
 };
+const HISTORY_RANGES = [['60', 'Last hour'], ['1440', 'Last 24 hours'], ['10080', 'Last 7 days'], ['40320', 'Last 4 weeks'], ['all', 'All time']];
+let historyRange = '60';
 
 /* ---------- downloads ---------- */
 const renderDownloads = (items, enabled) => {
@@ -335,7 +339,7 @@ const SEARCH_KEYWORDS = [
   [/motion/i, 'animation animations reduce effects transitions movement'],
   [/control mode/i, 'agent permission approval full access ai autonomy confirm'],
   [/tabs agents/i, 'background foreground window follow'],
-  [/gomini|activate gomini/i, 'model local ai tokens laya small model gpu download choice faster cheaper'],
+  [/gomini|activate gomini/i, 'model local ai tokens laya small model download choice faster cheaper'],
   [/show what agents/i, 'pointer cursor typing animation overlay'],
   [/sign-ins/i, 'password passwords save login logins credentials remember'],
   [/notify/i, 'notification notifications captcha alert alerts toast'],
@@ -1364,6 +1368,15 @@ toolBody.addEventListener('submit', async event => {
   }
 });
 
+toolFoot.addEventListener('change', event => {
+  const picked = event.target.closest('[data-history-range]');
+  if (!picked) return;
+  historyRange = picked.value;
+  // A new range needs a fresh confirmation.
+  armed = null;
+  const button = toolFoot.querySelector('[data-clear]');
+  if (button) { button.classList.remove('arm'); button.textContent = 'Clear history'; }
+});
 toolFoot.addEventListener('click', async event => {
   if (event.target.closest('[data-ext-store]')) {
     try { await callBridge('tabs.create', { url: 'https://chromewebstore.google.com/' }); window.__agentgoRequestClose(); } catch (error) { console.error(error.message); }
@@ -1372,14 +1385,20 @@ toolFoot.addEventListener('click', async event => {
   const button = event.target.closest('[data-clear]');
   if (!button) return;
   const target = button.dataset.clear;
+  const range = target === 'history' ? (toolFoot.querySelector('[data-history-range]')?.value || historyRange) : null;
   if (armed !== target) {
     armed = target;
     button.classList.add('arm');
-    button.textContent = 'Click again to confirm';
+    button.textContent = range && range !== 'all'
+      ? `Click again to clear the ${HISTORY_RANGES.find(([v]) => v === range)[1].toLowerCase()}`
+      : 'Click again to confirm';
     return;
   }
   armed = null;
-  try { await callBridge(`${target}.clear`, { confirm: true }); } catch (error) { console.error(error.message); }
+  try {
+    if (range && range !== 'all') await callBridge('history.delete', { sinceMinutes: Number(range) });
+    else await callBridge(`${target}.clear`, { confirm: true });
+  } catch (error) { console.error(error.message); }
   await refresh();
 });
 

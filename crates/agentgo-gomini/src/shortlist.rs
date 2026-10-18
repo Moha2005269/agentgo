@@ -37,8 +37,63 @@ fn is_control(candidate: &Value) -> bool {
 /// How many GoMini choices a candidate becomes.
 fn width(candidate: &Value, values: usize) -> usize {
     match candidate["op"].as_str().unwrap_or_default() {
-        "fill" | "select" => values,
+        "fill" | "select" => candidate["bind"].as_array().map_or(values, Vec::len),
         _ => 1,
+    }
+}
+
+/// The fields the planner named for each value: `Primary City=city` in the
+/// subgoal binds the value `city` to the field labelled "Primary City".
+fn named_bindings(subgoal: &str, names: &[String]) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for part in subgoal.split([';', ',', '.', '\n']) {
+        let Some((label, name)) = part.rsplit_once('=') else {
+            continue;
+        };
+        let name = name.trim().trim_matches(|c: char| !c.is_alphanumeric() && c != '_' && c != '-');
+        if !names.iter().any(|n| n == name) {
+            continue;
+        }
+        // The label is what precedes "=", after a lead-in such as "using".
+        let label = label.trim();
+        let label = label
+            .rsplit_once(" using ")
+            .map_or(label, |(_, after)| after)
+            .trim()
+            .trim_matches('"');
+        if !label.is_empty() {
+            out.push((label.to_lowercase(), name.to_string()));
+        }
+    }
+    out
+}
+
+/// Marks fill/select candidates whose label the planner named with the
+/// value(s) bound to them (`bind`), so each is offered with its own value.
+pub fn bind(record: &mut Value) {
+    let names: Vec<String> = record["values"]
+        .as_object()
+        .map(|m| m.keys().cloned().collect())
+        .unwrap_or_default();
+    let pairs = named_bindings(record["subgoal"].as_str().unwrap_or_default(), &names);
+    if pairs.is_empty() {
+        return;
+    }
+    if let Some(candidates) = record["candidates"].as_array_mut() {
+        for candidate in candidates.iter_mut() {
+            if !matches!(candidate["op"].as_str(), Some("fill" | "select")) {
+                continue;
+            }
+            let target = candidate["target"].as_str().unwrap_or_default().to_lowercase();
+            let bound: Vec<&str> = pairs
+                .iter()
+                .filter(|(label, _)| target.contains(&format!("\"{label}\"")))
+                .map(|(_, name)| name.as_str())
+                .collect();
+            if !bound.is_empty() {
+                candidate["bind"] = json!(bound);
+            }
+        }
     }
 }
 
@@ -46,6 +101,9 @@ fn width(candidate: &Value, values: usize) -> usize {
 /// to stay within 24 choices) and an outline reduced to them plus the
 /// non-control lines, up to `outline_chars`.
 pub fn shortlist(record: &Value, keep: usize, outline_chars: usize) -> Value {
+    let mut record = record.clone();
+    bind(&mut record);
+    let record = &record;
     let values = record["values"].as_object().map_or(0, |m| m.len());
     let mut goal = words(record["subgoal"].as_str().unwrap_or_default());
     goal.extend(words(record["completion"].as_str().unwrap_or_default()));
@@ -110,6 +168,31 @@ pub fn shortlist(record: &Value, keep: usize, outline_chars: usize) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn named_fields_get_only_their_own_value() {
+        let record = json!({
+            "subgoal": "Fill this Library form using Book title=v1; Author=v2; Shelf=v3; Genre=v4. Save draft when all required fields match.",
+            "values": {"v1": "a", "v2": "b", "v3": "c", "v4": "d"},
+            "state": {"outline": ""},
+            "candidates": [
+                {"id": "r1", "op": "fill", "ref": 1, "target": "textbox \"Book title\" value=\"\""},
+                {"id": "r2", "op": "fill", "ref": 2, "target": "textbox \"Author\" value=\"\""},
+                {"id": "r3", "op": "fill", "ref": 3, "target": "textbox \"Shelf\" value=\"\""},
+                {"id": "r4", "op": "select", "ref": 4, "target": "combobox \"Genre\" value=\"Choose\""},
+                {"id": "r5", "op": "fill", "ref": 5, "target": "textbox \"Search\""},
+                {"id": "done", "op": "done", "target": "x"},
+            ],
+        });
+        let short = shortlist(&record, 16, 400);
+        let binds: Vec<Value> = short["candidates"].as_array().unwrap().iter().map(|c| c["bind"].clone()).collect();
+        assert_eq!(binds[..4], [json!(["v1"]), json!(["v2"]), json!(["v3"]), json!(["v4"])]);
+        let executor = crate::pack::Executor { cancelled: false, attempts_remaining: 8 };
+        let (request, _) = crate::pack::from_record(&short, "", &[], &executor, None).unwrap();
+        let keys: Vec<&str> = request.criteria.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(&keys[..4], ["r1|v1", "r2|v2", "r3|v3", "r4|v4"]);
+        assert!(named_bindings("no names here", &["v1".into()]).is_empty());
+    }
 
     #[test]
     fn keeps_matching_controls_and_the_ways_out() {

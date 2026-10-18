@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.2 (2026-10-18)
+
+- **GoMini, the local model**: a 322M-parameter model trained on AgentGo's own decision records ([huggingface.co/Mhmadhassnz/GoMini](https://huggingface.co/Mhmadhassnz/GoMini)) takes the routine steps of a task on your computer. An agent hands it one subgoal (`gomini.delegate`, over MCP `browser_delegate`) with the values to type and how to tell it is done; GoMini fills, clicks, checks, selects, scrolls and waits, and returns `done`, `needs_help` or `stopped` with every step. Each choice is checked independently before it runs (offered candidate, page revision, supplied value, same site, no payment, sign-in, submission, delete or other sensitive step), typed fields are read back, Pause and Stop apply, and the browser's own approvals still hold. GoMini sees exactly the input it was trained on (token-identical to the reference packer).
+- **Getting GoMini**: AgentGo Setup offers it (on by default, about 390 MB, `--no-gomini` for silent installs); Settings > GoMini has an animated Download button that becomes its own progress bar, then the Activate switch, the device it runs on and Remove. The runtime is upstream llama.cpp b11559: the Vulkan build on any graphics card that shows up (AMD, NVIDIA, Intel), else the processor build, chosen after a real test decision. Every file is pinned by SHA-256; downloads resume. On a Radeon RX 7800 XT one decision takes about 15 ms (processor: about 450 ms).
+- **Agents learn GoMini**: when it is on, MCP lists `browser_delegate` and the server's instructions say to use it; the skill has a GoMini guide (`references/gomini.md`, `browser_guide topic=gomini`). `decision.status` reports it. The decision record is version `agentgo.gomini.decision/1` (the model was called Laya; `topic=laya` still answers).
+- **Decision record fixes**: `recent` holds only the caller's own session's commands (another agent's activity leaked into it, AG-001); `state.status` carries visible status, alert and live-region text that compact outlines leave out (AG-L01).
+- **New tabs**: over MCP, `tabs.create` now shows the new tab's id; the reply says `loading: true` with how to wait, or with `wait: true` waits for the page and reports `loaded` (AG-L02).
+- **Clear history by time**: Last hour, Last 24 hours, Last 7 days, Last 4 weeks or All time.
+- **Chrome Web Store**: "Add to Chrome" works again. The store wanted `chrome.management` and Google Chrome's brand before offering the button (it showed "Switch to Chrome?"); AgentGo provides both on the store's pages only. A person's click is no longer refused just because an agent is connected (the store then showed "Download error: undefined"); an agent's click still is. When an extension cannot run in AgentGo, you are told why.
+- **Import extensions from Chrome**: the import lists the profile's Web Store extensions and installs each fresh from the store (signature checked); ones AgentGo cannot run are named with the reason.
+- `rustls` 0.23.46 (build-time download tool only).
+
 ## 0.1.1 (2026-10-17)
 
 - **AgentGo Setup**: a graphical installer (`AgentGo-Setup.exe`, and an offline `AgentGo-Setup-full.exe`). A floating card on a transparent window that unfolds from the AgentGo mark; license, folder, shortcuts, PATH, agent registration (Claude Code, Codex, Droid), preferences, an install that checks every file against its SHA-256, import from your old browser, and an uninstaller in Windows Settings. Per user, no administrator rights. `--silent` installs and uninstalls without a window for scripted deployments.

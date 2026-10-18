@@ -224,7 +224,7 @@ const STEPS = ['welcome', 'import', 'agent', 'done'];
 let wizStep = 0;
 let wizScan = null;
 let wizPick = 0;
-let wizOpts = { bookmarks: true, history: true, logins: true, tabs: false };
+let wizOpts = { bookmarks: true, history: true, logins: true, tabs: false, extensions: true };
 let wizResult = null;
 let wizBusy = false;
 let wizAgent = {};
@@ -261,7 +261,7 @@ const stepImport = () => {
   if (wizResult) {
     const c = wizResult.imported || {};
     return `<p class="wiz-kicker">Imported</p><h2 class="wiz-title">All <em>moved in</em>.</h2>
-      <div class="wiz-stats">${[['Bookmarks', c.bookmarks], ['History', c.history], ['Passwords', c.logins], ['Tabs opened', c.tabs]].map(([n, v], i) => `<div style="--r:${i}"><b>${v ?? 0}</b><span>${n}</span></div>`).join('')}</div>
+      <div class="wiz-stats">${[['Bookmarks', c.bookmarks], ['History', c.history], ['Passwords', c.logins], ['Tabs opened', c.tabs], ['Extensions', c.extensions]].map(([n, v], i) => `<div style="--r:${i}"><b>${v ?? 0}</b><span>${n}</span></div>`).join('')}</div>
       ${(wizResult.notes || []).map(n => `<p class="wiz-note">${esc(n)}</p>`).join('')}
       ${(wizResult.notes || []).some(n => /app-bound/.test(n)) ? exportGuide(wizScan.profiles[Math.min(wizPick, wizScan.profiles.length - 1)]?.browser || 'Chrome') : ''}`;
   }
@@ -271,7 +271,7 @@ const stepImport = () => {
   const box = (key, label, n, note = '') => `<label class="wiz-opt${n ? '' : ' none'}"><input type="checkbox" data-f="opt" data-k="${key}"${wizOpts[key] && n ? ' checked' : ''}${n ? '' : ' disabled'}><i></i><span><b>${label}</b><em>${n ? `${n.toLocaleString()} found${note}` : 'none found'}</em></span></label>`;
   return `<p class="wiz-kicker">Step 1 of 2</p><h2 class="wiz-title">Bring your <em>stuff</em></h2>
     <div class="wiz-profiles">${profiles.map((q, i) => `<button type="button" class="wiz-prof${i === wizPick ? ' on' : ''}" data-f="pick" data-i="${i}" style="--r:${i}"><span class="glyph">${BROWSER_GLYPH[q.browser] || '•'}</span><span><b>${esc(q.browser)}</b><em>${esc(q.name)}</em></span></button>`).join('')}</div>
-    <div class="wiz-opts">${box('bookmarks', 'Bookmarks', c.bookmarks)}${box('history', 'History', c.history, c.history > 20000 ? ' (latest 20,000 used)' : '')}${box('logins', 'Saved passwords', c.logins, ' (encrypted again for this Windows account)')}${box('tabs', 'Open tabs', c.tabs, ' (opened as new tabs)')}</div>
+    <div class="wiz-opts">${box('bookmarks', 'Bookmarks', c.bookmarks)}${box('history', 'History', c.history, c.history > 20000 ? ' (latest 20,000 used)' : '')}${box('logins', 'Saved passwords', c.logins, ' (encrypted again for this Windows account)')}${box('tabs', 'Open tabs', c.tabs, ' (opened as new tabs)')}${box('extensions', 'Extensions', c.extensions, ' (fresh from the Chrome Web Store)')}</div>
     ${wizBusy ? `<div class="wiz-busy"><i></i><i></i><i></i> Importing…</div>` : ''}
     <p class="wiz-fine">Close ${esc(p.browser)} first for the most complete copy. Nothing leaves this computer.</p>${csvRow()}`;
 };

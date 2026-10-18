@@ -292,6 +292,14 @@ pub fn render(result: &Value) -> String {
     };
     let mut out = Vec::new();
     let mut rest = map.clone();
+    // A page view needs no tab id; any other reply keeps it (tabs.create's
+    // new tab is the answer itself: AG-L02).
+    let view = ["page", "text", "changes"].iter().any(|key| map.contains_key(*key));
+    if !view {
+        if let Some(tab) = rest.remove("tabId").filter(|value| !value.is_null()) {
+            out.push(format!("tabId: {}", tab.as_str().map_or_else(|| tab.to_string(), str::to_string)));
+        }
+    }
     let mut take = |key: &str| rest.remove(key).filter(|value| !value.is_null());
     if let (Some(url), title) = (take("url"), take("title")) {
         let title = title
@@ -527,6 +535,11 @@ mod tests {
                 &json!({"text": "Hello", "next": 6000, "total": 9000, "url": "u", "title": "T"})
             ),
             "T — u\nHello\n(more: pass offset 6000)"
+        );
+        // A new tab's id survives; a page view drops it.
+        assert_eq!(
+            render(&json!({"tabId": "content-4", "url": "https://a.test/", "title": "", "loading": true})),
+            "tabId: content-4\nhttps://a.test/\n{\"loading\":true}"
         );
     }
 

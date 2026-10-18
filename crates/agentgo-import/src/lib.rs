@@ -56,6 +56,20 @@ pub struct Counts {
     pub logins: usize,
     /// Number of open tabs found.
     pub tabs: usize,
+    /// Number of Web Store extensions installed in the profile.
+    pub extensions: usize,
+}
+
+/// An extension installed in the other browser, by its Web Store id. Only
+/// the id and name are read; the package itself is fetched fresh from the
+/// Web Store and checked against its signature, never copied from the
+/// profile.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Extension {
+    /// 32-letter Chrome Web Store id.
+    pub id: String,
+    /// Name from the extension's manifest (localised when it can be).
+    pub name: String,
 }
 
 /// One imported bookmark.
@@ -116,6 +130,8 @@ pub struct Imported {
     pub logins: Vec<Login>,
     /// Best-effort list of open-tab URLs.
     pub tabs: Vec<String>,
+    /// Web Store extensions installed in the profile.
+    pub extensions: Vec<Extension>,
     /// User-facing explanations of unavailable or approximate data.
     pub notes: Vec<String>,
 }
@@ -131,6 +147,8 @@ pub struct Options {
     pub logins: bool,
     /// Import open tabs.
     pub tabs: bool,
+    /// List the profile's Web Store extensions (the caller installs them).
+    pub extensions: bool,
     /// Maximum number of most-recent history records.
     pub history_limit: usize,
 }
@@ -142,9 +160,80 @@ impl Default for Options {
             history: true,
             logins: true,
             tabs: true,
+            extensions: true,
             history_limit: 20_000,
         }
     }
+}
+
+/// Built-in extensions a Chromium profile carries that are part of the
+/// browser rather than chosen by the person.
+const BUILT_IN_EXTENSIONS: &[&str] = &[
+    "nmmhkkegccagdldgiimedpiccmgmieda", // Chrome Web Store Payments
+    "pkedcjkdefgpdelpbcmbmeomcjbeemfm", // Chrome Media Router
+    "mhjfbmdgcfjbbpaeojofohoefgiehjai", // Chrome PDF Viewer
+    "neajdppkdcdipfabeoofebfddakdcjhd", // Google Network Speech
+    "ahfgeienlihckogmohjhadlkjgocpleb", // Web Store
+];
+
+/// The Web Store extensions of a Chromium profile: ids from its
+/// `Extensions` folder, names from each newest version's manifest.
+pub fn chromium_extensions(profile_dir: &Path) -> Vec<Extension> {
+    let Ok(entries) = fs::read_dir(profile_dir.join("Extensions")) else {
+        return Vec::new();
+    };
+    // What the browser recorded about each one, where it says so: only
+    // extensions from the Web Store count (not policy, unpacked or bundled).
+    let prefs: Value = ["Secure Preferences", "Preferences"]
+        .iter()
+        .filter_map(|file| fs::read(profile_dir.join(file)).ok())
+        .filter_map(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+        .find(|json| json.pointer("/extensions/settings").is_some())
+        .unwrap_or(Value::Null);
+    let mut found: Vec<Extension> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let id = entry.file_name().to_string_lossy().into_owned();
+            if id.len() != 32 || !id.bytes().all(|b| (b'a'..=b'p').contains(&b)) {
+                return None;
+            }
+            if BUILT_IN_EXTENSIONS.contains(&id.as_str()) {
+                return None;
+            }
+            let recorded = prefs.pointer(&format!("/extensions/settings/{id}"));
+            if recorded.is_some_and(|r| r["from_webstore"] == false || r["location"].as_u64().is_some_and(|l| l != 1)) {
+                return None;
+            }
+            let version = fs::read_dir(entry.path())
+                .ok()?
+                .flatten()
+                .filter(|v| v.path().join("manifest.json").is_file())
+                .max_by_key(|v| v.file_name())?;
+            let name = extension_name(&version.path()).unwrap_or_else(|| id.clone());
+            Some(Extension { id, name })
+        })
+        .collect();
+    found.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    found
+}
+
+fn extension_name(version_dir: &Path) -> Option<String> {
+    let manifest: Value =
+        serde_json::from_slice(&fs::read(version_dir.join("manifest.json")).ok()?).ok()?;
+    let name = manifest["name"].as_str()?.to_string();
+    let Some(key) = name.strip_prefix("__MSG_").and_then(|k| k.strip_suffix("__")) else {
+        return Some(name);
+    };
+    let locale = manifest["default_locale"].as_str().unwrap_or("en");
+    let messages: Value = serde_json::from_slice(
+        &fs::read(version_dir.join("_locales").join(locale).join("messages.json")).ok()?,
+    )
+    .ok()?;
+    messages
+        .as_object()?
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case(key))
+        .and_then(|(_, v)| v["message"].as_str().map(str::to_string))
 }
 
 /// Discover profiles in standard Windows locations, or under
@@ -205,6 +294,8 @@ pub fn count(profile: &Profile) -> Counts {
             history,
             logins: json_array_len(&profile.path.join("logins.json"), "logins"),
             tabs: firefox::session_tabs(&profile.path).len(),
+            // Firefox add-ons are not Chrome Web Store extensions.
+            extensions: 0,
         };
     }
 
@@ -232,6 +323,7 @@ pub fn count(profile: &Profile) -> Counts {
         history,
         logins,
         tabs: tabs.len(),
+        extensions: chromium_extensions(&profile.path).len(),
     }
 }
 
@@ -293,6 +385,9 @@ pub fn parse_password_csv(text: &str) -> Vec<Login> {
 }
 
 fn import_chromium(profile: &Profile, options: &Options, out: &mut Imported) {
+    if options.extensions {
+        out.extensions = chromium_extensions(&profile.path);
+    }
     let bookmarks_file = profile.path.join("Bookmarks");
     if options.bookmarks && bookmarks_file.exists() {
         match fs::read(&bookmarks_file)
@@ -1052,6 +1147,32 @@ fn parse_csv_rows(text: &str) -> Vec<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lists_web_store_extensions_with_their_names() {
+        let dir = std::env::temp_dir().join(format!("agentgo-import-ext-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let put = |rel: &str, body: &str| {
+            let path = dir.join(rel);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, body).unwrap();
+        };
+        // Dark Reader, two versions (the newer one names it), localised.
+        put("Extensions/eimadpbcbfnmbkopoojfekhnkhdbieeh/4.9.1_0/manifest.json", r#"{"name":"Old"}"#);
+        put("Extensions/eimadpbcbfnmbkopoojfekhnkhdbieeh/4.9.9_0/manifest.json", r#"{"name":"__MSG_extension_name__","default_locale":"en"}"#);
+        put("Extensions/eimadpbcbfnmbkopoojfekhnkhdbieeh/4.9.9_0/_locales/en/messages.json", r#"{"extension_name":{"message":"Dark Reader"}}"#);
+        // A browser built-in, an unpacked one and a stray folder are not listed.
+        put("Extensions/nmmhkkegccagdldgiimedpiccmgmieda/1.0_0/manifest.json", r#"{"name":"Payments"}"#);
+        put("Extensions/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/1.0_0/manifest.json", r#"{"name":"Unpacked"}"#);
+        put("Extensions/Temp/manifest.json", "{}");
+        put("Secure Preferences", r#"{"extensions":{"settings":{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa":{"location":4,"from_webstore":false},"eimadpbcbfnmbkopoojfekhnkhdbieeh":{"location":1,"from_webstore":true}}}}"#);
+        assert_eq!(
+            chromium_extensions(&dir),
+            vec![Extension { id: "eimadpbcbfnmbkopoojfekhnkhdbieeh".into(), name: "Dark Reader".into() }]
+        );
+        assert!(chromium_extensions(&dir.join("missing")).is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
     use ring::aead::{Aad, Nonce, UnboundKey, AES_256_GCM};
     use std::time::{SystemTime, UNIX_EPOCH};
 

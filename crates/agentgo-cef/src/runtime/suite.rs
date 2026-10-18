@@ -3,7 +3,7 @@
 //! - **metrics** counted live from every command a session sends, plus task
 //!   outcomes the planner reports (success, tokens, turns), and **benchmark**
 //!   reports saved, compared and checked for regressions. This is what the
-//!   A/B/C0/C1 experiment and Laya's training read.
+//!   A/B/C0/C1 experiment and GoMini's training read.
 //! - **memory**: notes an agent keeps between tasks, by scope.
 //! - **research cache**: page data an agent already fetched, by address.
 //! - **sessions**: named sets of open pages, saved and reopened; profile

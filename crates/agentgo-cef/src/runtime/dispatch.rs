@@ -150,6 +150,24 @@ fn legacy(method: &str, params: Value) -> Reply {
     }
 }
 
+/// A new tab's reply says plainly whether its page is ready (AG-L02): with
+/// `wait: true` it waits for the load and reports `loaded`; otherwise it
+/// says `loading: true` and how to wait.
+async fn created_tab_ready(caller: &Caller, mut out: Value, wait: bool) -> Reply {
+    let Some(tab) = out["tabId"].as_str().map(str::to_string) else {
+        return Ok(out);
+    };
+    if wait {
+        let loaded = Box::pin(run(caller, "wait.load", json!({"tabId": tab, "timeout": 20_000}))).await;
+        out["loaded"] = json!(loaded.is_ok());
+        out["url"] = json!(state::tab_url(&tab));
+    } else if out.get("loaded").is_none() {
+        out["loading"] = json!(true);
+        out["hint"] = json!(format!("wait.load {{\"tabId\": \"{tab}\"}} before reading it, or pass wait:true"));
+    }
+    Ok(out)
+}
+
 /// The reply for a navigation whose site has not answered by the deadline.
 fn not_answered(tab: &str, url: &str, ms: u64) -> Value {
     json!({
@@ -741,11 +759,15 @@ async fn run_ungated(caller: &Caller, method: &str, params: Value) -> Reply {
         }
         "tabs.create" | "tab.create" if profiles::wants(caller, &params) => {
             lifecycle::make_room(caller).await;
-            profiles::create_tab(caller, &params).await
+            let wait = params["wait"] == true;
+            let out = profiles::create_tab(caller, &params).await?;
+            created_tab_ready(caller, out, wait).await
         }
         "tabs.create" | "tab.create" => {
             lifecycle::make_room(caller).await;
-            run_core(caller, method, params)
+            let wait = params["wait"] == true;
+            let out = run_core(caller, method, params)?;
+            created_tab_ready(caller, out, wait).await
         }
         m if shell::handles(m) => shell::command(caller, m, &params).await,
         m if skills::handles(m) => skills::command(caller, m, &params).await,

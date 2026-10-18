@@ -113,7 +113,12 @@ pub fn from_record(
         let op = candidate["op"].as_str().unwrap_or_default();
         let target = candidate["target"].as_str().unwrap_or_default();
         if op == "fill" || op == "select" {
-            for name in &values {
+            // A field the planner named ("Postal code=postal") is offered with
+            // its own value only (see shortlist::bind); otherwise with each.
+            let bound: Option<Vec<String>> = candidate["bind"]
+                .as_array()
+                .map(|names| names.iter().filter_map(|n| n.as_str().map(str::to_string)).collect());
+            for name in values.iter().filter(|n| bound.as_ref().is_none_or(|b| b.contains(n))) {
                 let key = format!("{id}|{name}");
                 choices.push((key.clone(), format!("{op} {target} with value {name}")));
                 actions.push((key, Action { choose: id.into(), value: Some(name.clone()) }));

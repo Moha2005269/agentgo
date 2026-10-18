@@ -38,6 +38,7 @@ pub async fn scan() -> Reply {
                         "history": counts.history,
                         "logins": counts.logins,
                         "tabs": counts.tabs,
+                        "extensions": counts.extensions,
                     },
                 })
             })
@@ -69,6 +70,7 @@ pub async fn run(params: &Value) -> Reply {
         history: flag("history"),
         logins: flag("logins"),
         tabs: flag("tabs"),
+        extensions: flag("extensions"),
         ..Options::default()
     };
     let imported = exec::blocking(120_000, move || {
@@ -126,8 +128,37 @@ pub async fn run(params: &Value) -> Reply {
             opened += 1;
         }
     }
+    // Extensions come fresh from the Web Store, checked against their
+    // signature; only the ids were read from the other browser.
+    let mut extensions = Vec::new();
+    let mut unsupported = Vec::new();
+    for extension in imported.extensions.iter().take(40) {
+        match super::extensions::install_from_store(&extension.id).await {
+            Ok(_) => extensions.push(extension.name.clone()),
+            Err(fail) => {
+                let reason = fail.message.rsplit(": ").next().unwrap_or(&fail.message).to_string();
+                unsupported.push(json!({"name": extension.name, "reason": reason}));
+            }
+        }
+    }
+    if !unsupported.is_empty() {
+        notes.push(format!(
+            "{} extension(s) could not be brought over: {}.",
+            unsupported.len(),
+            unsupported
+                .iter()
+                .map(|u| format!("{} ({})", u["name"].as_str().unwrap_or(""), u["reason"].as_str().unwrap_or("")))
+                .collect::<Vec<_>>()
+                .join("; ")
+        ));
+    }
+    if !extensions.is_empty() {
+        state::run_in_shell("typeof refreshExtensions === 'function' && refreshExtensions()");
+    }
     Ok(json!({
-        "imported": {"bookmarks": bookmarks, "history": history, "logins": logins.saved, "tabs": opened},
+        "imported": {"bookmarks": bookmarks, "history": history, "logins": logins.saved, "tabs": opened, "extensions": extensions.len()},
+        "extensions": extensions,
+        "unsupportedExtensions": unsupported,
         "notes": notes,
     }))
 }
