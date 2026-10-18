@@ -70,11 +70,17 @@ async function until(read, done, what, timeoutMs = 8000) {
     assert.match((await call("navigate.search", { input: "agentgo browser" })).url, /^https:\/\/www\.google\.com\/search\?q=agentgo%20browser$/);
     assert.equal((await call("search.resolve", { input: "example.com" })).url, "https://example.com");
 
-    // Settings: ordinary keys persist, secret-shaped keys are refused.
+    // Settings: an agent changes only how the browser looks; everything else
+    // is the person's. Secret-shaped keys are refused even for the person.
     assert.equal((await call("settings.get")).searchEngine, "Google");
-    assert.equal((await call("settings.set", { settings: { motion: false, smokeMarker: "protocol-smoke" } })).motion, false);
-    assert.equal((await call("settings.get")).smokeMarker, "protocol-smoke");
-    await rejects(call("settings.set", { settings: { apiToken: "x" } }), "invalid.params");
+    assert.equal((await call("settings.set", { settings: { motion: false } })).motion, false);
+    assert.equal((await call("settings.get")).motion, false);
+    for (const key of ["smokeMarker", "agentBlockedDomains", "agentAnimations", "shortcuts", "syncFolder"]) {
+      await rejects(call("settings.set", { settings: { [key]: null } }), "policy.denied");
+    }
+    await rejects(operator(port, "settings.set", { settings: { apiToken: "x" } }), "invalid.params");
+    assert.equal((await operator(port, "settings.set", { settings: { offerToSavePasswords: false } })).offerToSavePasswords, false);
+    await operator(port, "settings.set", { settings: { offerToSavePasswords: true } });
 
     // Tabs. The start page loaded with its real title.
     const status = await until(() => call("tabs.status"), (s) => !s.loading && s.title === "AgentGo fixture — interaction page", "start page");

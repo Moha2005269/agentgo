@@ -464,29 +464,132 @@ async fn resolve_target(
             format!("{line} is covered by {cover}; dismiss the overlay or pass force:true"),
         ));
     }
+    risk_gate(
+        caller,
+        tab,
+        &line,
+        str_of(&target, "money"),
+        submits && target["submits"] == true,
+        str_of(params, "approvalId"),
+    )?;
+    Ok(target)
+}
+
+/// The approvals a press needs: money movement always (in every mode), a
+/// final form submission outside full-access mode.
+fn risk_gate(
+    caller: &Caller,
+    tab: &str,
+    line: &str,
+    money: Option<&str>,
+    submits: bool,
+    approval: Option<&str>,
+) -> Result<(), Fail> {
     let origin = origin_of(&state::tab_url(tab));
-    let approval = str_of(params, "approvalId");
-    if let Some(reason) = str_of(&target, "money") {
-        // Money movement always needs the operator, in every mode.
+    if let Some(reason) = money {
         sessions::require_approval(
             caller,
             tab,
             &origin,
-            &line,
+            line,
             &format!("possible payment or purchase ({reason})"),
             approval,
-        )?;
-    } else if submits && state::control_mode() != "full" && target["submits"] == true {
+        )
+    } else if submits && state::control_mode() != "full" {
         sessions::require_approval(
             caller,
             tab,
             &origin,
-            &line,
+            line,
             "final form submission",
             approval,
-        )?;
+        )
+    } else {
+        Ok(())
     }
-    Ok(target)
+}
+
+/// A press at a viewport point (a click, tap or pen stroke by coordinates)
+/// gets the same checks as a click on a reference: what is under the point
+/// decides.
+async fn point_gate(
+    caller: &Caller,
+    tab: &str,
+    x: f64,
+    y: f64,
+    params: &Value,
+) -> Result<(), Fail> {
+    if caller.is_shell() {
+        return Ok(());
+    }
+    let at = agent(tab, "riskAt", json!([x, y]), 6_000).await?;
+    let line = format!(
+        "point {x},{y} ({})",
+        str_of(&at, "line").unwrap_or("element")
+    );
+    risk_gate(
+        caller,
+        tab,
+        &line,
+        str_of(&at, "money"),
+        at["submits"] == true,
+        str_of(params, "approvalId"),
+    )
+}
+
+/// A key press: Enter or Space on a focused control presses it (the same
+/// checks as a click); a character lands in the focused field.
+async fn press_gate(caller: &Caller, tab: &str, key: &str, params: &Value) -> Result<(), Fail> {
+    if caller.is_shell() {
+        return Ok(());
+    }
+    let lower = key.to_ascii_lowercase();
+    let activates = matches!(
+        lower.as_str(),
+        "enter" | "return" | " " | "space" | "spacebar"
+    );
+    if !activates {
+        return if key.chars().count() == 1 {
+            typing_gate(caller, tab, params).await
+        } else {
+            Ok(())
+        };
+    }
+    let focus = agent(tab, "focusedMoney", json!([]), 6_000).await?;
+    risk_gate(
+        caller,
+        tab,
+        &format!(
+            "{key} on {}",
+            str_of(&focus, "line").unwrap_or("the focused element")
+        ),
+        str_of(&focus, "press"),
+        focus["pressSubmits"] == true,
+        str_of(params, "approvalId"),
+    )
+}
+
+/// Text typed now (keys, typing, pasting) lands in the focused field: a
+/// payment card field needs the person's approval, as with `act.fill`.
+async fn typing_gate(caller: &Caller, tab: &str, params: &Value) -> Result<(), Fail> {
+    if caller.is_shell() {
+        return Ok(());
+    }
+    let focus = agent(tab, "focusedMoney", json!([]), 6_000).await?;
+    match str_of(&focus, "money") {
+        Some(reason) => sessions::require_approval(
+            caller,
+            tab,
+            &origin_of(&state::tab_url(tab)),
+            &format!(
+                "typing in {}",
+                str_of(&focus, "line").unwrap_or("the focused field")
+            ),
+            reason,
+            str_of(params, "approvalId"),
+        ),
+        None => Ok(()),
+    }
 }
 
 async fn mouse(
@@ -560,6 +663,9 @@ pub async fn act_click(caller: &Caller, method: &str, params: &Value) -> Reply {
             return Err(Fail::params(
                 "pointer coordinates must be viewport-local and between 0 and 100000",
             ));
+        }
+        if !matches!(method, "act.hover" | "pointer.hover" | "pointer.move") {
+            point_gate(caller, &tab, x, y, params).await?;
         }
         (x, y, format!("point {x},{y}"))
     };
@@ -902,6 +1008,7 @@ pub async fn clipboard(caller: &Caller, method: &str, params: &Value) -> Reply {
                     "the clipboard is empty; clipboard.copy or clipboard.write first",
                 ));
             }
+            typing_gate(caller, &tab, params).await?;
             let before_url = state::tab_url(&tab);
             let generation = cdp::generation(&tab);
             cdp::input(&tab, "Input.insertText", json!({"text": text}))
@@ -976,6 +1083,7 @@ pub async fn act_press(caller: &Caller, params: &Value) -> Reply {
             pressed_in = focused["line"].as_str().map(str::to_string);
         }
     }
+    press_gate(caller, &tab, key, params).await?;
     if matches!(key.to_ascii_lowercase().as_str(), "enter" | "return") {
         enter_gate(caller, &tab, str_of(params, "approvalId")).await?;
     }
@@ -1003,6 +1111,7 @@ pub async fn act_type(caller: &Caller, params: &Value) -> Reply {
     }
     let before_url = state::tab_url(&tab);
     let generation = cdp::generation(&tab);
+    typing_gate(caller, &tab, params).await?;
     if bool_of(params, "submit") {
         enter_gate(caller, &tab, str_of(params, "approvalId")).await?;
     }
@@ -1426,6 +1535,9 @@ pub async fn pen(caller: &Caller, method: &str, params: &Value) -> Reply {
         .and_then(Value::as_f64)
         .unwrap_or(0.5)
         .clamp(0.0, 1.0);
+    if method == "pen.down" {
+        point_gate(caller, &tab, x, y, params).await?;
+    }
     let (kind, buttons) = match method {
         "pen.down" => ("mousePressed", 1),
         "pen.up" => ("mouseReleased", 0),
@@ -1551,6 +1663,9 @@ pub async fn raw_input(caller: &Caller, method: &str, params: &Value) -> Reply {
     match method {
         "touch.start" | "touch.move" => {
             let (x, y) = point(params, "x", "y")?;
+            if method == "touch.start" {
+                point_gate(caller, &tab, x, y, params).await?;
+            }
             show(
                 &tab,
                 "pointTo",
@@ -1590,6 +1705,7 @@ pub async fn raw_input(caller: &Caller, method: &str, params: &Value) -> Reply {
         }
         "touch.long_press" => {
             let (x, y) = point(params, "x", "y")?;
+            point_gate(caller, &tab, x, y, params).await?;
             show(&tab, "pointTo", json!([x, y, "click"])).await;
             touch(&tab, "touchStart", json!([{"x": x, "y": y, "id": 1}])).await?;
             exec::sleep(
@@ -1666,6 +1782,7 @@ pub async fn raw_input(caller: &Caller, method: &str, params: &Value) -> Reply {
         }
         "pointer.down" | "pointer.drag_start" => {
             let (x, y) = point(params, "x", "y")?;
+            point_gate(caller, &tab, x, y, params).await?;
             let button = str_of(params, "button").unwrap_or("left");
             show(&tab, "pointTo", json!([x, y, "click"])).await;
             mouse(&tab, "mouseMoved", x, y, "none", 0, 0).await?;
@@ -1699,6 +1816,12 @@ pub async fn raw_input(caller: &Caller, method: &str, params: &Value) -> Reply {
                 str_of(params, "key").ok_or_else(|| Fail::params("params.key is required"))?;
             let code = key_code(key).ok_or_else(|| Fail::params(format!("unsupported key {key:?}; use Shift, Control, Alt, Enter, arrows, a letter or a digit")))?;
             let down = method == "keyboard.key_down";
+            if down {
+                press_gate(caller, &tab, key, params).await?;
+                if matches!(key.to_ascii_lowercase().as_str(), "enter" | "return") {
+                    enter_gate(caller, &tab, str_of(params, "approvalId")).await?;
+                }
+            }
             cdp::input(&tab, "Input.dispatchKeyEvent", json!({"type": if down { "rawKeyDown" } else { "keyUp" }, "key": key, "windowsVirtualKeyCode": code, "nativeVirtualKeyCode": code})).await.map_err(Fail::internal)?;
             show(
                 &tab,

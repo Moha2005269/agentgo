@@ -137,6 +137,23 @@ fn describe(params: &Value) -> String {
 /// AgentGo's own window (`window.native_handle`) need no permission.
 pub async fn command(caller: &Caller, method: &str, params: &Value) -> Reply {
     let name = method.trim_start_matches("native.");
+    // A notice an agent raises says it is the agent's, so it cannot pass for
+    // Windows, a bank or the person's other programs.
+    let from_agent = |text: &str| -> String {
+        if caller.is_shell() {
+            text.to_string()
+        } else {
+            let client = sessions::client_of(&caller.session);
+            if client == "agent" {
+                format!("Agent: {text}")
+            } else {
+                format!(
+                    "Agent {}: {text}",
+                    client.chars().take(40).collect::<String>()
+                )
+            }
+        }
+    };
     // Commands about AgentGo itself or the person's own settings.
     match name {
         "accessibility" => return helper(json!({"op": "accessibility"}), 20_000).await,
@@ -146,19 +163,21 @@ pub async fn command(caller: &Caller, method: &str, params: &Value) -> Reply {
                 .as_str()
                 .unwrap_or("AgentGo needs your attention");
             if params["flash"] != false || name == "notification" {
-                state::notify_operator(&message.chars().take(200).collect::<String>());
+                state::notify_operator(&from_agent(&message.chars().take(200).collect::<String>()));
             }
             return Ok(
                 json!({"window": own_hwnd(), "flashed": true, "notified": name == "notification"}),
             );
         }
         "toast" => {
-            let title: String = params["title"]
-                .as_str()
-                .unwrap_or("AgentGo")
-                .chars()
-                .take(80)
-                .collect();
+            let title = from_agent(
+                &params["title"]
+                    .as_str()
+                    .unwrap_or("AgentGo")
+                    .chars()
+                    .take(80)
+                    .collect::<String>(),
+            );
             let text: String = params["text"]
                 .as_str()
                 .unwrap_or("")

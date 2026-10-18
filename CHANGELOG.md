@@ -14,6 +14,25 @@ Security release: fixes from a code review of 0.1.3.
 - The Windows UI Automation helper script is checked before every run and replaced if it was changed. Update version checks treat `1.2` and `1.2.0` as equal and a pre-release as older than its release.
 - CI: a Linux job runs format, clippy, the portable crates' tests, the UI script check and `cargo audit`; GitHub Actions are pinned to commit SHAs.
 
+Fixes from a second, deeper review:
+
+- **Payments ask you, whatever the input.** Clicks, taps and pen strokes by screen position (`pointer.click {x, y}`, `act.click {x, y}`, `touch.*`, `pen.down`, `pointer.down`) now check what is under the point and need the same approvals as a click on a reference: money always, a final form submission in approval mode. Enter or Space on a focused button, `act.type`/`keyboard.*`/`clipboard.paste` into a card field, and `act.expand` on a paying or submitting control are checked the same way. Payment buttons are recognised in more languages (German, French, Spanish, Portuguese, Italian, Dutch, Swedish, Polish, Russian, Japanese, Korean, Chinese, Arabic, Turkish), and card fields in a payment provider's frame (Stripe, Adyen, Braintree and others) count as card fields.
+- **Agents change only how the browser looks.** `settings.set` from an agent now accepts an allow-list (theme, accent, motion, favorites bar, home and extensions buttons, site dark mode, translation language) and refuses everything else. Before, settings missing from a deny-list could be changed, including the person's list of sites agents may not use, the agent's visible pointer and typing, keyboard shortcuts and the sync folder.
+- **Sync and profile import cannot switch security settings.** A sync folder or an imported profile brings in only the look and plain preferences (search engine, startup, languages, hardware acceleration, notifications, offer to save sign-ins); control mode, script evaluation, other programs, downloads, privacy protections and the agent site lists stay as they are. Restoring your own checkpoint still restores everything.
+- **Downloads are read-only for agents.** Agents write, move, rename, redact and delete files only in their artifact folder, so a file Defender scanned is the file "Open" opens.
+- **Extension pages open only from their toolbar button.** A website (or an agent through one) can no longer open an extension's pop-up or options page, and a pop-up window that navigates to a website loses the extension's endpoints and storage.
+- **Save sign-in**: a sign-in typed into another site's embedded frame is no longer offered for the page around it, and `credentials.fill` stops if the page moved to another site before typing.
+- **Offer to save sign-ins** can be switched off again (the switch was refused as a "secret" setting).
+- One extension's content scripts can no longer change another extension's storage.
+- Approvals the person granted expire after five minutes, and an agent can have at most 20 waiting.
+- `device.web_authn` (a virtual passkey device) asks the person first.
+- Pages can no longer detect AgentGo through its hidden markers (ad blocking keeps none; dark mode and fingerprint protection hide theirs from `Object.getOwnPropertySymbols`, `Reflect.ownKeys` and `Object.getOwnPropertyDescriptors`; no `DarkReader` global).
+- Downloads named like Windows devices (`NUL`, `CON.txt`, `COM1`) are saved as `_NUL` and so on.
+- Notifications an agent raises say they come from the agent.
+- A dangerous site the person opened anyway stays blocked in tabs an agent holds or drives.
+- `agentgo setup claude|codex|droid` and Setup run the agent host's program directly, so an install path with `&` or `^` works.
+- Passwords typed into a tab are forgotten when it closes.
+
 ## 0.1.3 (2026-10-18)
 
 - **Extension pop-ups**: clicking a pinned extension opens its own pop-up (the toolbar window it shows in Chrome) instead of the Extensions panel; the panel has Open and Options buttons. Pages are served from the extension's own origin (`agentgo-ext://<id>/`) with `chrome.runtime`, `chrome.i18n`, `chrome.storage` (shared with its content scripts), `chrome.tabs.query`/`create` and `openOptionsPage`. Websites cannot load an extension's files or endpoints, and agents cannot open extension pages. Background workers do not run yet; pop-ups of extensions that need one say so (`extension.open_popup`, operator only).

@@ -1352,7 +1352,7 @@ const METHODS: &[(&str, &str, u8, &str)] = &[
     ),
     (
         "settings.set",
-        "Change settings; agent callers cannot change operator-only keys.",
+        "Change settings; agents may change only the look (theme, accent, motion, favoritesBar, showHome, showExtensions, siteDark*, translateTo).",
         2,
         "integration.protocol_smoke",
     ),

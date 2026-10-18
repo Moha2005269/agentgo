@@ -40,9 +40,16 @@ fn percent(settings: &Value, key: &str) -> i64 {
         .clamp(50, 150)
 }
 
+/// Where a page keeps the engine: under this run's hidden symbol (which the
+/// fingerprint protection also hides), not a `DarkReader` global a site could
+/// look for.
+fn engine_slot() -> String {
+    format!("window[Symbol.for('{}.dr')]", super::adblock::page_marker())
+}
+
 fn enable_call(settings: &Value) -> String {
     format!(
-        "DarkReader.enable({{brightness:{},contrast:{},sepia:0}});",
+        "dr.enable({{brightness:{},contrast:{},sepia:0}});",
         percent(settings, "siteDarkBrightness"),
         percent(settings, "siteDarkContrast")
     )
@@ -50,13 +57,20 @@ fn enable_call(settings: &Value) -> String {
 
 /// The script that turns the engine on for a page, loading it first when needed.
 fn enable_script(settings: &Value) -> String {
+    let slot = engine_slot();
     format!(
-        "(function(){{try{{if(!window.DarkReader){{\n{ENGINE}\n}}{}}}catch(e){{}}}})();",
+        "(function(){{try{{let dr={slot};if(!dr){{const had='DarkReader' in window;\n{ENGINE}\ndr=window.DarkReader;if(!had)delete window.DarkReader;if(dr)Object.defineProperty(window,Symbol.for('{}.dr'),{{value:dr}})}}if(dr){}}}catch(e){{}}}})();",
+        super::adblock::page_marker(),
         enable_call(settings)
     )
 }
 
-const DISABLE: &str = "try{window.DarkReader&&DarkReader.disable()}catch(e){}";
+fn disable_script() -> String {
+    format!(
+        "try{{const dr={};dr&&dr.disable()}}catch(e){{}}",
+        engine_slot()
+    )
+}
 
 /// Called as a page starts loading (and again for its frames).
 pub fn inject(frame: &mut Frame, settings: &Value) {
@@ -88,9 +102,9 @@ pub fn refresh(settings: &Value) {
         let Some(host) = host_of(&url) else { continue };
         let script = if settings["siteDark"] == true && !excluded(settings, &host) {
             // The engine keeps the first brightness it was given until it is restarted.
-            format!("{DISABLE}\n{}", enable_script(settings))
+            format!("{}\n{}", disable_script(), enable_script(settings))
         } else {
-            DISABLE.to_string()
+            disable_script()
         };
         frame.execute_java_script(
             Some(&CefString::from(script.as_str())),

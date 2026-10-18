@@ -95,6 +95,11 @@ const wrap=(orig,apply)=>{const p=new Proxy(orig,{apply:(t,s,a)=>{try{return app
 const method=(o,name,apply)=>{try{const d=Object.getOwnPropertyDescriptor(o,name);if(!d||typeof d.value!=='function')return;d.value=wrap(d.value,apply);Object.defineProperty(o,name,d)}catch(e){}};
 const accessor=(o,name,kind,after)=>{try{const d=Object.getOwnPropertyDescriptor(o,name);if(!d||!d[kind])return;d[kind]=wrap(d[kind],(t,s,a)=>{const r=Reflect.apply(t,s,a);try{after(r)}catch(e){}return r});Object.defineProperty(o,name,d)}catch(e){}};
 method(w.Function.prototype,'toString',(t,s,a)=>{const v=strings.get(s);return v!==undefined?v:Reflect.apply(t,s,a)});
+const rawKeys=w.Reflect.ownKeys;
+const hidden=k=>typeof k==='symbol'&&typeof k.description==='string'&&k.description.startsWith('@HIDE@');
+method(w.Object,'getOwnPropertySymbols',(t,s,a)=>Reflect.apply(t,s,a).filter(k=>!hidden(k)));
+method(w.Reflect,'ownKeys',(t,s,a)=>Reflect.apply(t,s,a).filter(k=>!hidden(k)));
+method(w.Object,'getOwnPropertyDescriptors',(t,s,a)=>{const r=Reflect.apply(t,s,a);for(const k of rawKeys(r))if(hidden(k))delete r[k];return r});
 try{if(w.Navigator&&!('globalPrivacyControl' in w.Navigator.prototype)){const g=Object.getOwnPropertyDescriptor({get globalPrivacyControl(){return true}},'globalPrivacyControl').get;strings.set(g,'function get globalPrivacyControl() { [native code] }');Object.defineProperty(w.Navigator.prototype,'globalPrivacyControl',{get:g,configurable:true,enumerable:true})}}catch(e){}
 for(const C of [w.CanvasRenderingContext2D,w.OffscreenCanvasRenderingContext2D])if(C)method(C.prototype,'getImageData',(t,s,a)=>{const img=Reflect.apply(t,s,a);try{noise(img.data,a[0]|0,a[1]|0,img.width)}catch(e){}return img});
 const copyOf=(c,make)=>{try{const W=c.width,H=c.height;if(!W||!H||W*H>16777216)return null;const k=make(W,H),x=k.getContext('2d');x.drawImage(c,0,0);x.putImageData(x.getImageData(0,0,W,H),0,0);return k}catch(e){return null}};
@@ -187,7 +192,11 @@ pub async fn install(tab: String) {
         if on {
             let source = format!(
                 "{}({},{});",
-                SCRIPT.replace("@MARK@", &format!("{}.fp", super::adblock::page_marker())),
+                // AgentGo's own per-run symbols (this one, dark mode's)
+                // stay out of the lists a page can enumerate.
+                SCRIPT
+                    .replace("@MARK@", &format!("{}.fp", super::adblock::page_marker()))
+                    .replace("@HIDE@", super::adblock::page_marker()),
                 base_seed(agent),
                 !agent
             );

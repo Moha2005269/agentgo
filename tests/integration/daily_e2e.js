@@ -122,13 +122,15 @@ const { launch, serve, rejects, refOf, reservePort, delay, operator } = require(
       await browser.call(...step);
       assert.equal((await stage())[0], true, `${step[0]} drew nothing`);
     }
-    await browser.call("settings.set", { settings: { agentAnimations: false } });
+    // Only the person can hide what an agent does.
+    await rejects(browser.call("settings.set", { settings: { agentAnimations: false } }), "policy.denied");
+    await operator(port, "settings.set", { settings: { agentAnimations: false } });
     page = await browser.call("navigate.url", { url: site.url("daily.html") });
     await browser.call("runtime.evaluate", { expression: counter });
     await browser.call("act.fill", { ref: refOf(page.page, "Paste target"), text: "quiet" });
     await browser.call("act.click", { ref: refOf(page.page, "Paste target") });
     assert.deepEqual(await stage(), [false, 1]);
-    await browser.call("settings.set", { settings: { agentAnimations: true } });
+    await operator(port, "settings.set", { settings: { agentAnimations: true } });
 
     // The decision interface (what GoMini, the local choice model, is fed):
     // a subgoal becomes a record of candidates; a choice runs only against the
@@ -194,7 +196,10 @@ const { launch, serve, rejects, refOf, reservePort, delay, operator } = require(
     await browser.call("navigate.url", { url: site.url("daily.html") });
     assert.equal((await browser.call("runtime.evaluate", { expression: askNotify })).value, "granted");
     assert.deepEqual((await operator(port, "permission.reset", { origin })).sites, {});
-    const authenticator = await browser.call("device.web_authn");
+    // A virtual passkey device answers sign-in prompts: the person approves it.
+    const ask = await rejects(browser.call("device.web_authn"), "approval.required");
+    await operator(port, "agent.approval.respond", { approvalId: ask.data.approvalId, approve: true });
+    const authenticator = await browser.call("device.web_authn", { approvalId: ask.data.approvalId });
     assert.equal(typeof authenticator.authenticatorId, "string");
     await browser.call("device.web_authn", { remove: authenticator.authenticatorId });
     const video = await browser.call("observe.record_video", { seconds: 1, fps: 3 });

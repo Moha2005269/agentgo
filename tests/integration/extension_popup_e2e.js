@@ -74,6 +74,11 @@ const { launch, cdpEval, delay, reservePort, rejects } = require("./harness");
     // A website cannot read an extension's files.
     const probe = await browser.call("runtime.evaluate", { expression: `fetch('agentgo-ext://${added.id}/popup/popup.js').then(r => r.status).catch(e => 'blocked')`, awaitPromise: true });
     assert.notEqual(probe.value, 200, "a website read the extension's files");
+    // ...nor open its pages: only its toolbar button (or Options) does.
+    await browser.call("runtime.evaluate", { expression: `location.href = 'agentgo-ext://${added.id}/options.html'; true` });
+    await delay(1000);
+    const stayed = await browser.call("tabs.status");
+    assert(!String(stayed.url).startsWith("agentgo-ext://"), `a website opened an extension page (${stayed.url})`);
 
     // Options opens the options page.
     const options = await operator("extension.open_popup", { id: added.id, options: true });

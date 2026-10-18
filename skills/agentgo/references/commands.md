@@ -887,7 +887,7 @@ actions, `ref` from the outline.
 | `profile.timezone` | Use a time zone in the tab (timezoneId, for example Asia/Riyadh; empty restores). |
 | `profile.unlock` | Operator only: let agents use a locked profile again. |
 | `settings.get` | Read non-secret settings. |
-| `settings.set` | Change settings; agent callers cannot change operator-only keys. |
+| `settings.set` | Change settings; agents may change only the look (theme, accent, motion, favoritesBar, showHome, showExtensions, siteDark*, translateTo). |
 | `bookmark.add` | Bookmark a page. |
 | `bookmark.edit` | Change a bookmark's title or address (newUrl). |
 | `bookmark.list` | List bookmarks. |

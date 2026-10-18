@@ -574,7 +574,9 @@ fn export_value() -> Value {
     })
 }
 
-fn import_value(data: &Value) -> Result<Value, Fail> {
+/// `own` is a checkpoint AgentGo wrote itself; anything else is a file from
+/// outside and brings only portable settings.
+fn import_value(data: &Value, own: bool) -> Result<Value, Fail> {
     if data["kind"] != "profile-state" {
         return Err(Fail::params("this is not an AgentGo profile export"));
     }
@@ -591,8 +593,19 @@ fn import_value(data: &Value) -> Result<Value, Fail> {
             }
         }
     }
+    // From a file made elsewhere, only the look and plain preferences: it
+    // never changes security settings, what agents may do, or private folders.
+    let mut skipped = Vec::new();
     if let Some(settings) = data["settings"].as_object() {
-        let _ = state::update_settings(&Value::Object(settings.clone()));
+        let (portable, rest): (
+            serde_json::Map<String, Value>,
+            serde_json::Map<String, Value>,
+        ) = settings
+            .clone()
+            .into_iter()
+            .partition(|(key, _)| own || super::dispatch::portable_setting(key));
+        skipped = rest.into_iter().map(|(key, _)| key).collect();
+        let _ = state::update_settings(&Value::Object(portable));
     }
     if let Some(sessions) = data.get("sessions").filter(|s| s.is_object()) {
         let _ = std::fs::write(
@@ -600,7 +613,9 @@ fn import_value(data: &Value) -> Result<Value, Fail> {
             serde_json::to_vec_pretty(sessions).unwrap_or_default(),
         );
     }
-    Ok(json!({"bookmarks": bookmarks, "settings": data["settings"].is_object()}))
+    Ok(
+        json!({"bookmarks": bookmarks, "settings": data["settings"].is_object(), "settingsNotImported": skipped}),
+    )
 }
 
 /// `profile.export_state|import_state|checkpoint|restore_checkpoint` (operator).
@@ -650,7 +665,7 @@ pub fn profile_state(method: &str, params: &Value) -> Reply {
                     .map_err(|_| Fail::params(format!("cannot read {}", file.display())))?,
             )
             .map_err(|_| Fail::params("the file is not JSON"))?;
-            import_value(&data)
+            import_value(&data, method == "profile.restore_checkpoint")
         }
     }
 }
@@ -794,6 +809,20 @@ fn describe(path: &Path) -> Value {
     })
 }
 
+/// A path an agent may change (write, move, rename, delete): AgentGo's
+/// artifact folder only. Downloads stay as they arrived, so a file Defender
+/// scanned is the file `download.open` opens.
+fn writable(path: &str) -> Result<PathBuf, Fail> {
+    let resolved = inside(path)?;
+    match artifacts_root().canonicalize() {
+        Ok(root) if resolved.starts_with(&root) => Ok(resolved),
+        _ => Err(Fail::new(
+            ErrorCode::PolicyDenied,
+            "agents change files only in AgentGo's artifact folder; downloads are read-only for agents",
+        )),
+    }
+}
+
 fn sha256(bytes: &[u8]) -> String {
     agentgo_artifacts::sha256_hex(bytes)
 }
@@ -805,6 +834,12 @@ pub fn artifacts(session: &str, method: &str, params: &Value) -> Reply {
             .as_str()
             .ok_or_else(|| Fail::params("params.path is required"))
             .and_then(inside)
+    };
+    let own = || {
+        params["path"]
+            .as_str()
+            .ok_or_else(|| Fail::params("params.path is required"))
+            .and_then(writable)
     };
     let mut files = Vec::new();
     walk(&artifacts_root(), &mut files);
@@ -854,7 +889,7 @@ pub fn artifacts(session: &str, method: &str, params: &Value) -> Reply {
             Ok(json!({"link": format!("file:///{}", p.display().to_string().replace('\\', "/"))}))
         }
         "artifact.delete" => {
-            let p = path()?;
+            let p = own()?;
             std::fs::remove_file(&p).map_err(|e| Fail::internal(e.to_string()))?;
             Ok(json!({"deleted": p.display().to_string()}))
         }
@@ -868,7 +903,7 @@ pub fn artifacts(session: &str, method: &str, params: &Value) -> Reply {
             let target = match params["path"].as_str() {
                 Some(_) if method == "file.write_text" => {
                     let candidate = PathBuf::from(params["path"].as_str().unwrap_or(""));
-                    inside(
+                    writable(
                         candidate
                             .parent()
                             .map(|p| p.display().to_string())
@@ -893,7 +928,7 @@ pub fn artifacts(session: &str, method: &str, params: &Value) -> Reply {
             Ok(describe(&target))
         }
         "artifact.redact" => {
-            let p = path()?;
+            let p = own()?;
             let text = std::fs::read_to_string(&p)
                 .map_err(|_| Fail::params("only text artifacts can be redacted"))?;
             let mut redacted = String::with_capacity(text.len());
@@ -990,8 +1025,13 @@ pub fn artifacts(session: &str, method: &str, params: &Value) -> Reply {
             )
         }
         _ => {
-            // file.copy / file.move / file.rename: both ends inside AgentGo's folders.
-            let from = path()?;
+            // file.copy / file.move / file.rename: read from AgentGo's folders,
+            // write only to the artifact folder (a move or rename changes the source).
+            let from = if method == "file.copy" {
+                path()?
+            } else {
+                own()?
+            };
             let to_text = params["to"]
                 .as_str()
                 .ok_or_else(|| Fail::params("params.to is required"))?;
@@ -1001,7 +1041,7 @@ pub fn artifacts(session: &str, method: &str, params: &Value) -> Reply {
             } else {
                 PathBuf::from(to_text)
             };
-            inside(
+            writable(
                 to.parent()
                     .map(|p| p.display().to_string())
                     .unwrap_or_default()

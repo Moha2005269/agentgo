@@ -396,6 +396,11 @@ pub fn page_report(tab: &str, payload: &str) {
     let Ok(login) = core::Login::new(&state::tab_url(tab), username, password) else {
         return;
     };
+    // Only a sign-in typed into the page's own site is offered for it: one
+    // typed into an embedded frame of another site belongs to that site.
+    if report["origin"].as_str() != Some(login.origin.as_str()) {
+        return;
+    }
     if book().never_save.contains(&login.origin)
         || logins().load().is_ok_and(|all| all.contains(&login))
     {
@@ -570,7 +575,7 @@ pub async fn credentials_fill(tab: &str) -> Reply {
     let filled = super::page::agent(
         tab,
         "fillLogin",
-        json!([login.username, login.password]),
+        json!([login.username, login.password, page_origin]),
         8_000,
     )
     .await?;
@@ -608,6 +613,13 @@ fn remember_filled(tab: &str, page_origin: &str, password: &str) {
         if !entry.secrets.iter().any(|known| known == password) {
             entry.secrets.push(password.to_string());
         }
+    });
+}
+
+/// A closed tab's typed passwords are forgotten.
+pub fn forget_filled(tab: &str) {
+    FILLED.with(|all| {
+        all.borrow_mut().remove(tab);
     });
 }
 

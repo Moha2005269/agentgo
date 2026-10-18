@@ -14,7 +14,7 @@ const { launch, operator, serve, reservePort, rejects, refOf } = require("./harn
   const call = (method, params = {}) => browser.call(method, params);
   let failed = false;
   try {
-    await call("settings.set", { settings: { agentAnimations: false } });
+    await operator(port, "settings.set", { settings: { agentAnimations: false } });
     // Metrics come from what the session really did.
     const view = await call("navigate.url", { url: site.url("daily.html") });
     await call("act.fill", { ref: refOf(view.page, "Paste target"), text: "measured" });
