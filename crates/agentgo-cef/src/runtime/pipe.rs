@@ -3,7 +3,8 @@
 //! `\\.\pipe\agentgo-<instance id>` accepts local clients only, is ACL'd to
 //! the current Windows user, and requires the instance token in the first
 //! message. Every connection becomes its own agent session with its own tab
-//! leases. No TCP listener exists.
+//! leases. The pipe opens no TCP port (the optional localhost SDK server,
+//! off by default, lives in `sdk.rs`).
 
 use std::io;
 use std::path::Path;
@@ -87,6 +88,35 @@ impl Pipe {
                 overlapped,
             )
         })
+    }
+}
+
+/// One connection's pipe, closed when the last user lets go of it. The reader
+/// (`serve`) and the writer thread each hold one, so the handle is never
+/// closed while the other may still use it (Windows reuses handle values: a
+/// late write could otherwise reach another client's pipe).
+struct Connection(Pipe);
+
+impl Drop for Connection {
+    fn drop(&mut self) {
+        unsafe {
+            DisconnectNamedPipe(self.0.handle());
+            CloseHandle(self.0.handle());
+        }
+    }
+}
+
+/// The writer thread's share of a [`Connection`].
+struct Writer(std::sync::Arc<Connection>);
+
+impl io::Write for Writer {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        let mut pipe = self.0 .0;
+        io::Write::write(&mut pipe, bytes)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
     }
 }
 
@@ -207,8 +237,13 @@ fn serve(pipe: Pipe, token: String, number: usize) {
     let mut decoder = FrameDecoder::new(FrameConfig::default());
     let mut buffer = [0u8; 16 * 1024];
     let mut authenticated = false;
+    let connection = std::sync::Arc::new(Connection(pipe));
     let (line_tx, line_rx) = mpsc::channel::<String>();
-    state::spawn_line_writer("agentgo-pipe-writer", line_rx, pipe);
+    state::spawn_line_writer(
+        "agentgo-pipe-writer",
+        line_rx,
+        Writer(std::sync::Arc::clone(&connection)),
+    );
     'connection: loop {
         let read = match pipe.read(&mut buffer) {
             Ok(0) | Err(_) => break,
@@ -281,10 +316,8 @@ fn serve(pipe: Pipe, token: String, number: usize) {
         state::wake_ui();
     }
     drop(line_tx);
-    unsafe {
-        DisconnectNamedPipe(pipe.handle());
-        CloseHandle(pipe.handle());
-    }
+    // The writer thread closes the pipe once the session's last line is out.
+    drop(connection);
     LIVE.fetch_sub(1, Ordering::SeqCst);
 }
 

@@ -23,10 +23,12 @@ fn script_path() -> Result<std::path::PathBuf, Fail> {
         (h ^ b as u64).wrapping_mul(0x100000001b3)
     });
     let path = std::env::temp_dir().join(format!("agentgo-native-{hash:016x}.ps1"));
-    if !path.exists() {
-        // UTF-8 with BOM: Windows PowerShell reads BOM-less files as ANSI.
-        let mut bytes = vec![0xEF, 0xBB, 0xBF];
-        bytes.extend_from_slice(SCRIPT.as_bytes());
+    // UTF-8 with BOM: Windows PowerShell reads BOM-less files as ANSI.
+    let mut bytes = vec![0xEF, 0xBB, 0xBF];
+    bytes.extend_from_slice(SCRIPT.as_bytes());
+    // Checked on every use: a copy that was cut short or changed by another
+    // program is replaced before it runs.
+    if std::fs::read(&path).ok().as_deref() != Some(bytes.as_slice()) {
         std::fs::write(&path, bytes).map_err(|error| Fail::internal(error.to_string()))?;
     }
     Ok(path)

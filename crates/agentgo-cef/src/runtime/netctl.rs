@@ -99,6 +99,11 @@ async fn enable_interception(tab: &str) -> Result<(), Fail> {
     .map_err(Fail::internal)
 }
 
+/// Whether `tab` has interception rules (its pages may be answered by an agent).
+pub fn intercepting(tab: &str) -> bool {
+    RULES.with(|all| all.borrow().get(tab).is_some_and(|rules| !rules.is_empty()))
+}
+
 fn find_request(tab: &str, id: &str) -> Option<Value> {
     cdp::events(tab, &["request"], 400, false)
         .into_iter()
@@ -203,7 +208,12 @@ pub async fn command(caller: &Caller, method: &str, params: &Value) -> Reply {
             let body = cdp::call(&tab, "Network.getRequestPostData", json!({"requestId": id}))
                 .await
                 .map_err(|_| Fail::params("that request has no body, or it is no longer kept"))?;
-            Ok(json!({"requestId": id, "body": body["postData"]}))
+            // A sign-in form carries the password credentials.fill typed.
+            let body = body["postData"]
+                .as_str()
+                .map(|text| json!(super::accounts::redact_filled(&tab, text)))
+                .unwrap_or(Value::Null);
+            Ok(json!({"requestId": id, "body": body}))
         }
         "network.response_body" | "network.download_response" => {
             let id = text("requestId")
@@ -216,7 +226,14 @@ pub async fn command(caller: &Caller, method: &str, params: &Value) -> Reply {
                     )
                 })?;
             let encoded = body["base64Encoded"] == true;
-            let raw = body["body"].as_str().unwrap_or("");
+            let text = body["body"].as_str().unwrap_or("");
+            let redacted;
+            let raw = if encoded {
+                text
+            } else {
+                redacted = super::accounts::redact_filled(&tab, text);
+                redacted.as_str()
+            };
             if method == "network.download_response" {
                 let bytes = if encoded {
                     page::decode_base64(raw)

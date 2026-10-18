@@ -8,6 +8,7 @@ use std::time::Duration;
 /// Sends one request and returns the status code and body.
 pub fn request(
     port: u16,
+    key: &str,
     method: &str,
     path: &str,
     body: Option<&str>,
@@ -20,7 +21,7 @@ pub fn request(
     stream.set_write_timeout(Some(timeout)).ok();
     let body = body.unwrap_or("");
     let head = format!(
-        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAuthorization: Bearer {key}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
         body.len()
     );
     stream

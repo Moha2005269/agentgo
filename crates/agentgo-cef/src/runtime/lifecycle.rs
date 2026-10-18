@@ -199,12 +199,19 @@ async fn check_and_stage() {
     }
 }
 
-fn version_parts(text: &str) -> Vec<u64> {
-    text.trim_start_matches('v')
-        .split(['.', '-'])
-        .take(3)
-        .map(|p| p.parse().unwrap_or(0))
-        .collect()
+/// `major.minor.patch` (missing parts are 0) and whether it is a final
+/// release: `0.2.0-rc1` comes before `0.2.0`.
+fn version_parts(text: &str) -> ([u64; 3], bool) {
+    let text = text.trim().trim_start_matches('v');
+    let (core, release) = match text.split_once('-') {
+        Some((core, _)) => (core, false),
+        None => (text, true),
+    };
+    let mut parts = [0u64; 3];
+    for (slot, part) in parts.iter_mut().zip(core.split('.')) {
+        *slot = part.parse().unwrap_or(0);
+    }
+    (parts, release)
 }
 
 fn newer(candidate: &str, current: &str) -> bool {
@@ -929,5 +936,8 @@ mod tests {
         assert!(newer("v1.0.0", "0.9.9"));
         assert!(!newer("0.1.0", "0.1.0"));
         assert!(!newer("0.1.0-beta", "0.1.1"));
+        assert!(!newer("1.2.0", "1.2"));
+        assert!(newer("0.2.0", "0.2.0-rc1"));
+        assert!(!newer("0.2.0-rc1", "0.2.0"));
     }
 }

@@ -15,12 +15,16 @@ use crate::install::{Installed, Layout, Runtime};
 pub struct Server {
     child: Child,
     port: u16,
+    /// The worker's API key: nothing else on this computer (another program,
+    /// a web page calling localhost) can use the model without it.
+    key: String,
     #[cfg(windows)]
     job: Option<isize>,
 }
 
 /// A program that never opens a console window.
 pub(crate) fn hidden(program: &Path) -> Command {
+    #[cfg_attr(not(windows), allow(unused_mut))]
     let mut command = Command::new(program);
     #[cfg(windows)]
     {
@@ -37,9 +41,22 @@ fn free_port() -> Result<u16, String> {
         .map_err(|e| format!("no free local port: {e}"))
 }
 
+/// A fresh random API key for one worker run.
+fn new_key() -> Result<String, String> {
+    let mut bytes = [0u8; 24];
+    getrandom::fill(&mut bytes).map_err(|e| format!("no random source: {e}"))?;
+    Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
+}
+
 /// The arguments the model was checked with (LIMITATIONS_AND_AGENTGO_INTEGRATION.md),
 /// with the device chosen at install time.
-fn arguments(model: &Path, runtime: Runtime, device: Option<&str>, port: u16) -> Vec<String> {
+fn arguments(
+    model: &Path,
+    runtime: Runtime,
+    device: Option<&str>,
+    port: u16,
+    key: &str,
+) -> Vec<String> {
     let threads = std::thread::available_parallelism()
         .map(|n| (n.get() / 2).clamp(2, 8))
         .unwrap_or(4)
@@ -63,6 +80,8 @@ fn arguments(model: &Path, runtime: Runtime, device: Option<&str>, port: u16) ->
         "127.0.0.1",
         "--port",
         &port.to_string(),
+        "--api-key",
+        key,
         "--no-webui",
         "--pooling",
         "none",
@@ -152,9 +171,10 @@ impl Server {
             return Err("GoMini is not installed completely; download it again in Settings".into());
         }
         let port = free_port()?;
+        let key = new_key()?;
         let log_file = std::fs::File::create(log).map_err(|e| e.to_string())?;
         let child = hidden(exe)
-            .args(arguments(model, runtime, device, port))
+            .args(arguments(model, runtime, device, port, &key))
             .current_dir(exe.parent().unwrap_or(Path::new(".")))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -166,6 +186,7 @@ impl Server {
             job: tie_to_parent(&child),
             child,
             port,
+            key,
         };
         let deadline = Instant::now() + Duration::from_secs(90);
         loop {
@@ -194,11 +215,18 @@ impl Server {
 
     /// Whether the process runs and reports ready.
     pub fn healthy(&self) -> bool {
-        http::request(self.port, "GET", "/health", None, Duration::from_secs(2))
-            .ok()
-            .and_then(|(code, body)| (code == 200).then_some(body))
-            .and_then(|body| serde_json::from_str::<Value>(&body).ok())
-            .is_some_and(|v| v["status"] == "ok")
+        http::request(
+            self.port,
+            &self.key,
+            "GET",
+            "/health",
+            None,
+            Duration::from_secs(2),
+        )
+        .ok()
+        .and_then(|(code, body)| (code == 200).then_some(body))
+        .and_then(|body| serde_json::from_str::<Value>(&body).ok())
+        .is_some_and(|v| v["status"] == "ok")
     }
 
     /// Whether the process is still alive.
@@ -224,6 +252,7 @@ impl Server {
     pub fn post(&self, path: &str, body: &str, timeout_s: u64) -> Result<Value, String> {
         let (code, text) = http::request(
             self.port,
+            &self.key,
             "POST",
             path,
             Some(body),
@@ -319,12 +348,14 @@ mod tests {
     #[test]
     fn gpu_and_cpu_arguments() {
         let model = Path::new("m.gguf");
-        let gpu = arguments(model, Runtime::Vulkan, Some("Vulkan0"), 5);
+        let gpu = arguments(model, Runtime::Vulkan, Some("Vulkan0"), 5, "k");
         assert!(gpu.windows(2).any(|w| w == ["--device", "Vulkan0"]));
         assert!(gpu.windows(2).any(|w| w == ["-ngl", "99"]));
-        let cpu = arguments(model, Runtime::Cpu, None, 5);
+        let cpu = arguments(model, Runtime::Cpu, None, 5, "k");
         assert!(cpu.windows(2).any(|w| w == ["-ngl", "0"]));
         assert!(!cpu.iter().any(|a| a == "--device"));
         assert!(cpu.windows(2).any(|w| w == ["--host", "127.0.0.1"]));
+        assert!(cpu.windows(2).any(|w| w == ["--api-key", "k"]));
+        assert_ne!(new_key().unwrap(), new_key().unwrap());
     }
 }

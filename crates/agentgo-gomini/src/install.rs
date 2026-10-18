@@ -489,6 +489,8 @@ mod tests {
         write_record(layout, found).unwrap();
     }
 
+    // Downloads go through Windows' own curl.exe.
+    #[cfg(windows)]
     #[test]
     fn a_file_with_the_wrong_hash_is_never_kept() {
         let dir = std::env::temp_dir().join(format!("gomini-dl-{}", std::process::id()));

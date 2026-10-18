@@ -549,6 +549,14 @@ pub fn credentials_delete(params: &Value) -> Reply {
 /// nothing else.
 #[cfg(windows)]
 pub async fn credentials_fill(tab: &str) -> Reply {
+    // A page an agent answered itself (network.fulfill and friends) could be
+    // anything under the real address: never type a saved password into it.
+    if super::netctl::intercepting(tab) {
+        return Err(Fail::new(
+            ErrorCode::PolicyDenied,
+            "this tab has network interception rules; call network.clear_interceptors and reload the page before credentials.fill",
+        ));
+    }
     let url = state::tab_url(tab);
     let page_origin = origin(&url);
     let page_origin = page_origin.trim_end_matches('/');
@@ -558,6 +566,7 @@ pub async fn credentials_fill(tab: &str) -> Reply {
         .into_iter()
         .find(|login| login.origin == page_origin)
         .ok_or_else(|| Fail::new(ErrorCode::PolicyDenied, format!("no sign-in is saved for {page_origin}; the person can add one in the Account Center")))?;
+    remember_filled(tab, page_origin, &login.password);
     let filled = super::page::agent(
         tab,
         "fillLogin",
@@ -574,6 +583,56 @@ pub async fn credentials_fill(tab: &str) -> Reply {
     Ok(
         json!({"origin": page_origin, "username": login.username, "filled": filled["filled"], "next": filled["next"]}),
     )
+}
+
+/// Saved passwords the browser typed into a tab, and the origin it typed them
+/// on. They keep the promise of credentials.fill: network bodies an agent
+/// reads from the tab are redacted, and page script cannot be evaluated on
+/// that origin (it could read the field).
+#[derive(Default)]
+struct Filled {
+    origin: String,
+    secrets: Vec<String>,
+}
+
+thread_local! {
+    static FILLED: std::cell::RefCell<std::collections::HashMap<String, Filled>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+fn remember_filled(tab: &str, page_origin: &str, password: &str) {
+    FILLED.with(|all| {
+        let mut all = all.borrow_mut();
+        let entry = all.entry(tab.to_string()).or_default();
+        entry.origin = page_origin.to_string();
+        if !entry.secrets.iter().any(|known| known == password) {
+            entry.secrets.push(password.to_string());
+        }
+    });
+}
+
+/// `text` without any password the browser typed into `tab`.
+pub fn redact_filled(tab: &str, text: &str) -> String {
+    FILLED.with(|all| {
+        all.borrow().get(tab).map_or_else(
+            || text.to_string(),
+            |filled| {
+                filled.secrets.iter().fold(text.to_string(), |out, secret| {
+                    core::redact_secret(&out, secret)
+                })
+            },
+        )
+    })
+}
+
+/// Whether `tab` is still on the origin a saved password was typed into.
+pub fn holds_filled_password(tab: &str) -> bool {
+    let current = origin(&state::tab_url(tab));
+    FILLED.with(|all| {
+        all.borrow()
+            .get(tab)
+            .is_some_and(|filled| filled.origin == current.trim_end_matches('/'))
+    })
 }
 
 fn unix_now() -> u64 {

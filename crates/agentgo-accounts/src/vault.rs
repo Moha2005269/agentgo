@@ -307,6 +307,7 @@ mod tests {
         }
     }
 
+    #[cfg(windows)]
     fn temp(name: &str) -> PathBuf {
         let dir =
             std::env::temp_dir().join(format!("agentgo-vault-test-{name}-{}", std::process::id()));

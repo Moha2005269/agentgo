@@ -4731,7 +4731,7 @@ pub fn set_load_error(tab_id: &str, error: &str) {
 /// Address of the bundled page shown in place of one that failed to load.
 pub fn error_page_url(failed_url: &str, error: &str) -> String {
     format!(
-        "agentgo://shell/error.html?url={}&error={}&theme={}",
+        "agentgo://shell/error.html?url={}&error={}&theme={}&k={}",
         query_encode(failed_url),
         query_encode(error),
         // the error page has no bridge; it is told the person's theme
@@ -4739,8 +4739,31 @@ pub fn error_page_url(failed_url: &str, error: &str) -> String {
             Some("light") => "light",
             Some("system") => "system",
             _ => "dark",
-        }
+        },
+        error_page_key()
     )
+}
+
+/// A per-run key on every error page AgentGo shows itself. A web page cannot
+/// guess it, so it cannot open a look-alike AgentGo warning of its own.
+fn error_page_key() -> &'static str {
+    static KEY: OnceLock<String> = OnceLock::new();
+    KEY.get_or_init(|| {
+        let mut bytes = [0u8; 16];
+        let _ = getrandom::fill(&mut bytes);
+        bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+    })
+}
+
+/// Whether `url` is an error page AgentGo made (it carries this run's key).
+pub(crate) fn is_own_error_page(url: &str) -> bool {
+    url.strip_prefix("agentgo://shell/error.html?")
+        .map(|rest| rest.split('#').next().unwrap_or(""))
+        .is_some_and(|query| {
+            query
+                .split('&')
+                .any(|pair| pair.strip_prefix("k=") == Some(error_page_key()))
+        })
 }
 
 fn session_file() -> PathBuf {

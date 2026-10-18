@@ -12,6 +12,13 @@ param(
 $ErrorActionPreference = 'Stop'
 # Wait as long as AgentGo stays open (an update applied on exit can wait hours).
 if ($WaitPid -gt 0) { try { Wait-Process -Id $WaitPid -ErrorAction Stop } catch {} }
+# Its helper processes (renderers, GPU, crash handler) can outlive it briefly
+# and keep files locked: give them up to 30 s.
+$prefix = $Install.TrimEnd('\') + '\'
+$deadline = (Get-Date).AddSeconds(30)
+while ((Get-Date) -lt $deadline -and (Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) })) {
+  Start-Sleep -Milliseconds 250
+}
 Start-Sleep -Milliseconds 300
 $log = Join-Path $Install 'updates\swap.log'
 function Note($text) { Add-Content -LiteralPath $log -Value ("{0:o} {1}" -f (Get-Date), $text) }
@@ -20,8 +27,14 @@ try {
   # The previous version, minus the updates folder itself.
   if (Test-Path -LiteralPath $Backup) { Remove-Item -LiteralPath $Backup -Recurse -Force }
   New-Item -ItemType Directory -Force -Path $Backup | Out-Null
-  Get-ChildItem -LiteralPath $Install -Force | Where-Object { $_.Name -ne 'updates' } | ForEach-Object {
-    Move-Item -LiteralPath $_.FullName -Destination (Join-Path $Backup $_.Name) -Force
+  try {
+    Get-ChildItem -LiteralPath $Install -Force | Where-Object { $_.Name -ne 'updates' } | ForEach-Object {
+      Move-Item -LiteralPath $_.FullName -Destination (Join-Path $Backup $_.Name) -Force
+    }
+  } catch {
+    # Something was still in use: put back what was already moved.
+    Get-ChildItem -LiteralPath $Backup -Force | ForEach-Object { Move-Item -LiteralPath $_.FullName -Destination (Join-Path $Install $_.Name) -Force }
+    throw
   }
   try {
     Get-ChildItem -LiteralPath $Staged -Force | ForEach-Object {
