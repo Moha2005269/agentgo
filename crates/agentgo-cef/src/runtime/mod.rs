@@ -14,6 +14,7 @@ mod dialogs;
 mod dispatch;
 mod exec;
 mod extensions;
+mod extpage;
 mod extras;
 mod features;
 mod fingerprint;

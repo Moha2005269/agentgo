@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3 (2026-10-18)
+
+- **Extension pop-ups**: clicking a pinned extension opens its own pop-up (the toolbar window it shows in Chrome) instead of the Extensions panel; the panel has Open and Options buttons. Pages are served from the extension's own origin (`agentgo-ext://<id>/`) with `chrome.runtime`, `chrome.i18n`, `chrome.storage` (shared with its content scripts), `chrome.tabs.query`/`create` and `openOptionsPage`. Websites cannot load an extension's files or endpoints, and agents cannot open extension pages. Background workers do not run yet; pop-ups of extensions that need one say so (`extension.open_popup`, operator only).
+- **No console window**: AgentGo no longer leaves a Command Prompt window on the desktop when it is started from a shortcut or another program; it runs in the background with only the browser window showing (`AGENTGO_KEEP_CONSOLE=1` keeps it for debugging).
+- **Signed with Sigstore Cosign**: every file on the release carries a keyless Cosign signature bundle (`<file>.sigstore.json`), made by the repository's `sign-release` workflow and recorded in the public Rekor log. `docs/verify-release.md` shows how to check a download. This proves where a file came from; it is not an Authenticode signature, so SmartScreen may still ask.
+
 ## 0.1.2 (2026-10-18)
 
 - **GoMini, the local model**: a 322M-parameter model trained on AgentGo's own decision records ([huggingface.co/Mhmadhassnz/GoMini](https://huggingface.co/Mhmadhassnz/GoMini)) takes the routine steps of a task on your computer. An agent hands it one subgoal (`gomini.delegate`, over MCP `browser_delegate`) with the values to type and how to tell it is done; GoMini fills, clicks, checks, selects, scrolls and waits, and returns `done`, `needs_help` or `stopped` with every step. Each choice is checked independently before it runs (offered candidate, page revision, supplied value, same site, no payment, sign-in, submission, delete or other sensitive step), typed fields are read back, Pause and Stop apply, and the browser's own approvals still hold. GoMini sees exactly the input it was trained on (token-identical to the reference packer).

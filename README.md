@@ -42,7 +42,7 @@ Brave's open-source blocking engine with **18 filter lists**: EasyList, EasyPriv
 <td width="50%" valign="top">
 
 ### A browser that fits you and your agent
-The agent works with its own pointer and keyboard, drawn on the page and never your mouse, in a window that stays behind yours. You see every click and keystroke, and you can pause or stop it in one click. Everything else is a normal browser: tabs, bookmarks, history, downloads, and extensions from the Chrome Web Store (their page scripts run; background pages and pop-ups don't yet).
+The agent works with its own pointer and keyboard, drawn on the page and never your mouse, in a window that stays behind yours. You see every click and keystroke, and you can pause or stop it in one click. Everything else is a normal browser: tabs, bookmarks, history, downloads, and extensions from the Chrome Web Store (their page scripts, toolbar pop-ups and options pages run; background workers don't yet).
 
 </td>
 </tr>
@@ -114,7 +114,7 @@ act.fill {ref: 1, text: "…"} →
 - Deploying to many PCs? `AgentGo-Setup-full.exe --silent` installs with the defaults (privacy and security on) and no window; add `--dir <folder>`, `--no-shortcuts`, `--no-path` or `--no-agents`. `--uninstall --silent [--remove-profile]` removes it. The log is `%TEMP%\agentgo-setup.log`; the exit code is 0 on success.
 - Prefer a folder? Download `AgentGo-<version>-win64.zip`, unzip it anywhere and run `agentgo.exe`. `Install-AgentGo.ps1` inside it does the Start-menu entry, PATH and Claude Code registration from a terminal (`-Uninstall` removes it).
 
-Your profile (history, bookmarks, cookies, saved sign-ins) lives under `%LOCALAPPDATA%\AgentGo`. The executables are not Authenticode-signed yet, so Windows SmartScreen may ask once.
+Your profile (history, bookmarks, cookies, saved sign-ins) lives under `%LOCALAPPDATA%\AgentGo`. Every release file is signed with [Sigstore Cosign](https://www.sigstore.dev/) (the `.sigstore.json` file next to it; how to check it: [docs/verify-release.md](docs/verify-release.md)). The executables are not Authenticode-signed yet, so Windows SmartScreen may still ask once.
 
 ## Connect your agent
 
@@ -146,7 +146,7 @@ Agents should read `skills/agentgo/SKILL.md` first (over MCP: `browser_guide`). 
 - The ad blocker and security claims above come from our own testing. Independent benchmarks against other browsers are not published yet.
 - Chrome seals its newest passwords (app-bound encryption) so only Chrome can read them. The import says how many, opens Chrome's export page for you and takes the CSV it saves. Firefox passwords import only when no primary password is set.
 - Translation uses Google's translation service. Notifications are refused for every site. There is no VPN in this release.
-- Extensions run their page scripts with `chrome.runtime`, `chrome.i18n` and `chrome.storage`; background pages, pop-ups and toolbar actions are not supported yet, so extensions that depend on them (password managers, for example) do little.
+- Extensions run their page scripts with `chrome.runtime`, `chrome.i18n` and `chrome.storage`, and their toolbar pop-ups and options pages open. Background workers are not supported yet, so extensions that depend on them (password managers, VPNs, Dark Reader's live switch) do little; their pop-ups say so.
 - Cross-origin iframes are not observed or acted in.
 - GoMini is trained and checked on AgentGo's own forms, single actions and navigation; on arbitrary sites it is not proven yet, and its confidence is not calibrated. That is why every step it picks is checked by the browser, sensitive steps go back to your agent, and "done" is a claim your agent can verify.
 - Real Google, GitHub and Yandex API sign-in has not been tried live; the OAuth flow is tested against a mock provider.

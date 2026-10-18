@@ -811,6 +811,12 @@ const METHODS: &[(&str, &str, u8, &str)] = &[
         "integration.browser_e2e",
     ),
     (
+        "extension.open_popup",
+        "Operator only: open an extension's toolbar pop-up (or, with options:true, its options page) in a small window.",
+        10,
+        "integration.extension_popup_e2e",
+    ),
+    (
         "extension.permissions",
         "The permissions an extension's manifest asks for.",
         10,

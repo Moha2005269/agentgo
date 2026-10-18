@@ -843,12 +843,13 @@ const renderExtensions = list => {
         <span class="ext-ctl">
           <label class="ext-pin"><span>Toolbar</span><button class="switch${ext.pinned ? ' on' : ''}" type="button" role="switch" aria-checked="${ext.pinned}" aria-label="Show ${esc(ext.name)} in the toolbar" data-ext-pin="${esc(ext.id)}"></button></label>
           <label class="ext-pin"><span>On</span><button class="switch${ext.enabled ? ' on' : ''}" type="button" role="switch" aria-checked="${ext.enabled}" aria-label="Turn ${esc(ext.name)} on or off" data-ext-on="${esc(ext.id)}"></button></label>
+          ${ext.popup && ext.enabled ? `<button class="btn sm" type="button" data-ext-open="${esc(ext.id)}">Open</button>` : '}${ext.options && ext.enabled ? `<button class="btn sm" type="button" data-ext-options="${esc(ext.id)}">Options</button>` : '}
           <button class="btn sm" type="button" data-ext-remove="${esc(ext.id)}">Remove</button>
         </span>
       </div>`).join('');
   }
   toolFoot.hidden = false;
-  toolFoot.innerHTML = '<span class="note">AgentGo runs the page scripts of extensions. Background pages, pop-ups and toolbar actions are not supported yet.</span><button class="btn" type="button" data-ext-store>Get extensions</button>';
+  toolFoot.innerHTML = '<span class="note">AgentGo runs the page scripts of extensions and opens their pop-ups and options pages. Background parts do not run yet, so features that need them may not work.</span><button class="btn" type="button" data-ext-store>Get extensions</button>';
 };
 const extensionList = async () => (await callBridge('extension.list')).extensions || [];
 const extChanged = async () => { await refresh(); window.__agentgoExtensionsChanged?.(); };
@@ -1217,6 +1218,9 @@ toolBody.addEventListener('click', async event => {
       const pinned = target.dataset.extPin ? !ext.pinned : ext.pinned;
       await callBridge(enabled ? 'extension.enable' : 'extension.disable', { id, pinned });
       await extChanged();
+    } else if (target.dataset.extOpen || target.dataset.extOptions) {
+      await callBridge('extension.open_popup', { id: target.dataset.extOpen || target.dataset.extOptions, options: Boolean(target.dataset.extOptions) });
+      window.__agentgoRequestClose();
     } else if (target.dataset.extRemove) {
       if (armed !== target.dataset.extRemove) {
         armed = target.dataset.extRemove;

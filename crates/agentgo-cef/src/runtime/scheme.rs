@@ -86,7 +86,7 @@ fn trusted_document(frame_url: &str, frame_is_main: bool) -> Option<Document> {
 }
 
 /// Percent-decodes a query-string value.
-fn percent_decode(s: &str) -> String {
+pub(super) fn percent_decode(s: &str) -> String {
     let bytes = s.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
@@ -363,6 +363,17 @@ fn asset(body: Vec<u8>, status: i32, mime: &str) -> cef::ResourceHandler {
         Arc::new(Mutex::new(None)),
         Arc::new(Mutex::new(0)),
         Some(shell_csp().to_string()),
+    )
+}
+
+/// A response with no CSP of AgentGo's own: an extension's page keeps the
+/// policy its manifest and markup give it.
+pub(super) fn plain_asset(body: Vec<u8>, status: i32, mime: &str) -> cef::ResourceHandler {
+    MemoryHandler::new(
+        Arc::new(Mutex::new(Some((status, mime.to_string(), body)))),
+        Arc::new(Mutex::new(None)),
+        Arc::new(Mutex::new(0)),
+        None,
     )
 }
 

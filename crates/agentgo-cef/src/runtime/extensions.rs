@@ -39,6 +39,12 @@ struct Extension {
     icon: String,
     #[serde(default)]
     description: String,
+    /// The toolbar pop-up page (`action.default_popup`), relative to the folder.
+    #[serde(default)]
+    popup: String,
+    /// The options page, relative to the folder.
+    #[serde(default)]
+    options: String,
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -129,9 +135,28 @@ fn read_folder(folder: &Path) -> Result<Extension, Fail> {
             css,
         });
     }
-    if scripts.is_empty() {
+    let page = |value: &Value| {
+        value
+            .as_str()
+            .map(|path| path.trim_start_matches('/').to_string())
+            .filter(|path| !path.is_empty() && read(path).is_ok())
+            .unwrap_or_default()
+    };
+    let popup = page(&manifest["action"]["default_popup"]);
+    let popup = if popup.is_empty() {
+        page(&manifest["browser_action"]["default_popup"])
+    } else {
+        popup
+    };
+    let options = page(&manifest["options_ui"]["page"]);
+    let options = if options.is_empty() {
+        page(&manifest["options_page"])
+    } else {
+        options
+    };
+    if scripts.is_empty() && popup.is_empty() {
         return Err(bad(
-            "the extension has no content scripts, which is the part AgentGo runs".into(),
+            "the extension has neither content scripts nor a toolbar pop-up, the parts AgentGo runs".into(),
         ));
     }
     let mut permissions = strings(&manifest["permissions"]);
@@ -159,6 +184,8 @@ fn read_folder(folder: &Path) -> Result<Extension, Fail> {
             .chars()
             .take(200)
             .collect(),
+        popup,
+        options,
     })
 }
 
@@ -206,11 +233,68 @@ fn summary(extension: &Extension) -> Value {
         "id": extension.id, "name": extension.name, "version": extension.version, "enabled": extension.enabled,
         "source": extension.source, "permissions": extension.permissions,
         "pinned": extension.pinned, "icon": extension.icon, "description": extension.description,
+        "popup": !pages(extension).0.is_empty(), "options": !pages(extension).1.is_empty(),
         "contentScripts": extension.scripts.iter().map(|s| json!({"matches": s.matches, "jsBytes": s.js.len(), "cssBytes": s.css.len()})).collect::<Vec<_>>(),
         // Its background page does not run in AgentGo: features that need it
         // (pop-ups, toolbar actions, syncing) will not work.
         "limited": needs_background(Path::new(&extension.source)),
     })
+}
+
+/// The pop-up and options pages: from the record, or (for extensions added
+/// before AgentGo opened pages) from the manifest.
+fn pages(extension: &Extension) -> (String, String) {
+    if !extension.popup.is_empty() || !extension.options.is_empty() {
+        return (extension.popup.clone(), extension.options.clone());
+    }
+    let (manifest, _) = manifest_and_messages(Path::new(&extension.source));
+    let first = |values: [&Value; 2]| {
+        values
+            .iter()
+            .filter_map(|v| v.as_str())
+            .map(|p| p.trim_start_matches('/').to_string())
+            .find(|p| !p.is_empty())
+            .unwrap_or_default()
+    };
+    (
+        first([
+            &manifest["action"]["default_popup"],
+            &manifest["browser_action"]["default_popup"],
+        ]),
+        first([&manifest["options_ui"]["page"], &manifest["options_page"]]),
+    )
+}
+
+/// What the extension page server (extpage.rs) needs for an enabled
+/// extension: its folder, manifest, messages and saved storage.
+pub fn page_parts(id: &str) -> Option<(PathBuf, Value, Value, Value)> {
+    let extension = load().into_iter().find(|e| e.id == id && e.enabled)?;
+    let folder = PathBuf::from(&extension.source);
+    let (manifest, messages) = manifest_and_messages(&folder);
+    Some((folder, manifest, messages, json!(extension.storage)))
+}
+
+/// The address of an extension's pop-up (or, with `options: true`, its
+/// options page), for `extension.open_popup`.
+pub fn page_url(params: &Value) -> Result<String, Fail> {
+    let mut all = load();
+    let extension = find(&mut all, params)?;
+    if !extension.enabled {
+        return Err(Fail::params(format!("{} is turned off", extension.name)));
+    }
+    let (popup, options) = pages(extension);
+    let page = if params["options"] == true {
+        options
+    } else {
+        popup
+    };
+    if page.is_empty() {
+        return Err(Fail::params(format!(
+            "{} has no page to open",
+            extension.name
+        )));
+    }
+    Ok(format!("agentgo-ext://{}/{page}", extension.id))
 }
 
 fn find<'a>(all: &'a mut [Extension], params: &Value) -> Result<&'a mut Extension, Fail> {

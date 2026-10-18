@@ -1125,6 +1125,34 @@ async fn run_ungated(caller: &Caller, method: &str, params: Value) -> Reply {
         "extension.list" | "extension.permissions" | "extension.content_scripts" => {
             super::extensions::command(method, &params)
         }
+        "extension.open_popup" => {
+            // The person's click on an extension's toolbar button.
+            shell_only(caller, method)?;
+            let url = super::extensions::page_url(&params)?;
+            // chrome.tabs.query in the pop-up answers with the tab it opened over.
+            let tabs = run_core(caller, "tabs.list", json!({}))?;
+            let active = tabs["activeTabId"].as_str().unwrap_or_default();
+            if let Some(tab) = tabs["tabs"]
+                .as_array()
+                .and_then(|all| all.iter().find(|t| t["tabId"] == active))
+            {
+                super::extpage::set_active_tab(json!({"url": tab["url"], "title": tab["title"]}));
+            }
+            // A blank window first, then the extension's page: agents cannot
+            // open agentgo-ext:// pages, only the person's click does.
+            let out = Box::pin(winmgr::command(
+                caller,
+                "tab.open_popup",
+                &json!({"url": "about:blank", "width": 420, "height": 600}),
+            ))
+            .await?;
+            let tab = out["tabId"].as_str().unwrap_or_default().to_string();
+            if let Some(id) = params["id"].as_str() {
+                super::extpage::register_page_tab(&tab, id);
+            }
+            state::navigate_tab(&tab, &url);
+            Ok(json!({"url": url, "windowId": out["windowId"], "tabId": tab}))
+        }
         "extension.install" if params.get("store").is_some() => {
             shell_only(caller, method)?;
             super::extensions::install_from_store(params["store"].as_str().unwrap_or("")).await

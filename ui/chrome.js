@@ -341,7 +341,7 @@ const renderExtensions = () => {
   $('#openExtensions').hidden = !showExtensions;
   const bar = $('#extBar');
   const pinned = showExtensions ? extensions.filter(ext => ext.pinned) : [];
-  const signature = JSON.stringify(pinned.map(ext => [ext.id, ext.enabled, ext.name, (ext.icon || '').length]));
+  const signature = JSON.stringify(pinned.map(ext => [ext.id, ext.enabled, ext.name, (ext.icon || '').length, ext.popup]));
   if (signature === extSignature) return;
   extSignature = signature;
   bar.replaceChildren(...pinned.map(ext => {
@@ -358,7 +358,10 @@ const renderExtensions = () => {
     } else {
       button.append(Object.assign(document.createElement('span'), { className: 'ext-letter', textContent: initialOf(ext.name) }));
     }
-    button.addEventListener('click', () => run('ui.open_tool', { tool: 'extensions' }));
+    // Its own pop-up, as in Chrome; the extensions panel when it has none.
+    button.addEventListener('click', () => ext.popup && ext.enabled
+      ? callBridge('extension.open_popup', { id: ext.id }).catch(() => run('ui.open_tool', { tool: 'extensions' }))
+      : run('ui.open_tool', { tool: 'extensions' }));
     return button;
   }));
 };

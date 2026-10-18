@@ -513,6 +513,10 @@ wrap_app! {
             if registered == 0 {
                 state::log_event("AG-RUNTIME scheme-registration-failed");
             }
+            // An extension's own pages (pop-up, options), one origin each.
+            if registrar.add_custom_scheme(Some(&CefString::from("agentgo-ext")), options) == 0 {
+                state::log_event("AG-RUNTIME extension-scheme-registration-failed");
+            }
         }
 
         fn browser_process_handler(&self) -> Option<BrowserProcessHandler> {
@@ -550,6 +554,8 @@ wrap_browser_process_handler! {
                 return;
             }
             state::log_event("AG-RUNTIME scheme-factory-registered");
+            let mut pages = super::extpage::ExtensionPageFactory::new();
+            register_scheme_handler_factory(Some(&CefString::from("agentgo-ext")), None, Some(&mut pages));
 
             if let Err(error) = std::fs::create_dir_all(&self.cache_root) {
                 state::log_event(&format!("AG-RUNTIME cache-directory-failed {error}"));
@@ -622,6 +628,8 @@ wrap_request_context_handler! {
                     Some(&CefString::from("shell")),
                     Some(&mut factory),
                 );
+                let mut pages = super::extpage::ExtensionPageFactory::new();
+                context.register_scheme_handler_factory(Some(&CefString::from("agentgo-ext")), None, Some(&mut pages));
                 self.done.fill(context.clone());
             }
         }
@@ -668,6 +676,13 @@ fn attach_first_tab(ui_root: &std::path::Path, content_context: RequestContext) 
         state::request_quit(7);
         return;
     }
+    // Extensions' own pages (pop-ups) open in the content context.
+    let mut pages = super::extpage::ExtensionPageFactory::new();
+    content_context.register_scheme_handler_factory(
+        Some(&CefString::from("agentgo-ext")),
+        None,
+        Some(&mut pages),
+    );
     state::log_event("AG-RUNTIME isolated-content-context-created");
     // A proxy left behind by the removed VPN is put back to the system setting.
     super::profiles::route_context(&content_context, "main", None);
@@ -685,7 +700,79 @@ fn attach_first_tab(ui_root: &std::path::Path, content_context: RequestContext) 
     super::lifecycle::start_update_checks();
     // GoMini, when the person has it on, loads before the first task needs it.
     super::gomini::warm_up();
+    // Tests (debug builds only) can give the browser a console of its own,
+    // as some launches do, to check it is hidden.
+    #[cfg(all(windows, debug_assertions))]
+    #[allow(unsafe_code)]
+    if std::env::var_os("AGENTGO_TEST_CONSOLE").is_some() {
+        // SAFETY: plain Win32 call.
+        unsafe { windows_sys::Win32::System::Console::AllocConsole() };
+    }
+    // No console window on the person's desktop, now or once the engine has
+    // finished starting (Chromium's logging can open one late).
+    release_console();
+    super::exec::spawn(async {
+        for wait in [1_500, 6_000] {
+            super::exec::sleep(wait).await;
+            release_console();
+        }
+    });
 }
+
+/// AgentGo's window is the browser, never a console. Depending on how it was
+/// started (a pinned taskbar button, a notification, an agent's terminal) and
+/// on Chromium's `--enable-logging`, the browser can end up with a console of
+/// its own that shows its event log on the desktop. When only AgentGo's own
+/// processes use the console, it is hidden and left; a console shared with a
+/// terminal the person started AgentGo from is theirs and stays.
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn release_console() {
+    use windows_sys::Win32::System::Console::{
+        FreeConsole, GetConsoleProcessList, GetConsoleWindow,
+    };
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE};
+    if std::env::var_os("AGENTGO_KEEP_CONSOLE").is_some() {
+        return;
+    }
+    let Ok(own) = std::env::current_exe() else {
+        return;
+    };
+    // SAFETY: plain Win32 calls on handles this process owns or opens and closes.
+    unsafe {
+        let window = GetConsoleWindow();
+        if window.is_null() {
+            return;
+        }
+        let mut pids = [0u32; 64];
+        let count = GetConsoleProcessList(pids.as_mut_ptr(), pids.len() as u32) as usize;
+        let only_agentgo = (1..=pids.len()).contains(&count)
+            && pids[..count].iter().all(|&pid| {
+                let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+                if process.is_null() {
+                    return false;
+                }
+                let mut buffer = [0u16; 1024];
+                let mut size = buffer.len() as u32;
+                let ok =
+                    QueryFullProcessImageNameW(process, 0, buffer.as_mut_ptr(), &mut size) != 0;
+                windows_sys::Win32::Foundation::CloseHandle(process);
+                ok && own.as_path()
+                    == std::path::Path::new(&String::from_utf16_lossy(&buffer[..size as usize]))
+            });
+        if only_agentgo {
+            ShowWindow(window, SW_HIDE);
+            FreeConsole();
+            state::log_event("AG-RUNTIME console-hidden");
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn release_console() {}
 
 /// Builds the trusted chrome, the tools overlay and the top-level window.
 /// This must happen synchronously during context initialization: CEF exits

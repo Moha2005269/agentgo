@@ -821,6 +821,15 @@ pub fn register_content_tab(id: &str, view: cef::BrowserView) -> Result<(), Stri
 
 /// Stores CEF's browser id for a registered tab. The id lets diagnostics and
 /// load callbacks associate native events with the stable protocol tab id.
+/// The tab a browser id belongs to (safe from any thread).
+pub fn tab_for_browser_id(browser_id: i32) -> Option<String> {
+    state().content_tabs.lock().ok().and_then(|tabs| {
+        tabs.iter()
+            .find(|tab| tab.browser_id == Some(browser_id))
+            .map(|tab| tab.id.clone())
+    })
+}
+
 pub fn register_tab_browser_id(tab_id: &str, browser_id: i32) {
     if let Ok(mut tabs) = state().content_tabs.lock() {
         if let Some(tab) = tabs.iter_mut().find(|tab| tab.id == tab_id) {
