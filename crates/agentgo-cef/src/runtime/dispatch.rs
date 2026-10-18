@@ -1370,7 +1370,16 @@ fn run_core(caller: &Caller, method: &str, mut params: Value) -> Reply {
         .flatten()
         .map(|tab| state::tab_url(&tab))
         .filter(|url| url.starts_with("http"));
+    // GoMini's switch starts its worker ahead of the first task, or stops it.
+    let gomini_switch = (method == "settings.set")
+        .then(|| params.get("settings").unwrap_or(&params)["gominiEnabled"].as_bool())
+        .flatten();
     let mut out = legacy(method, params)?;
+    match gomini_switch {
+        Some(true) => gomini::warm_up(),
+        Some(false) => gomini::stop_worker(),
+        None => {}
+    }
     if let Some(url) = closing {
         CLOSED.with(|closed| {
             let mut closed = closed.borrow_mut();

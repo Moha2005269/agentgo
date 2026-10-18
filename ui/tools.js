@@ -116,6 +116,52 @@ const adBlockRow = settings => {
     </div>
     <button class="switch${on ? ' on' : ''}" type="button" role="switch" aria-checked="${on}" aria-label="Block ads and trackers" data-setting="adBlock" data-kind="boolean"></button></div>`;
 };
+/* GoMini, the local choice model. Not downloaded: a download button that
+   becomes its own progress bar. Downloaded: the switch that activates it,
+   and where it runs. */
+const mb = bytes => `${Math.round((Number(bytes) || 0) / 1e6)} MB`;
+const gominiCard = gomini => {
+  if (!gomini) return '';
+  const job = gomini.download || {};
+  const progress = job.progress || {};
+  const pct = progress.total ? Math.min(100, Math.floor((progress.done / progress.total) * 100)) : 0;
+  const head = `<div class="gm-top"><b>GoMini</b><em class="gm-tag">${gomini.installed ? (gomini.active ? 'Active' : 'Downloaded') : 'Local model'}</em></div>
+      <p>A small model on this computer takes the routine steps of a task (fill, click, scroll) so your agent reads fewer pages and spends fewer tokens. It only picks between steps the browser offers; payments, sign-ins and final submissions always come back to your agent. Nothing leaves this computer.</p>`;
+  let body;
+  if (job.running) {
+    body = `<div class="gm-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="Downloading GoMini">
+        <i style="--p:${pct}%"></i><span>${esc(progress.text || 'Downloading')} · ${pct}%</span></div>
+      <div class="gm-row"><small>${mb(progress.done)} of ${mb(progress.total)}</small><button class="btn" type="button" data-gomini="cancel">Cancel</button></div>`;
+  } else if (!gomini.installed) {
+    body = `<button class="gm-download" type="button" data-gomini="download"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M5 20h14"/></svg><span>Download GoMini</span><small>${mb(gomini.downloadBytes)}</small><i class="gm-sheen" aria-hidden="true"></i></button>
+      ${job.error && job.error !== 'cancelled' ? `<p class="gm-error">The download stopped: ${esc(job.error)}. Press Download to try again; it continues where it stopped.</p>` : ''}
+      <small class="gm-note">Picks your graphics card if it can use it, otherwise the processor, and checks every file before it is used.</small>`;
+  } else {
+    const where = gomini.installation || {};
+    const device = where.runtime === 'vulkan' ? (where.deviceName || 'your graphics card').replace(/\s*\(.*$/, '') : 'the processor';
+    body = `<div class="setting gm-switch"><div><b>Activate GoMini</b><span>Runs on ${esc(device)} · about ${esc(String(where.decisionMs || '?'))} ms per step${gomini.error ? ` · ${esc(gomini.error)}` : ''}</span></div>
+        <button class="switch${gomini.enabled ? ' on' : ''}" type="button" role="switch" aria-checked="${gomini.enabled === true}" aria-label="Activate GoMini" data-setting="gominiEnabled" data-kind="boolean"></button></div>
+      <div class="gm-row"><small>${esc(gomini.model)} · ${esc(where.llamaBuild || '')}</small><button class="btn" type="button" data-gomini="remove">Remove</button></div>`;
+  }
+  return `<div class="setting gomini${job.running ? ' busy' : ''}${gomini.active ? ' live' : ''}" data-gomini-card>
+    <div class="gm-orb" aria-hidden="true"><svg viewBox="0 0 48 48"><circle class="g1" cx="24" cy="24" r="20"/><path class="g2" d="M14 30l7-8 6 5 8-11"/><circle class="g3" cx="35" cy="16" r="2.6"/></svg></div>
+    <div class="gm-main">${head}${body}</div></div>`;
+};
+let gominiTimer = 0;
+const watchGomini = gomini => {
+  clearTimeout(gominiTimer);
+  if (!gomini?.download?.running && !gomini?.starting) return;
+  gominiTimer = setTimeout(async () => {
+    if (activeTool !== 'settings') return;
+    try {
+      const next = await callBridge('gomini.status');
+      const card = toolBody.querySelector('[data-gomini-card]');
+      if (card) card.outerHTML = gominiCard(next);
+      watchGomini(next);
+    } catch (error) { console.error(error.message); }
+  }, 350);
+};
+
 /* The VPN is a feature we are still building: a card, not a switch. */
 const vpnRow = () => `
   <div class="setting soon" data-vpn>
@@ -187,7 +233,7 @@ let lastPointer = null;
 addEventListener('pointerdown', event => { lastPointer = [event.clientX, event.clientY]; }, true);
 const applyTheme = settings => window.agentgoSetTheme(settings.theme);const seg = (key, current, values, labels = values) => `<div class="seg">${values.map((v, i) => `<button type="button" class="${current === v ? 'on' : ''}" data-setting="${key}" data-value="${v}">${esc(labels[i])}</button>`).join('')}</div>`;
 const LANGUAGES = [['', 'Windows default'], ['en-US,en', 'English (US)'], ['en-GB,en', 'English (UK)'], ['ar,en', 'العربية'], ['fr,en', 'Français'], ['de,en', 'Deutsch'], ['es,en', 'Español'], ['tr,en', 'Türkçe'], ['ru,en', 'Русский'], ['zh-CN,zh,en', '中文'], ['ja,en', '日本語']];
-const renderSettings = (settings, version) => {
+const renderSettings = (settings, version, gomini) => {
   applyTheme(settings);
   const language = settings.languages || '';
   toolBody.innerHTML = `
@@ -209,11 +255,13 @@ const renderSettings = (settings, version) => {
         <div class="seg">${['approval', 'full'].map(v => `<button type="button" class="${(settings.controlMode || 'approval') === v ? 'on' : ''}" data-setting="controlMode" data-value="${v}">${v}</button>`).join('')}</div></div>
       <div class="setting"><div><b>Tabs agents open</b><span>Auto keeps them behind your tab while you are using the window. Background always does. Follow always shows them.</span></div>
         <div class="seg">${['auto', 'background', 'follow'].map(v => `<button type="button" class="${(settings.agentTabs || 'auto') === v ? 'on' : ''}" data-setting="agentTabs" data-value="${v}">${v}</button>`).join('')}</div></div>
-      ${toggle('layaEnabled', settings.layaEnabled === true, 'Laya, the local choice model', 'Lets a small model on this computer pick routine browser steps so your agent spends fewer tokens. Not available yet: the model is still being tuned. Off means your agent\'s own model decides everything.')}
       ${toggle('agentAnimations', settings.agentAnimations !== false, 'Show what agents do', 'An agent pointer, live typing and short notices on the page. Turn off for the fastest runs.')}
       ${toggle('offerToSavePasswords', settings.offerToSavePasswords !== false, 'Offer to save sign-ins', 'Ask after you or an agent signs in or signs up on a site.')}
       ${toggle('captchaNotifications', settings.captchaNotifications !== false, 'Notify me when an agent needs me', 'Windows notification for CAPTCHAs, logins and approvals.')}
       ${toggle('downloadsEnabled', settings.downloadsEnabled === true, 'Allow downloads', 'Off by default. Files go to a scoped folder and are never opened automatically.')}
+    </section>
+    <section class="section" data-section="gomini"><h3>GoMini</h3>
+      ${gominiCard(gomini)}
     </section>
     <section class="section" data-section="startup"><h3>On startup</h3>
       <div class="setting"><div><b>When you open AgentGo</b><span>Continue where you left off reopens the tabs of your last session.</span></div>
@@ -287,7 +335,7 @@ const SEARCH_KEYWORDS = [
   [/motion/i, 'animation animations reduce effects transitions movement'],
   [/control mode/i, 'agent permission approval full access ai autonomy confirm'],
   [/tabs agents/i, 'background foreground window follow'],
-  [/laya/i, 'model local ai tokens'],
+  [/gomini|activate gomini/i, 'model local ai tokens laya small model gpu download choice faster cheaper'],
   [/show what agents/i, 'pointer cursor typing animation overlay'],
   [/sign-ins/i, 'password passwords save login logins credentials remember'],
   [/notify/i, 'notification notifications captcha alert alerts toast'],
@@ -968,9 +1016,10 @@ const loadTool = async tool => {
     if (tool !== activeTool) return;
     renderDownloads(list.items || [], settings.downloadsEnabled === true);
   } else if (tool === 'settings') {
-    const [settings, version] = await Promise.all([callBridge('settings.get'), callBridge('browser.version')]);
+    const [settings, version, gomini] = await Promise.all([callBridge('settings.get'), callBridge('browser.version'), callBridge('gomini.status').catch(() => null)]);
     if (tool !== activeTool) return;
-    renderSettings(settings, version);
+    renderSettings(settings, version, gomini);
+    watchGomini(gomini);
   } else if (tool === 'savelogin') {
     const list = await callBridge('tabs.list');
     const tab = (list.tabs || []).find(item => item.tabId === list.activeTabId);
@@ -1137,6 +1186,21 @@ toolBody.addEventListener('click', async event => {
       await callBridge('browsing_data.clear', { confirm: true, history: false });
       target.textContent = 'Cleared';
       setTimeout(refresh, 1500);
+    } else if (target.dataset.gomini) {
+      const action = target.dataset.gomini;
+      if (action === 'remove' && armed !== 'gomini') {
+        armed = 'gomini';
+        target.classList.add('arm');
+        target.textContent = 'Click again to remove';
+        return;
+      }
+      armed = null;
+      const card = target.closest('[data-gomini-card]');
+      if (action === 'download') card?.classList.add('launch');
+      const next = await callBridge(`gomini.${action === 'download' ? 'install' : action}`);
+      const fresh = toolBody.querySelector('[data-gomini-card]');
+      if (fresh) fresh.outerHTML = gominiCard(next);
+      watchGomini(next);
     } else if ('openExtensions' in target.dataset) {
       await callBridge('ui.open_tool', { tool: 'extensions' });
     } else if ('openFolder' in target.dataset) {

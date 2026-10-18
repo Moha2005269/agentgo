@@ -54,11 +54,13 @@ fn worker<T>(f: impl FnOnce(&mut Worker) -> T) -> T {
     f(slot.get_or_insert_with(Worker::default))
 }
 
-/// Where GoMini lives: `%LOCALAPPDATA%\AgentGo\gomini` (tests may point
-/// `AGENTGO_GOMINI_ROOT` elsewhere).
+/// Where GoMini lives: `gomini` in AgentGo's data folder
+/// (`%LOCALAPPDATA%\AgentGo`, or `AGENTGO_DATA_ROOT`), where AgentGo Setup
+/// puts it too. Tests may point `AGENTGO_GOMINI_ROOT` elsewhere.
 pub fn layout() -> Layout {
     let root = std::env::var_os("AGENTGO_GOMINI_ROOT")
         .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("AGENTGO_DATA_ROOT").map(|base| std::path::PathBuf::from(base).join("gomini")))
         .or_else(Layout::default_root)
         .unwrap_or_else(|| state::data_dir().join("gomini"));
     Layout::new(root)

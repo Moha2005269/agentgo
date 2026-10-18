@@ -15,10 +15,10 @@ Three files:
 - this one: how to work;
 - `references/commands.md`: every command with what it does (generated from
   the browser's registry, so it is never out of date);
-- `references/laya.md`: the decision record for Laya, the local choice model.
+- `references/gomini.md`: GoMini, the local model that takes routine steps.
 
 Over MCP the same text is served by `browser_guide` (`topic`: `start`,
-`commands`, `laya`).
+`commands`, `gomini`).
 
 ## Connect
 
@@ -140,15 +140,18 @@ Every failure has a code. The ones you act on:
 | `timeout` | the page did not get there | observe, then decide |
 | `capability.unsupported` | the browser cannot do this | the message says why; use another route |
 
-## Laya (optional local choice model)
+## GoMini (optional local model)
 
-The person can switch on Laya in Settings: a small model on their computer
-that picks routine browser steps so you spend fewer tokens. It is **not
-available yet** (`decision.status` says so); today your model chooses every
-step. The interface is already there and you can use it yourself to work in
-fewer tokens: `decision.record {subgoal, values}` returns the possible steps
-as numbered candidates, `decision.apply {choose}` runs one. How to phrase a
-subgoal and what the record contains: `references/laya.md`.
+When the person has GoMini on (`decision.status` says `active: true`; over
+MCP you also get `browser_delegate`), hand routine steps to it instead of
+reading and acting yourself: `gomini.delegate {subgoal, values, completion,
+constraints}` fills the values you supply, clicks, checks, selects, scrolls
+and waits on this computer, then returns `done`, `needs_help` or `stopped`
+with every step and evidence. One delegation replaces a run of read and act
+turns. Payments, sign-ins, final submissions and deletes always come back to
+you. When it is off, `gomini.delegate` answers `capability.unsupported`:
+work as usual. How to phrase a subgoal and what comes back:
+`references/gomini.md`.
 
 ## Versions and sources
 

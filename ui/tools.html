@@ -152,6 +152,54 @@
     @keyframes soon-blink { 50% { opacity:.25; } }
     @keyframes soon-fill { from { width:28%; } to { width:62%; } }
     @media (prefers-reduced-motion:reduce) { .setting.soon::before, .soon-orb .o2, .soon-orb .dot, .soon-tag i, .soon-bar i { animation:none; } }
+    /* GoMini: a download button that becomes its own progress bar */
+    .setting.gomini { position:relative; display:flex; align-items:flex-start; gap:18px; margin:10px 0; padding:18px; border-radius:16px; overflow:hidden;
+      background:linear-gradient(135deg, color-mix(in srgb, var(--accent) 9%, var(--surface-2)), var(--surface-2) 62%); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--accent) 24%, var(--line)); }
+    .gm-orb { flex:none; width:54px; height:54px; display:grid; place-items:center; border-radius:16px; background:var(--bg-2); box-shadow:inset 0 0 0 1px var(--line), 0 0 28px -8px var(--glow); }
+    .gm-orb svg { width:38px; height:38px; fill:none; stroke:var(--accent); stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; overflow:visible; }
+    .gm-orb .g1 { opacity:.35; stroke-dasharray:6 5; transform-origin:24px 24px; }
+    .gm-orb .g2 { stroke-dasharray:40; stroke-dashoffset:0; }
+    .gm-orb .g3 { fill:var(--accent); stroke:none; filter:drop-shadow(0 0 4px var(--glow)); }
+    .gomini.busy .gm-orb .g1 { opacity:.8; animation:gm-spin 1.6s linear infinite; }
+    .gomini.busy .gm-orb .g2 { animation:gm-draw 1.4s var(--inout) infinite; }
+    .gomini.live .gm-orb .g3 { animation:gm-pulse 2.4s ease-in-out infinite; }
+    .gm-main { min-width:0; flex:1; }
+    .gm-top { display:flex; align-items:center; gap:10px; }
+    .gm-top b { font-size:15px; }
+    .gm-tag { padding:3px 9px; border-radius:99px; font:600 9.5px var(--mono); font-style:normal; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); background:color-mix(in srgb, var(--accent) 14%, transparent); }
+    .setting.gomini p { margin:7px 0 0; max-width:420px; color:var(--ink); font-size:12.5px; line-height:1.55; }
+    .gm-download { position:relative; display:inline-flex; align-items:center; gap:10px; margin-top:14px; padding:11px 18px 11px 14px; border-radius:99px; overflow:hidden; cursor:pointer;
+      color:var(--accent-ink); font:600 13px var(--sans, inherit); background:linear-gradient(100deg, var(--accent-deep), var(--accent) 55%, var(--accent-hi));
+      box-shadow:0 10px 26px -12px var(--glow), inset 0 0 0 1px color-mix(in srgb, #fff 18%, transparent);
+      transition:transform var(--mid) var(--spring), box-shadow var(--mid) var(--out), width var(--mid) var(--out); }
+    .gm-download > svg, .gm-download > span, .gm-download > small { position:relative; z-index:1; }
+    .gm-download > span { color:var(--accent-ink); text-shadow:0 1px 0 color-mix(in srgb, #fff 25%, transparent); }
+    .gm-download:hover { transform:translateY(-1px) scale(1.02); box-shadow:0 14px 30px -12px var(--glow), inset 0 0 0 1px color-mix(in srgb, #fff 26%, transparent); }
+    .gm-download:active { transform:scale(.97); }
+    .gm-download svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; animation:gm-bob 1.8s var(--inout) infinite; }
+    .gm-download small { padding:2px 7px; border-radius:99px; font:600 10px var(--mono); background:color-mix(in srgb, #000 16%, transparent); }
+    .gm-sheen { position:absolute; inset:0; z-index:0; background:linear-gradient(110deg, transparent 30%, color-mix(in srgb, #fff 38%, transparent) 50%, transparent 70%); transform:translateX(-120%); animation:gm-sheen 3.2s var(--inout) infinite; pointer-events:none; }
+    .gomini.launch .gm-download { transform:scaleX(.2); opacity:.4; }
+    .gm-progress { position:relative; margin-top:16px; height:30px; border-radius:99px; overflow:hidden; background:var(--surface-3); box-shadow:inset 0 0 0 1px var(--line); animation:gm-grow .45s var(--spring); }
+    .gm-progress i { position:absolute; inset:0 auto 0 0; width:var(--p); min-width:30px; border-radius:99px; transition:width .35s var(--out);
+      background:repeating-linear-gradient(115deg, var(--accent) 0 12px, color-mix(in srgb, var(--accent) 70%, var(--accent-hi)) 12px 24px); background-size:34px 100%; animation:gm-flow .8s linear infinite;
+      box-shadow:0 0 18px -2px var(--glow); }
+    .gm-progress i::after { content:""; position:absolute; right:3px; top:50%; width:8px; height:8px; margin-top:-4px; border-radius:50%; background:#fff; box-shadow:0 0 10px 3px var(--glow); animation:gm-pulse 1s ease-in-out infinite; }
+    .gm-progress span { position:relative; display:block; text-align:center; font:600 11.5px/30px var(--mono); color:var(--ink); mix-blend-mode:normal; text-shadow:0 1px 6px var(--bg); }
+    .gm-row { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:10px; }
+    .gm-row small, .gm-note { color:var(--faint); font:500 10px var(--mono); letter-spacing:.06em; }
+    .gm-note { display:block; margin-top:10px; }
+    .gm-error { color:var(--bad, #ff6b6b) !important; }
+    .gm-switch { margin:12px 0 0; padding:0; background:none; box-shadow:none; }
+    @keyframes gm-spin { to { transform:rotate(360deg); } }
+    @keyframes gm-draw { 0% { stroke-dashoffset:40; } 60%, 100% { stroke-dashoffset:0; } }
+    @keyframes gm-pulse { 50% { opacity:.4; transform:scale(.8); } }
+    @keyframes gm-bob { 50% { transform:translateY(2px); } }
+    @keyframes gm-sheen { 55%, 100% { transform:translateX(120%); } }
+    @keyframes gm-flow { to { background-position:34px 0; } }
+    @keyframes gm-grow { from { transform:scaleX(.25); opacity:0; } }
+    .still .gm-sheen, .still .gm-download svg, .still .gm-progress i, .still .gm-progress i::after { animation:none; }
+    @media (prefers-reduced-motion:reduce) { .gm-sheen, .gm-download svg, .gm-progress, .gm-progress i, .gm-progress i::after, .gm-orb .g1, .gm-orb .g2, .gm-orb .g3 { animation:none !important; } }
     /* ad blocking: a shield that draws itself on, a ring that fires once, a counter that ticks */
     .adblock { position:relative; }
     .adblock::before { content:""; position:absolute; left:-12px; top:12px; bottom:12px; width:2px; border-radius:2px; background:var(--accent); box-shadow:0 0 8px var(--glow); transform:scaleY(0); transition:transform var(--mid) var(--spring); }

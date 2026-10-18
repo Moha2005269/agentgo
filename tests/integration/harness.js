@@ -239,4 +239,4 @@ function refOf(page, needle) {
   return Number(line.match(/^\[(\d+)\]/)[1]);
 }
 
-module.exports = { launch, attach, operator, cdpEval, serve, reservePort, delay, fixture, repo, executable, rejects, refOf };
+module.exports = { launch, attach, operator, cdpEval, cdpTarget, serve, reservePort, delay, fixture, repo, executable, rejects, refOf };

@@ -683,6 +683,8 @@ fn attach_first_tab(ui_root: &std::path::Path, content_context: RequestContext) 
     state::log_event("AG-RUNTIME content-browser-view-created");
     state::start_transports();
     super::lifecycle::start_update_checks();
+    // GoMini, when the person has it on, loads before the first task needs it.
+    super::gomini::warm_up();
 }
 
 /// Builds the trusted chrome, the tools overlay and the top-level window.

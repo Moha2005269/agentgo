@@ -38,6 +38,9 @@ const UNINSTALL_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Uninstal
 const UI: &str = include_str!("../ui/index.html");
 
 static INSTALL_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
+/// Share of the progress bar the steps before GoMini get (it is the larger
+/// download, so with GoMini chosen everything else takes about half).
+static BEFORE_GOMINI: Mutex<f64> = Mutex::new(1.0);
 
 enum Ui {
     Eval(String),
@@ -69,6 +72,8 @@ fn stage(proxy: &Proxy, name: &str, state: &str) {
 }
 
 fn progress(proxy: &Proxy, pct: f64) {
+    let share = BEFORE_GOMINI.lock().map(|s| *s).unwrap_or(1.0);
+    let pct = if pct >= 100.0 { pct } else { pct * share };
     emit(proxy, json!({"type": "progress", "pct": pct}));
 }
 
@@ -328,6 +333,9 @@ fn install(proxy: &Proxy, options: &Value) -> Result<String, String> {
     if let Ok(mut slot) = INSTALL_DIR.lock() {
         *slot = Some(dir.clone());
     }
+    if let Ok(mut share) = BEFORE_GOMINI.lock() {
+        *share = if options["gomini"] == true { 0.5 } else { 1.0 };
+    }
 
     // 1. the package
     stage(proxy, "download", "run");
@@ -511,7 +519,25 @@ fn install(proxy: &Proxy, options: &Value) -> Result<String, String> {
     progress(proxy, 97.0);
     stage(proxy, "agents", "ok");
 
-    // 7. Windows
+    // 7. GoMini, the local model (optional; the browser works without it)
+    if options["gomini"] == true {
+        stage(proxy, "gomini", "run");
+        match install_gomini(proxy) {
+            Ok(text) => {
+                log(proxy, text);
+                stage(proxy, "gomini", "ok");
+            }
+            Err(e) => {
+                log(
+                    proxy,
+                    format!("GoMini was not installed ({e}). Download it any time in Settings > GoMini."),
+                );
+                stage(proxy, "gomini", "skip");
+            }
+        }
+    }
+
+    // 8. Windows
     stage(proxy, "register", "run");
     let version = appended_version()
         .or_else(|| latest_release().ok().map(|r| r.version))
@@ -654,6 +680,49 @@ fn check_sums(proxy: &Proxy, dir: &Path) -> Result<(), String> {
     }
     log(proxy, format!("{} files match SHA256SUMS.txt", lines.len()));
     Ok(())
+}
+
+/// Downloads GoMini into the profile folder, checks it with a real decision
+/// and switches it on, exactly as Settings > GoMini does.
+fn install_gomini(proxy: &Proxy) -> Result<String, String> {
+    use agentgo_gomini::{install, Layout};
+    let layout = Layout::new(data_root().join("gomini"));
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    let last = Mutex::new(-1i64);
+    let found = install::install(&layout, &cancel, &|p| {
+        let frac = p.done as f64 / p.total.max(1) as f64;
+        // GoMini takes the second half of the bar, up to 97%.
+        emit(
+            proxy,
+            json!({"type": "progress", "pct": 48.5 + frac * 48.5}),
+        );
+        let tenth = (frac * 10.0) as i64;
+        if let Ok(mut seen) = last.lock() {
+            if tenth != *seen {
+                *seen = tenth;
+                log(proxy, format!("{} · {}%", p.text, (frac * 100.0) as u32));
+            }
+        }
+    })?;
+    let path = data_root().join("config").join("settings.json");
+    let mut settings = std::fs::read(&path)
+        .ok()
+        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+        .filter(Value::is_object)
+        .unwrap_or_else(|| json!({"schema_version": 1}));
+    settings["gominiEnabled"] = json!(true);
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    std::fs::write(
+        &path,
+        serde_json::to_vec_pretty(&settings).unwrap_or_default(),
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(match found.device_name {
+        Some(gpu) => format!("GoMini runs on {}", gpu.split(" (").next().unwrap_or(&gpu)),
+        None => "GoMini runs on the processor".to_string(),
+    })
 }
 
 fn write_settings(chosen: &Value) -> std::io::Result<()> {
@@ -1007,7 +1076,7 @@ fn relaunch_from_temp_if_needed() {
 
 /// `--silent`: install or uninstall without a window, for scripted
 /// deployments. Options: `--dir <path>`, `--no-shortcuts`, `--no-path`,
-/// `--no-agents`, and for uninstall `--remove-profile`. Progress goes to
+/// `--no-agents`, `--no-gomini`, and for uninstall `--remove-profile`. Progress goes to
 /// `%TEMP%\agentgo-setup.log`; the exit code is 0 on success.
 fn run_silent(uninstall_mode: bool) -> ! {
     let args: Vec<String> = std::env::args().collect();
@@ -1018,11 +1087,12 @@ fn run_silent(uninstall_mode: bool) -> ! {
             .and_then(|i| args.get(i + 1))
             .cloned()
     };
-    let (remove_profile, no_shortcuts, no_path, no_agents) = (
+    let (remove_profile, no_shortcuts, no_path, no_agents, no_gomini) = (
         has("--remove-profile"),
         has("--no-shortcuts"),
         has("--no-path"),
         has("--no-agents"),
+        has("--no-gomini"),
     );
     let chosen_dir = value("--dir");
     let log_path = std::env::temp_dir().join("agentgo-setup.log");
@@ -1047,6 +1117,8 @@ fn run_silent(uninstall_mode: bool) -> ! {
                 "codex": agents && host_found("codex"),
                 "droid": agents && host_found("droid"),
                 "skill": agents && env_path("USERPROFILE").join(".claude").is_dir(),
+                // GoMini is on by default, as in the window.
+                "gomini": !no_gomini,
                 // Privacy and security stay at their defaults: all on.
                 "settings": {},
             });

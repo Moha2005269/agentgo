@@ -349,6 +349,8 @@ h1 .c{display:inline-block;transform-origin:50% 100%}
             <div class="row" data-k="codex" data-host="codex"><div class="tx"><b>Codex</b><span>MCP server</span></div><span class="mono st">—</span><span class="tog"></span></div>
             <div class="row" data-k="droid" data-host="droid"><div class="tx"><b>Droid</b><span>MCP server</span></div><span class="mono st">—</span><span class="tog"></span></div>
             <div class="row" data-k="skill"><div class="tx"><b>Agent guide</b><span>The AgentGo skill in ~/.claude/skills</span></div><span class="tog"></span></div>
+            <div class="mono grp">Local model</div>
+            <div class="row on" data-k="gomini"><div class="tx"><b>GoMini</b><span>Takes routine steps so your agent spends fewer tokens · about 390 MB · uses your graphics card if it can</span></div><span class="tog"></span></div>
           </div>
         </section>
 
@@ -736,7 +738,7 @@ lic.addEventListener('mouseenter',()=>licHover=true);lic.addEventListener('mouse
 ['wheel','mousedown','keydown'].forEach(ev=>lic.addEventListener(ev,()=>licTouched=true,{passive:true}));
 
 /* ================= install / uninstall ================= */
-const STAGES={download:'Getting AgentGo',verify:'Checking every file',extract:'Unpacking',settings:'Your preferences',shortcuts:'Shortcuts and PATH',agents:'Your agents',register:'Registering with Windows',
+const STAGES={download:'Getting AgentGo',verify:'Checking every file',extract:'Unpacking',settings:'Your preferences',shortcuts:'Shortcuts and PATH',agents:'Your agents',gomini:'GoMini, the local model',register:'Registering with Windows',
   w_wait:'Waiting for AgentGo to close',w_check:'Checking every file',w_keep:'Keeping this version for rollback',w_place:'Putting the new version in place',w_start:'Opening AgentGo',
   u_stop:'AgentGo is closed',u_agents:'Agent registrations',u_files:'The browser',u_profile:'Your profile',u_windows:'Windows entries'};
 let shown=0,target=0,lastPct=-1;
@@ -747,11 +749,11 @@ function stages(keys){
 function roll(){const rows=$$('#stages .stg'),r=$('#stages .roll');if(!r)return;let idx=0;rows.forEach((x,k)=>{if(x.matches('.run,.ok,.skip'))idx=k});
   const run=rows.findIndex(x=>x.classList.contains('run'));if(run>=0)idx=run;r.style.transform=`translateY(${60-idx*30}px)`}
 function opts(){const k=n=>$(`.row[data-k="${n}"]`).classList.contains('on'),p=n=>$(`.row[data-p="${n}"]`).classList.contains('on');
-  return{dir:$('#dir').value.trim(),startMenu:k('startMenu'),desktop:k('desktop'),path:k('path'),claude:k('claude'),codex:k('codex'),droid:k('droid'),skill:k('skill'),
+  return{dir:$('#dir').value.trim(),startMenu:k('startMenu'),desktop:k('desktop'),path:k('path'),claude:k('claude'),codex:k('codex'),droid:k('droid'),skill:k('skill'),gomini:k('gomini'),
    settings:{theme:$('#themes .chip.on').dataset.theme,searchEngine:$('#engine button.on').dataset.v,adBlock:p('adBlock'),fingerprintProtection:p('fingerprintProtection'),dangerousSiteProtection:p('dangerousSiteProtection'),blockThirdPartyCookies:p('blockThirdPartyCookies'),stripTracking:p('stripTracking'),
     controlMode:p('approvalFull')?'full':'approval',downloadsEnabled:p('downloadsEnabled'),motion:p('motion'),siteDark:p('siteDark'),hardwareAcceleration:p('hardwareAcceleration'),autoUpdate:p('autoUpdate')}}}
 async function install(){const o=opts();if(!dirOk()){await show(flow.indexOf(2));setTimeout(pathError,450);return}if(flow[at]!==4)await show(flow.indexOf(4));
-  stages(['download','verify','extract','settings','shortcuts','agents','register']);send({cmd:'install',options:o})}
+  stages(['download','verify','extract','settings','shortcuts','agents',...(o.gomini?['gomini']:[]),'register']);send({cmd:'install',options:o})}
 async function update(){title($('#instH'),['Updating.']);setK($('#instK'),'Signed release · checked file by file');
   if(flow[at]!==4)await show(flow.indexOf(4));
   stages(['w_wait','w_check','w_keep','w_place','w_start']);send({cmd:'update'})}

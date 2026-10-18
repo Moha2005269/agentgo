@@ -14,6 +14,22 @@ use crate::client::{Client, ClientError};
 
 const PROTOCOL_VERSION: &str = "2024-11-05";
 
+/// The tool that hands a subgoal to GoMini, listed only while it is active.
+pub fn delegate_tool() -> Value {
+    json!({
+        "name": "browser_delegate",
+        "description": "GoMini, the local model, is on: hand it one small subgoal and it takes the routine steps itself (fill the values you supply, click, check, select, scroll, wait) without you reading every page. Give subgoal (one step, named as the page names things), values (every text to type, by name), completion (how to tell it is done), constraints. Returns status done (GoMini's claim: glance at evidence), needs_help (read the page and give a narrower subgoal, or do the step yourself) or stopped. Payments, sign-ins, final submissions and deletes always come back to you.",
+        "inputSchema": {"type": "object", "properties": {
+            "subgoal": {"type": "string"},
+            "values": {"type": "object", "additionalProperties": {"type": "string"}},
+            "completion": {"type": "string"},
+            "constraints": {"type": "array", "items": {"type": "string"}},
+            "maxSteps": {"type": "integer", "description": "1-12, default 8"},
+            "tabId": {"type": "string"}
+        }, "required": ["subgoal"]},
+    })
+}
+
 /// Tool definitions advertised to the MCP host.
 pub fn tools() -> Value {
     let object = |properties: Value, required: &[&str]| json!({"type": "object", "properties": properties, "required": required});
@@ -86,9 +102,9 @@ pub fn tools() -> Value {
         },
         {
             "name": "browser_guide",
-            "description": "How to use this browser, written for you. Call it once before your first browser action. topic=start: the working loop, rules that save turns, errors, accounts (short; read this first). topic=commands: every command with what it does (pass group to get one section: open, read, act, batch, accounts, person, browser). topic=laya: the decision record for Laya, the optional local choice model, and how to phrase subgoals for it.",
+            "description": "How to use this browser, written for you. Call it once before your first browser action. topic=start: the working loop, rules that save turns, errors, accounts (short; read this first). topic=commands: every command with what it does (pass group to get one section: open, read, act, batch, accounts, person, browser). topic=gomini: GoMini, the optional local model that takes routine steps, and how to phrase subgoals for it.",
             "inputSchema": object(json!({
-                "topic": {"type": "string", "enum": ["start", "commands", "laya"]},
+                "topic": {"type": "string", "enum": ["start", "commands", "gomini"]},
                 "group": {"type": "string", "enum": ["open", "read", "act", "batch", "accounts", "person", "browser"]}
             }), &[]),
         },
@@ -113,13 +129,13 @@ pub fn tools() -> Value {
 /// The guide is the bundled skill itself: one text for every kind of host.
 const GUIDE_START: &str = include_str!("../../../skills/agentgo/SKILL.md");
 const GUIDE_COMMANDS: &str = include_str!("../../../skills/agentgo/references/commands.md");
-const GUIDE_LAYA: &str = include_str!("../../../skills/agentgo/references/laya.md");
+const GUIDE_GOMINI: &str = include_str!("../../../skills/agentgo/references/gomini.md");
 
 /// The text `browser_guide` answers with.
 pub fn guide(topic: Option<&str>, group: Option<&str>) -> Result<String, String> {
     match topic.unwrap_or("start") {
         "start" => Ok(GUIDE_START.to_string()),
-        "laya" => Ok(GUIDE_LAYA.to_string()),
+        "gomini" | "laya" => Ok(GUIDE_GOMINI.to_string()),
         "commands" => {
             let Some(group) = group else {
                 return Ok(GUIDE_COMMANDS.to_string());
@@ -144,7 +160,7 @@ pub fn guide(topic: Option<&str>, group: Option<&str>) -> Result<String, String>
             Ok(rest[..to].trim_end().to_string())
         }
         other => Err(format!(
-            "unknown topic {other}; use start, commands or laya"
+            "unknown topic {other}; use start, commands or gomini"
         )),
     }
 }
@@ -257,6 +273,7 @@ pub fn command_for(tool: &str, args: &Value) -> Result<(String, Value), String> 
             ),
             _ => return Err("browser_account needs op: accounts, apis, call or sign_in".into()),
         },
+        "browser_delegate" => ("gomini.delegate".into(), args.clone()),
         "browser_call" => (
             text("method")
                 .ok_or("browser_call needs method")?
@@ -358,6 +375,17 @@ fn call_tool(client: &mut Client, name: &str, args: &Value) -> Value {
     }
 }
 
+/// Whether the person has GoMini on and downloaded (then agents get
+/// `browser_delegate`).
+fn gomini_active(client: &mut Client) -> bool {
+    client
+        .call("decision.status", json!({}))
+        .is_ok_and(|status| status["active"] == true)
+}
+
+const INSTRUCTIONS: &str = "Call browser_guide once before your first browser action: it explains the working loop and every tool. AgentGo is a real browser. Read pages with browser_open/browser_read (compact outlines with [ref] numbers), act with browser_act or browser_batch (replies contain only what changed). Payments and final submissions may need the human: on approval.required or handoff.required call browser_wait_human. Never attempt CAPTCHAs.";
+const INSTRUCTIONS_GOMINI: &str = " GoMini, the local model, is on: for routine steps (filling supplied values, clicking through, scrolling) call browser_delegate with one small subgoal instead of reading and acting yourself; it saves you tokens and turns.";
+
 /// Serves MCP on the given streams until the host disconnects.
 pub fn serve(mut client: Client, input: impl BufRead, mut output: impl Write) -> Client {
     for line in input.lines() {
@@ -373,10 +401,22 @@ pub fn serve(mut client: Client, input: impl BufRead, mut output: impl Write) ->
                 "protocolVersion": message["params"]["protocolVersion"].as_str().unwrap_or(PROTOCOL_VERSION),
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": "agentgo", "version": env!("CARGO_PKG_VERSION")},
-                "instructions": "Call browser_guide once before your first browser action: it explains the working loop and every tool. AgentGo is a real browser. Read pages with browser_open/browser_read (compact outlines with [ref] numbers), act with browser_act or browser_batch (replies contain only what changed). Payments and final submissions may need the human: on approval.required or handoff.required call browser_wait_human. Never attempt CAPTCHAs.",
+                "instructions": if gomini_active(&mut client) {
+                    format!("{INSTRUCTIONS}{INSTRUCTIONS_GOMINI}")
+                } else {
+                    INSTRUCTIONS.to_string()
+                },
             })),
             "ping" => Ok(json!({})),
-            "tools/list" => Ok(json!({"tools": tools()})),
+            "tools/list" => {
+                let mut list = tools();
+                if gomini_active(&mut client) {
+                    if let Some(items) = list.as_array_mut() {
+                        items.insert(items.len() - 1, delegate_tool());
+                    }
+                }
+                Ok(json!({"tools": list}))
+            }
             "tools/call" => Ok(call_tool(
                 &mut client,
                 message["params"]["name"].as_str().unwrap_or(""),
@@ -510,9 +550,13 @@ mod tests {
             );
         }
         assert!(guide(None, None).unwrap().contains("# AgentGo"));
-        assert!(guide(Some("laya"), None)
+        assert!(guide(Some("gomini"), None)
             .unwrap()
-            .contains("agentgo.laya.decision/0"));
+            .contains("agentgo.gomini.decision/1"));
+        // The old topic name still answers.
+        assert_eq!(guide(Some("laya"), None), guide(Some("gomini"), None));
+        // The delegate tool is described compactly too.
+        assert!(delegate_tool().to_string().len() < 1_500);
         let act = guide(Some("commands"), Some("act")).unwrap();
         assert!(act.contains("| `act.click` |") && !act.contains("| `navigate.url` |"));
         assert!(guide(Some("nope"), None).is_err());
@@ -524,6 +568,8 @@ mod tests {
             let dotted = word.matches('.').count() == 1
                 && !word.starts_with('.')
                 && !word.ends_with('.')
+                // File names (references/gomini.md) are not commands.
+                && !word.ends_with(".md")
                 && word
                     .chars()
                     .all(|c| c.is_ascii_lowercase() || c == '.' || c == '_');
