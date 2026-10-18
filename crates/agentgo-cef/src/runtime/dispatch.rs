@@ -101,30 +101,39 @@ pub(super) fn is_read_only(method: &str) -> bool {
     read_only(method)
 }
 
-/// Settings only the human operator may change: they widen what agents can do,
-/// or they are the person's own browser preferences.
-const OPERATOR_SETTINGS: [&str; 20] = [
-    "autoUpdate",
-    "updateManifest",
-    "vpn",
-    "adBlock",
-    "fingerprintProtection",
-    "dangerousSiteProtection",
-    "blockThirdPartyCookies",
-    "stripTracking",
-    "nativeControl",
-    "sitePermissions",
+/// The only settings an agent may change: how pages and the browser look.
+/// Everything else (security, privacy, what agents may do and where, the
+/// person's own preferences) is the operator's.
+const AGENT_SETTINGS: [&str; 11] = [
+    "theme",
+    "accent",
+    "motion",
+    "favoritesBar",
+    "showHome",
+    "showExtensions",
+    "siteDark",
+    "siteDarkBrightness",
+    "siteDarkContrast",
+    "siteDarkExclude",
+    "translateTo",
+];
+
+/// Settings a sync folder or a profile export may carry into this browser:
+/// the look, plus the person's plain preferences. Never what decides security
+/// or what agents may do; a file from elsewhere must not change those.
+const PORTABLE_SETTINGS: [&str; 6] = [
     "searchEngine",
     "startup",
     "languages",
-    "gominiEnabled",
-    "downloadsEnabled",
-    "controlMode",
-    "uploadDirs",
-    "allowEvaluate",
-    "profileId",
-    "agentTabs",
+    "hardwareAcceleration",
+    "captchaNotifications",
+    "offerToSavePasswords",
 ];
+
+/// Whether a setting may come in from a sync folder or an imported file.
+pub(super) fn portable_setting(key: &str) -> bool {
+    AGENT_SETTINGS.contains(&key) || PORTABLE_SETTINGS.contains(&key)
+}
 
 fn shell_only(caller: &Caller, method: &str) -> Result<(), Fail> {
     if caller.is_shell() {
@@ -1102,7 +1111,7 @@ async fn run_ungated(caller: &Caller, method: &str, params: Value) -> Reply {
                 _ => "runs without asking",
             };
             Ok(
-                json!({"method": target, "known": known.is_some(), "risk": risk, "readOnly": read_only(target), "approval": approval, "operatorOnly": OPERATOR_SETTINGS.is_empty() && false}),
+                json!({"method": target, "known": known.is_some(), "risk": risk, "readOnly": read_only(target), "approval": approval, "operatorOnly": false}),
             )
         }
         "policy.approval_expire" => Ok(
@@ -1401,11 +1410,14 @@ fn run_core(caller: &Caller, method: &str, mut params: Value) -> Reply {
                 let patch = params.get("settings").unwrap_or(&params);
                 if let Some(key) = patch.as_object().and_then(|map| {
                     map.keys()
-                        .find(|key| OPERATOR_SETTINGS.contains(&key.as_str()))
+                        .find(|key| !AGENT_SETTINGS.contains(&key.as_str()))
                 }) {
                     return Err(Fail::new(
                         ErrorCode::PolicyDenied,
-                        format!("{key} can only be changed by the operator in AgentGo settings or at launch"),
+                        format!(
+                            "{key} can only be changed by the operator in AgentGo settings or at launch; agents may change {}",
+                            AGENT_SETTINGS.join(", ")
+                        ),
                     ));
                 }
             }

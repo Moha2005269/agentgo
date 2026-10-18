@@ -2965,7 +2965,12 @@ pub fn update_settings(patch: &serde_json::Value) -> Result<serde_json::Value, S
     let Some(patch) = patch.as_object() else {
         return Err("settings.set requires an object in params.settings".into());
     };
-    for key in patch.keys() {
+    // Switches whose names only mention passwords; they hold no secret.
+    const NOT_SECRETS: [&str; 1] = ["offerToSavePasswords"];
+    for key in patch
+        .keys()
+        .filter(|key| !NOT_SECRETS.contains(&key.as_str()))
+    {
         let lower = key.to_ascii_lowercase();
         if lower.contains("pass")
             || lower.contains("secret")
@@ -3198,10 +3203,15 @@ pub fn download_destination(id: u32, suggested_name: &str) -> PathBuf {
         name = format!("download-{id}.bin");
     }
     let name = name.trim_matches(['.', ' ']);
-    let name = if name.is_empty() {
+    let name: String = if name.is_empty() {
         format!("download-{id}.bin")
     } else {
         name.chars().take(160).collect()
+    };
+    let name = if reserved_device_name(&name) {
+        format!("_{name}")
+    } else {
+        name
     };
     let dir = state()
         .download_dir
@@ -3221,6 +3231,24 @@ pub fn download_destination(id: u32, suggested_name: &str) -> PathBuf {
         .map(|n| dir.join(format!("{stem} ({n}){extension}")))
         .find(|candidate| !candidate.exists())
         .unwrap_or_else(|| dir.join(format!("{stem}-{id}{extension}")))
+}
+
+/// Names Windows keeps for devices (`NUL`, `CON.txt`, `com1.log`): a file
+/// saved under one goes to the device instead of the folder.
+fn reserved_device_name(name: &str) -> bool {
+    let stem = name
+        .split('.')
+        .next()
+        .unwrap_or("")
+        .trim_end()
+        .to_ascii_uppercase();
+    matches!(
+        stem.as_str(),
+        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
+    ) || ((stem.starts_with("COM") || stem.starts_with("LPT"))
+        && stem.len() == 4
+        && stem.as_bytes()[3].is_ascii_digit()
+        && stem.as_bytes()[3] != b'0')
 }
 
 /// The scoped download folder of this profile.
@@ -5183,7 +5211,19 @@ fn query_encode(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{query_encode, resolve_search_with, site_info, SEARCH_ENGINES};
+    use super::{
+        query_encode, reserved_device_name, resolve_search_with, site_info, SEARCH_ENGINES,
+    };
+
+    #[test]
+    fn device_names_are_not_download_names() {
+        for name in ["NUL", "con.txt", "Com1.log", "lpt9", "AUX .pdf"] {
+            assert!(reserved_device_name(name), "{name}");
+        }
+        for name in ["console.txt", "com10.txt", "COM0", "null", "report.pdf"] {
+            assert!(!reserved_device_name(name), "{name}");
+        }
+    }
 
     #[test]
     fn query_encoding_preserves_only_unreserved_bytes() {

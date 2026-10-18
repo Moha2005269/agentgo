@@ -34,6 +34,29 @@ pub fn register_page_tab(tab: &str, extension: &str) {
     }
 }
 
+/// A main-frame navigation of `tab` to `target`: a pop-up tab that leaves
+/// its extension's pages is an ordinary tab from then on (a website there
+/// must not get the extension's endpoints or storage).
+pub fn note_navigation(tab: &str, target: &str) {
+    if target.starts_with("about:") {
+        return;
+    }
+    if let Ok(mut all) = PAGE_TABS.lock() {
+        all.retain(|(t, id)| t != tab || target.starts_with(&format!("agentgo-ext://{id}/")));
+    }
+}
+
+/// Whether a frame of `tab` may load `target`, an extension page: only in the
+/// tab AgentGo opened for that extension, or from that extension's own pages.
+/// A website (or an agent through one) cannot open them.
+pub fn navigation_allowed(tab: &str, frame_url: &str, target: &str) -> bool {
+    let Some((id, _)) = split(target) else {
+        return false;
+    };
+    page_tab_of(tab).as_deref() == Some(id.as_str())
+        || frame_url.starts_with(&format!("agentgo-ext://{id}/"))
+}
+
 fn page_tab_of(tab: &str) -> Option<String> {
     PAGE_TABS
         .lock()

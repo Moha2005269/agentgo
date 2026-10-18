@@ -300,36 +300,62 @@ pub fn inject(frame: &mut Frame, scripts: bool) {
     if cosmetic.is_empty() {
         return;
     }
+    // The styles and scriptlets go in once per document, at load start;
+    // the pass at load end only adds the styles if that one did not run
+    // (it keeps no marker on the page, which a site could look for).
+    if !note_injected(&url, scripts) {
+        return;
+    }
     let css = serde_json::Value::String(cosmetic.css);
     // Constructed style sheets are not subject to a page's content security
     // policy, unlike a <style> element; the element is the fallback. The
     // scriptlets go in as plain code, not through eval, for the same reason.
-    // "Already applied" is remembered under a hidden, per-run symbol, not a
-    // named global a page could look for.
-    let mark = format!(
-        "(()=>{{const k=Symbol.for('{}');return window[k]||(Object.defineProperty(window,k,{{value:{{}}}}),window[k])}})()",
-        page_marker()
-    );
     let mut code = format!(
-        "(function(css,m){{try{{if(!css||m.c)return;\
-         const put=()=>{{if(m.c)return true;\
+        "(function(css){{try{{if(!css)return;\
+         const put=()=>{{\
          try{{const sheet=new CSSStyleSheet();sheet.replaceSync(css);\
-         document.adoptedStyleSheets=[...document.adoptedStyleSheets,sheet];m.c=1;return true}}catch(e){{}}\
+         document.adoptedStyleSheets=[...document.adoptedStyleSheets,sheet];return true}}catch(e){{}}\
          const parent=document.head||document.documentElement;if(!parent)return false;\
-         const style=document.createElement('style');style.textContent=css;parent.appendChild(style);m.c=1;return true}};\
+         const style=document.createElement('style');style.textContent=css;parent.appendChild(style);return true}};\
          if(!put()){{new MutationObserver((o2,o)=>{{if(put())o.disconnect()}}).observe(document,{{childList:true,subtree:true}})}}\
-         }}catch(e){{}}}})({css},{mark});"
+         }}catch(e){{}}}})({css});"
     );
     if scripts && !cosmetic.script.is_empty() && !is_youtube(&url) {
-        code.push_str(&format!("if(!{mark}.s){{{mark}.s=1;try{{\n"));
+        code.push_str("try{\n");
         code.push_str(&cosmetic.script);
-        code.push_str("\n}catch(e){}}");
+        code.push_str("\n}catch(e){}");
     }
     frame.execute_java_script(
         Some(&CefString::from(code.as_str())),
         Some(&CefString::from(url.as_str())),
         0,
     );
+}
+
+thread_local! {
+    /// Documents that got their styles at load start (most recent last).
+    static INJECTED: std::cell::RefCell<std::collections::VecDeque<String>> =
+        std::cell::RefCell::new(std::collections::VecDeque::new());
+}
+
+/// Records an injection into the document at `url`. At load start it always
+/// goes ahead; at load end only when load start did not inject there.
+fn note_injected(url: &str, at_start: bool) -> bool {
+    INJECTED.with(|seen| {
+        let mut seen = seen.borrow_mut();
+        if at_start {
+            seen.push_back(url.to_string());
+            if seen.len() > 256 {
+                seen.pop_front();
+            }
+            true
+        } else if let Some(at) = seen.iter().rposition(|known| known == url) {
+            seen.remove(at);
+            false
+        } else {
+            true
+        }
+    })
 }
 
 /// A random name for this run's hidden page marker.

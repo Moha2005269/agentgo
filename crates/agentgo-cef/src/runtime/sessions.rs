@@ -115,7 +115,16 @@ struct Approval {
     reason: String,
     status: &'static str,
     created: u64,
+    /// When the person decided; a granted approval is good for five minutes.
+    decided: u64,
 }
+
+/// Seconds a pending approval waits for the person, and a granted one stays
+/// usable (`policy.approval_expire`).
+const APPROVAL_SECONDS: u64 = 300;
+
+/// Pending approvals one session may have at a time.
+const MAX_PENDING: usize = 20;
 
 struct State {
     control: Control,
@@ -473,6 +482,7 @@ pub fn forget_tab(tab_id: &str) {
             .approvals
             .retain(|_, approval| approval.tab_id != tab_id);
     });
+    super::accounts::forget_filled(tab_id);
 }
 
 /// Current operator control state.
@@ -533,6 +543,7 @@ pub fn require_approval(
             match state.approvals.get(id) {
                 Some(approval)
                     if approval.status == "granted"
+                        && now().saturating_sub(approval.decided) <= APPROVAL_SECONDS
                         && approval.session == caller.session
                         && approval.tab_id == tab_id
                         && approval.origin == origin
@@ -558,6 +569,24 @@ pub fn require_approval(
                 _ => {} // changed target/origin invalidates the approval
             }
         }
+        // Expired requests are dropped; an agent cannot flood the person.
+        let at = now();
+        state.approvals.retain(|_, approval| match approval.status {
+            "pending" => at.saturating_sub(approval.created) <= APPROVAL_SECONDS,
+            "granted" => at.saturating_sub(approval.decided) <= APPROVAL_SECONDS,
+            _ => true,
+        });
+        let pending = state
+            .approvals
+            .values()
+            .filter(|approval| approval.session == caller.session && approval.status == "pending")
+            .count();
+        if pending >= MAX_PENDING {
+            return Err(Fail::new(
+                ErrorCode::PolicyDenied,
+                format!("{MAX_PENDING} approvals are already waiting for the person; wait for them first"),
+            ));
+        }
         state.next_id += 1;
         let id = format!("ap-{}", state.next_id);
         state.approvals.insert(
@@ -570,6 +599,7 @@ pub fn require_approval(
                 reason: reason.to_string(),
                 status: "pending",
                 created: now(),
+                decided: 0,
             },
         );
         Err(Fail::new(
@@ -593,6 +623,7 @@ pub fn decide_approval(id: &str, grant: bool) -> Result<(), Fail> {
     with(|state| match state.approvals.get_mut(id) {
         Some(approval) if approval.status == "pending" => {
             approval.status = if grant { "granted" } else { "denied" };
+            approval.decided = now();
             Ok(())
         }
         _ => Err(Fail::params(format!("no pending approval {id}"))),
@@ -613,7 +644,11 @@ pub fn approval_status(caller: &Caller, id: &str) -> Option<&'static str> {
             .filter(|approval| approval.session == caller.session)
             // Approvals expire after five minutes without a decision.
             .map(|approval| {
-                if approval.status == "pending" && now().saturating_sub(approval.created) > 300 {
+                if (approval.status == "pending"
+                    && now().saturating_sub(approval.created) > APPROVAL_SECONDS)
+                    || (approval.status == "granted"
+                        && now().saturating_sub(approval.decided) > APPROVAL_SECONDS)
+                {
                     "expired"
                 } else {
                     approval.status

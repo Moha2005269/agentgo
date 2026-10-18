@@ -4,7 +4,7 @@
 // A tool returns a plain object; `{error, detail}` becomes a typed failure.
 (() => {
   'use strict';
-  const { lookup, visible, clean, refOf, describe, signals } = globalThis.__ag.h;
+  const { lookup, visible, clean, refOf, describe, signals, risk } = globalThis.__ag.h;
   const all = (selector, root = document) => [...root.querySelectorAll(selector)];
   const shown = (selector, root) => all(selector, root).filter(visible);
   const found = (els, max = 20) => ({ count: els.length, matches: els.slice(0, max).map(el => ({ ref: refOf(el), line: describe(el) })) });
@@ -25,6 +25,12 @@
     return el;
   };
   const text = el => clean(el.innerText || el.textContent || '', 200);
+  // A click from here gets no approval: anything that pays or submits goes
+  // through act.click, which asks the person.
+  const safeClick = el => {
+    if (risk(el)) throw fail('policy', `${describe(el)} pays or submits a form; use act.click, which asks the person`);
+    el.click();
+  };
   const has = (el, needle, exact) => {
     const value = text(el).toLowerCase();
     const want = String(needle).toLowerCase();
@@ -223,8 +229,8 @@
     'form.invalid_fields': () => { const bad = fields().filter(el => el.checkValidity && !el.checkValidity()); return { ...found(bad), messages: bad.slice(0, 20).map(el => ({ line: describe(el), message: el.validationMessage })) }; },
     'form.validate': p => { const form = p.ref !== undefined || p.selector ? target(p) : document.querySelector('form'); if (!form || !form.checkValidity) return fail('stale', 'no form on this page'); return { valid: form.checkValidity(), invalid: [...form.elements].filter(el => el.checkValidity && !el.checkValidity()).map(el => ({ line: describe(el), message: el.validationMessage })) }; },
     'form.reset': p => { const form = p.ref !== undefined || p.selector ? target(p) : document.querySelector('form'); if (!form || !form.reset) return fail('stale', 'no form on this page'); form.reset(); return { reset: true }; },
-    'act.expand': p => { const el = target(p); if (el.tagName === 'DETAILS') el.open = true; else if (el.getAttribute('aria-expanded') === 'false') el.click(); return { expanded: el.open === true || el.getAttribute('aria-expanded') === 'true' }; },
-    'act.collapse': p => { const el = target(p); if (el.tagName === 'DETAILS') el.open = false; else if (el.getAttribute('aria-expanded') === 'true') el.click(); return { expanded: el.open === true || el.getAttribute('aria-expanded') === 'true' }; },
+    'act.expand': p => { const el = target(p); if (el.tagName === 'DETAILS') el.open = true; else if (el.getAttribute('aria-expanded') === 'false') safeClick(el); return { expanded: el.open === true || el.getAttribute('aria-expanded') === 'true' }; },
+    'act.collapse': p => { const el = target(p); if (el.tagName === 'DETAILS') el.open = false; else if (el.getAttribute('aria-expanded') === 'true') safeClick(el); return { expanded: el.open === true || el.getAttribute('aria-expanded') === 'true' }; },
 
     // ---- extraction -------------------------------------------------------------
     'extract.json_ld': () => ({ items: all('script[type="application/ld+json"]').map(s => { try { return JSON.parse(s.textContent); } catch { return null; } }).filter(Boolean) }),

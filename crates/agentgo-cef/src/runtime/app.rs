@@ -1272,12 +1272,19 @@ cef::wrap_request_handler! {
             let is_main = frame.as_ref().is_some_and(|f| f.is_main() != 0);
             let from_web = frame_url.starts_with("http://") || frame_url.starts_with("https://");
             let web_to_file = lower.starts_with("file:") && from_web && is_redirect != 0;
-            if !allowed_shell || web_to_file {
+            // An extension's pages open only from its toolbar button (or its
+            // own pages), never from a website.
+            let foreign_extension_page = lower.starts_with("agentgo-ext:")
+                && !super::extpage::navigation_allowed(&self.tab_id, &frame_url, &target);
+            if !allowed_shell || web_to_file || foreign_extension_page {
                 state::log_event(&format!(
                     "AG-SECURITY navigation-blocked {:?}",
                     target.chars().take(120).collect::<String>()
                 ));
                 return 1;
+            }
+            if is_main {
+                super::extpage::note_navigation(&self.tab_id, &target);
             }
             // Known malware, phishing and look-alike sites get a warning
             // instead of the page; tracking parameters never reach the site.

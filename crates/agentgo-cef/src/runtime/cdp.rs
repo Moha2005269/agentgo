@@ -161,7 +161,9 @@ wrap_dev_tools_message_observer! {
                     return;
                 }
                 if let (true, Some(payload)) = (params["name"] == "__agExt", params["payload"].as_str()) {
-                    super::extensions::storage_from_page(payload);
+                    if let (Some(tab), Some(context)) = (tab.as_deref(), params["executionContextId"].as_i64()) {
+                        super::extensions::storage_from_content(tab, context, payload);
+                    }
                     return;
                 }
                 // A binding an agent added (runtime.add_binding).

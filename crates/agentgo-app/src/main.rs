@@ -90,15 +90,34 @@ fn setup_host(host: &str) -> i32 {
         );
         return 0;
     }
+    // The host's own program (`claude.cmd`, `codex.exe`, …), run directly:
+    // through `cmd /C`, an install path with & or ^ would be split apart.
+    let program = std::process::Command::new("where.exe")
+        .arg(host)
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()
+        .and_then(|out| {
+            String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .map(str::trim)
+                .map(std::path::PathBuf::from)
+                // npm also installs an extensionless shell script for Git Bash.
+                .find(|path| {
+                    path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+                        ["exe", "cmd", "bat", "com"].contains(&e.to_ascii_lowercase().as_str())
+                    })
+                })
+        });
     let run = |args: &[&str]| {
-        std::process::Command::new("cmd")
-            .arg("/C")
-            .arg(host)
-            .args(args)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .is_ok_and(|status| status.success())
+        program.as_ref().is_some_and(|program| {
+            std::process::Command::new(program)
+                .args(args)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .is_ok_and(|status| status.success())
+        })
     };
     // Replace an older entry (possibly with a wrong path) rather than fail.
     // Claude Code's default scope is the current folder only; AgentGo is

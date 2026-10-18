@@ -426,6 +426,18 @@ pub async fn web_authn(caller: &Caller, params: &Value) -> Reply {
         .map_err(fail)?;
         return Ok(json!({"removed": id}));
     }
+    // It answers passkey prompts on its own: creating passkeys on the
+    // person's accounts is the person's decision.
+    let url = state::tab_url(&tab);
+    let origin = super::dispatch::web_origin(&url).unwrap_or(url);
+    sessions::require_approval(
+        caller,
+        &tab,
+        &origin,
+        "a virtual passkey authenticator",
+        "answer passkey sign-in and sign-up prompts on this tab",
+        params["approvalId"].as_str(),
+    )?;
     let added = cdp::call(
         &tab,
         "WebAuthn.addVirtualAuthenticator",
@@ -521,7 +533,10 @@ pub fn sync(method: &str, params: &Value) -> Reply {
                     added += 1;
                 }
             }
-            // Settings: the newer side wins; private keys stay on this computer.
+            // Settings: the newer side wins for the look and plain preferences.
+            // Security settings, what agents may do, and private keys never
+            // come in from the folder (anyone who can write to it could
+            // otherwise switch them).
             const PRIVATE: [&str; 5] = [
                 "syncFolder",
                 "syncLast",
@@ -537,7 +552,7 @@ pub fn sync(method: &str, params: &Value) -> Reply {
                 if let Some(map) = theirs["settings"].as_object() {
                     let patch: serde_json::Map<String, Value> = map
                         .iter()
-                        .filter(|(key, _)| !PRIVATE.contains(&key.as_str()))
+                        .filter(|(key, _)| super::dispatch::portable_setting(key))
                         .map(|(k, v)| (k.clone(), v.clone()))
                         .collect();
                     let _ = state::update_settings(&Value::Object(patch));

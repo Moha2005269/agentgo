@@ -582,7 +582,28 @@ fn reply_to_store(tab: &str, id: &str, result: Result<Value, String>) {
     });
 }
 
-/// Saves storage an extension's content script changed (extshim.js).
+thread_local! {
+    /// Each extension's content-script world: (tab, execution context) -> id.
+    static WORLDS: std::cell::RefCell<std::collections::HashMap<(String, i64), String>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// Storage a content script changed, saved for the extension whose world
+/// sent it (whatever id the message names: one extension cannot write
+/// another's storage).
+pub fn storage_from_content(tab: &str, context: i64, payload: &str) {
+    let Some(id) = WORLDS.with(|all| all.borrow().get(&(tab.to_string(), context)).cloned()) else {
+        return;
+    };
+    let Ok(mut change) = serde_json::from_str::<Value>(payload) else {
+        return;
+    };
+    change["id"] = json!(id);
+    storage_from_page(&change.to_string());
+}
+
+/// Saves storage an extension's page or content script changed (the id in
+/// the payload is set by AgentGo, never taken from the extension).
 pub fn storage_from_page(payload: &str) {
     let Ok(change) = serde_json::from_str::<Value>(payload) else {
         return;
@@ -645,6 +666,8 @@ fn needs_background(folder: &Path) -> bool {
 /// Runs the enabled extensions' scripts that match the tab's page. Called
 /// when a document has loaded.
 pub async fn inject(tab: String) {
+    // A new document: the previous one's script worlds are gone.
+    WORLDS.with(|all| all.borrow_mut().retain(|(t, _), _| *t != tab));
     let url = state::tab_url(&tab);
     // The Web Store shows which extensions AgentGo already has.
     if url.starts_with("https://chromewebstore.google.com/") {
@@ -702,6 +725,9 @@ pub async fn inject(tab: String) {
                     json!({"name": "__agExt", "executionContextId": context}),
                 )
                 .await;
+                WORLDS.with(|all| {
+                    all.borrow_mut().insert((tab.clone(), context), id.clone());
+                });
                 let shim = format!(
                     "{}({},{},{},{});",
                     include_str!("extshim.js"),

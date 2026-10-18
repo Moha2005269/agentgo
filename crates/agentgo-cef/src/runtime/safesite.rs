@@ -90,10 +90,15 @@ pub fn check(tab: &str, target: &str, frame_url: &str, user_gesture: bool) -> Op
     }
     let verdict = verdict(target)?;
     let site = host(target);
-    if ALLOWED
-        .lock()
-        .ok()
-        .is_some_and(|allowed| allowed.as_ref().is_some_and(|a| a.contains(&site)))
+    // The person's "open anyway" is for the person: a tab an agent holds or
+    // just drove still gets the warning.
+    let agent_tab =
+        sessions::lease_holder(tab).is_some() || super::cdp::agent_input_recent(tab, 5_000);
+    if !agent_tab
+        && ALLOWED
+            .lock()
+            .ok()
+            .is_some_and(|allowed| allowed.as_ref().is_some_and(|a| a.contains(&site)))
     {
         return None;
     }

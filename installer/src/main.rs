@@ -138,13 +138,28 @@ fn registered() -> Option<(PathBuf, String)> {
     Some((PathBuf::from(dir), version))
 }
 
-fn host_found(name: &str) -> bool {
-    hidden("cmd")
-        .args(["/C", "where", name])
-        .stdout(std::process::Stdio::null())
+/// The program an agent host's command runs (`claude.cmd`, `codex.exe`, …),
+/// found on PATH the way a terminal finds it.
+fn host_program(name: &str) -> Option<PathBuf> {
+    let out = hidden("where.exe")
+        .arg(name)
         .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
+        .output()
+        .ok()?;
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(str::trim)
+        .map(PathBuf::from)
+        // npm also installs an extensionless shell script for Git Bash.
+        .find(|path| {
+            path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+                ["exe", "cmd", "bat", "com"].contains(&e.to_ascii_lowercase().as_str())
+            })
+        })
+}
+
+fn host_found(name: &str) -> bool {
+    host_program(name).is_some()
 }
 
 fn agentgo_running() -> bool {
@@ -1020,8 +1035,10 @@ fn uninstall(proxy: &Proxy, remove_profile: bool) -> Result<String, String> {
         ("codex", vec!["mcp", "remove", "agentgo"]),
         ("droid", vec!["mcp", "remove", "agentgo"]),
     ] {
-        if host_found(host) {
-            let _ = hidden("cmd").arg("/C").arg(host).args(&args).output();
+        // Run directly (not through cmd /C), so a path with & or ^ is
+        // passed as one argument.
+        if let Some(program) = host_program(host) {
+            let _ = hidden(program).args(&args).output();
         }
     }
     let skill = env_path("USERPROFILE").join(r".claude\skills\agentgo");

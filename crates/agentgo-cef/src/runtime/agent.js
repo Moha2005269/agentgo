@@ -15,6 +15,10 @@
   const ROLES = new Set(['button', 'link', 'checkbox', 'radio', 'tab', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'option', 'switch', 'combobox', 'textbox', 'searchbox', 'slider', 'spinbutton', 'treeitem', 'listbox']);
   const MONEY = /\b(buy|purchase|pay|place (your )?order|check ?out|subscribe|donate|bid|confirm (order|payment|purchase)|complete (order|purchase)|send money|transfer funds|upgrade (now|plan))\b/i;
   const CARD = 'input[autocomplete^="cc-"],input[name*="card" i],input[name*="cvv" i],input[name*="cvc" i],input[id*="cardnumber" i]';
+  // The same words in other languages (no \b: it only knows ASCII letters).
+  const MONEY_INTL = /(jetzt kaufen|kaufen|bezahlen|zahlungspflichtig|kostenpflichtig bestellen|acheter|payer|commander et payer|comprar|pagar|finalizar compra|acquista|paga ora|ordina e paga|kopen|betalen|afrekenen|köp|betala|kup teraz|zapłać|купить|оплатить|оформить заказ|購入|支払|注文を確定|구매|결제|购买|支付|付款|提交订单|شراء|ادفع|إتمام الشراء|satın al|öde)/i;
+  // Card fields a payment provider draws in its own frame.
+  const PAY_FRAME = /stripe|adyen|braintree|paypal|checkout|klarna|squareup|worldpay|authorize\.net|recurly|chargebee|mollie|razorpay|payment|card/i;
 
   const clean = (text, max = 80) => {
     const value = String(text ?? '').replace(/\s+/g, ' ').trim();
@@ -436,9 +440,54 @@
 
   const moneyRisk = el => {
     const label = `${nameOf(el)} ${el.value || ''}`;
-    if (MONEY.test(label)) return clean(label, 60);
+    if (MONEY.test(label) || MONEY_INTL.test(label)) return clean(label, 60);
     if (isSubmitter(el) && formRisk(el) === 'money') return 'submits a form with payment card fields';
     return null;
+  };
+
+  // A frame this world cannot read that looks like a payment provider's, or
+  // any unreadable frame on a page that takes card details.
+  const payFrame = frame => {
+    let readable = false;
+    try { readable = !!frame.contentDocument; } catch (_) {}
+    if (readable) return false;
+    const pageTakesCards = !!document.querySelector(CARD) || [...document.querySelectorAll('iframe')].some(f => PAY_FRAME.test(`${f.src} ${f.name} ${f.title}`));
+    return PAY_FRAME.test(`${frame.src} ${frame.name} ${frame.title}`) || pageTakesCards;
+  };
+
+  // What a click at a viewport point would press, with the same money and
+  // submission checks a click by reference gets.
+  const riskAt = (x, y) => {
+    const hit = deepHit(x, y);
+    if (!hit) return { line: 'nothing', money: null, submits: false };
+    if (/^I?FRAME$/.test(hit.tagName)) {
+      return { line: describe(hit), money: payFrame(hit) ? 'a payment provider frame' : null, submits: false };
+    }
+    // The control under the point, or the nearest element drawn as clickable
+    // (a div with a click handler); plain page background presses nothing.
+    let el = hit.closest('button,input,a,select,textarea,summary,label,[role=button],[role=link],[role=menuitem],[onclick]');
+    for (let up = hit; !el && up && up !== document.body && up !== document.documentElement; up = up.parentElement) {
+      if (getComputedStyle(up).cursor === 'pointer') el = up;
+    }
+    if (!el) return { line: describe(hit), money: null, submits: false };
+    const control = el.tagName === 'LABEL' && el.control ? el.control : el;
+    return { line: describe(el), money: moneyRisk(el) || moneyRisk(control), submits: isSubmitter(control) && formRisk(control) === 'submit' };
+  };
+
+  // Whether text typed now lands in a payment card field, and what pressing
+  // the focused control would do.
+  const focusedMoney = () => {
+    let el = document.activeElement;
+    while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+    while (el?.tagName === 'IFRAME') {
+      let inner = null;
+      try { inner = el.contentDocument?.activeElement; } catch (_) {}
+      if (!inner) return { money: payFrame(el) ? 'a payment provider frame' : null, line: describe(el) };
+      el = inner;
+    }
+    if (!el || el === document.body) return { money: null, line: 'page' };
+    // Enter or Space on a focused control presses it.
+    return { money: el.matches?.(CARD) ? 'payment card field' : null, line: describe(el), press: moneyRisk(el), pressSubmits: isSubmitter(el) && formRisk(el) === 'submit' };
   };
 
   // Risk of pressing Enter right now: implicit submission of the focused
@@ -760,7 +809,9 @@
 
   // Types a saved sign-in into the visible login form. The values arrive from
   // the browser and are never echoed back.
-  const fillLogin = (username, password) => {
+  const fillLogin = (username, password, origin) => {
+    // The page may have moved on since the sign-in was chosen for its site.
+    if (origin && location.origin !== origin) return { error: 'stale', detail: `the page is now on ${location.origin}, not ${origin}` };
     const set = (el, value) => {
       const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
       el.focus();
@@ -918,7 +969,9 @@
     const seen = `${user.value}\n${pass.value}`;
     if (seen === lastSignIn || typeof globalThis.__agReport !== 'function') return;
     lastSignIn = seen;
-    globalThis.__agReport(JSON.stringify({ kind: 'login', username: user.value, password: pass.value }));
+    // The frame's own origin: a sign-in typed into another site's embedded
+    // frame is that site's, not the page's.
+    globalThis.__agReport(JSON.stringify({ kind: 'login', origin: location.origin, username: user.value, password: pass.value }));
   };
   // The Chrome Web Store asks to install the extension of its page
   // (webstore.js, in the page's own world).
@@ -938,7 +991,7 @@
     if (event.key === 'Enter' && event.target.tagName === 'INPUT') noticeSignIn(event.target.form || document);
   }, true);
 
-  globalThis.__ag = { expire, focusedEditable, pointerAt: () => at, pointTo, pointAt, keyNote, hideStage, typing, banner, fillLogin, searchResults, selection, find, setBase, element, rect, enterRisk, snapshot, target, focusForInput, choose, valueOf, text, links, tables, forms, settle, scroll, waitFor, meta, signals, injectionChunks, translateText, translatePage };
+  globalThis.__ag = { expire, focusedEditable, riskAt, focusedMoney, pointerAt: () => at, pointTo, pointAt, keyNote, hideStage, typing, banner, fillLogin, searchResults, selection, find, setBase, element, rect, enterRisk, snapshot, target, focusForInput, choose, valueOf, text, links, tables, forms, settle, scroll, waitFor, meta, signals, injectionChunks, translateText, translatePage };
   // Helpers for the page tools (tools.js), which extend this agent.
-  globalThis.__ag.h = { lookup, visible, clean, refOf, describe, signals };
+  globalThis.__ag.h = { lookup, visible, clean, refOf, describe, signals, risk: el => moneyRisk(el) || (isSubmitter(el) && formRisk(el)) || null };
 })();

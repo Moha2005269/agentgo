@@ -5,17 +5,18 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { launch, serve, repo } = require("./harness");
+const { launch, operator, serve, reservePort, repo } = require("./harness");
 const spec = require("../../scripts/dev/tools-spec");
 
 (async () => {
   const site = await serve();
-  const browser = launch({ args: ["--url", "about:blank", "--mode", "full", "--allow-evaluate"] });
+  const port = await reservePort();
+  const browser = launch({ args: ["--url", "about:blank", "--mode", "full", "--allow-evaluate"], debugPort: port });
   const failures = [];
   let ran = 0;
   try {
     // Speed: the visuals are tested elsewhere.
-    await browser.call("settings.set", { settings: { agentAnimations: false } });
+    await operator(port, "settings.set", { settings: { agentAnimations: false } });
     const home = site.url("tools.html");
     const open = async () => { await browser.call("navigate.url", { url: home, observe: "none" }); };
     await open();
