@@ -264,7 +264,71 @@ fn appended_version() -> Option<String> {
 struct Release {
     version: String,
     zip: String,
-    sha: Option<String>,
+    /// The release's `update-manifest.json`, signed with AgentGo's release key.
+    manifest: Option<String>,
+}
+
+/// Ed25519 public key whose private half signs every release manifest (the
+/// same key the browser checks its updates with).
+const RELEASE_KEY: &str = include_str!("../../crates/agentgo-cef/src/runtime/update-key.pub");
+
+fn from_hex(text: &str) -> Option<Vec<u8>> {
+    let text = text.trim();
+    if !text.len().is_multiple_of(2) {
+        return None;
+    }
+    (0..text.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(text.get(i..i + 2)?, 16).ok())
+        .collect()
+}
+
+/// The package's SHA-256 from a release manifest, once its signature and
+/// version check out. Keep the signed text in step with `signed_text` in
+/// crates/agentgo-cef/src/runtime/lifecycle.rs.
+fn signed_package_hash(manifest: &Value, version: &str) -> Result<String, String> {
+    let field = |key: &str| manifest[key].as_str().unwrap_or("");
+    let sha = field("sha256").to_ascii_lowercase();
+    let text = format!(
+        "agentgo-update-v1\n{}\n{}\n{}\n",
+        field("version"),
+        field("url"),
+        sha
+    );
+    let (Some(key), Some(signature)) = (from_hex(RELEASE_KEY), from_hex(field("signature"))) else {
+        return Err("the release manifest is not signed".into());
+    };
+    ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, key)
+        .verify(text.as_bytes(), &signature)
+        .map_err(|_| "the release manifest is not signed by AgentGo's release key".to_string())?;
+    if field("version").trim_start_matches('v') != version {
+        return Err(format!(
+            "the signed manifest is for version {}, not {version}",
+            field("version")
+        ));
+    }
+    if sha.len() != 64 || !sha.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err("the signed manifest has no valid SHA-256".into());
+    }
+    Ok(sha)
+}
+
+/// Downloads and checks the release's signed manifest.
+fn release_hash(release: &Release) -> Result<String, String> {
+    let url = release
+        .manifest
+        .as_ref()
+        .ok_or("the latest release has no signed update manifest")?;
+    let body = ureq::get(url)
+        .set("User-Agent", "AgentGo-Setup")
+        .timeout(std::time::Duration::from_secs(30))
+        .call()
+        .map_err(|e| format!("the release manifest could not be downloaded ({e})"))?
+        .into_string()
+        .map_err(|e| e.to_string())?;
+    let manifest: Value = serde_json::from_str(body.trim_start_matches('\u{feff}'))
+        .map_err(|e| format!("the release manifest is not JSON ({e})"))?;
+    signed_package_hash(&manifest, &release.version)
 }
 
 fn latest_release() -> Result<Release, String> {
@@ -294,7 +358,7 @@ fn latest_release() -> Result<Release, String> {
             .trim_start_matches('v')
             .to_string(),
         zip,
-        sha: url("-win64.zip.sha256"),
+        manifest: url("update-manifest.json"),
     })
 }
 
@@ -341,7 +405,7 @@ fn install(proxy: &Proxy, options: &Value) -> Result<String, String> {
     stage(proxy, "download", "run");
     let temp = std::env::temp_dir().join(format!("agentgo-setup-{}.zip", std::process::id()));
     let _cleanup = Cleanup(temp.clone());
-    let (reader, total, expected): (Box<dyn ReadSeek>, u64, Option<String>) = if let Some((
+    let (reader, total, expected): (Box<dyn ReadSeek>, u64, String) = if let Some((
         offset,
         len,
         hash,
@@ -358,22 +422,17 @@ fn install(proxy: &Proxy, options: &Value) -> Result<String, String> {
                 pos: 0,
             }),
             len,
-            Some(hex(&hash)),
+            hex(&hash),
         )
     } else {
         let release = latest_release().map_err(|e| {
             format!("{e}. Check your internet connection, or download AgentGo-Setup-full.exe from github.com/{REPO}/releases, which needs no download.")
         })?;
         log(proxy, format!("Downloading AgentGo {}", release.version));
-        let expected = match &release.sha {
-            Some(url) => ureq::get(url)
-                .set("User-Agent", "AgentGo-Setup")
-                .call()
-                .ok()
-                .and_then(|r| r.into_string().ok())
-                .and_then(|t| t.split_whitespace().next().map(|h| h.to_ascii_lowercase())),
-            None => None,
-        };
+        // Nothing is installed unless AgentGo's release key vouches for it.
+        let expected = release_hash(&release).map_err(|e| {
+            format!("{e}. Download AgentGo-Setup-full.exe from github.com/{REPO}/releases instead.")
+        })?;
         let response = ureq::get(&release.zip)
             .set("User-Agent", "AgentGo-Setup")
             .call()
@@ -408,26 +467,20 @@ fn install(proxy: &Proxy, options: &Value) -> Result<String, String> {
     // 2. its checksum
     stage(proxy, "verify", "run");
     let mut reader = reader;
-    match expected {
-        Some(expected) => {
-            let mut read = 0u64;
-            let actual = hash_reader(&mut reader, |n| {
-                read += n;
-                if total > 0 && read % (16 << 20) < (1 << 20) {
-                    progress(proxy, 35.0 + read as f64 / total as f64 * 8.0);
-                }
-            })
-            .map_err(|e| e.to_string())?;
-            if actual != expected {
-                return Err("The package does not match its published checksum. Download AgentGo Setup again.".into());
-            }
-            log(proxy, format!("SHA-256 {}…  matches", &actual[..16]));
+    let mut read = 0u64;
+    let actual = hash_reader(&mut reader, |n| {
+        read += n;
+        if total > 0 && read % (16 << 20) < (1 << 20) {
+            progress(proxy, 35.0 + read as f64 / total as f64 * 8.0);
         }
-        None => log(
-            proxy,
-            "No published checksum for this package; the files inside are still checked",
-        ),
+    })
+    .map_err(|e| e.to_string())?;
+    if actual != expected {
+        return Err(
+            "The package does not match its signed checksum. Download AgentGo Setup again.".into(),
+        );
     }
+    log(proxy, format!("SHA-256 {}…  matches", &actual[..16]));
     reader.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
     progress(proxy, 43.0);
     stage(proxy, "verify", "ok");
@@ -628,6 +681,10 @@ fn extract(proxy: &Proxy, reader: Box<dyn ReadSeek>, dir: &Path) -> Result<(), S
         if name.as_os_str().is_empty() {
             continue;
         }
+        // A release package holds plain files only; links could point anywhere.
+        if entry.is_symlink() {
+            continue;
+        }
         let path = dir.join(&name);
         if entry.is_dir() {
             std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
@@ -654,9 +711,9 @@ fn extract(proxy: &Proxy, reader: Box<dyn ReadSeek>, dir: &Path) -> Result<(), S
 
 /// Checks every file against the package's own SHA256SUMS.txt.
 fn check_sums(proxy: &Proxy, dir: &Path) -> Result<(), String> {
-    let Ok(sums) = std::fs::read_to_string(dir.join("SHA256SUMS.txt")) else {
-        return Ok(());
-    };
+    let sums = std::fs::read_to_string(dir.join("SHA256SUMS.txt")).map_err(|_| {
+        "The package has no SHA256SUMS.txt. Download AgentGo Setup again.".to_string()
+    })?;
     let lines: Vec<&str> = sums.lines().filter(|l| !l.trim().is_empty()).collect();
     for (i, line) in lines.iter().enumerate() {
         let Some((hash, name)) = line.split_once("  ") else {
@@ -1242,13 +1299,17 @@ fn apply_update(proxy: &Proxy, job: &UpdateArgs) -> Result<(String, bool), Strin
         .flatten()
         .filter(|e| e.file_name() != "updates")
         .collect();
-    for entry in &entries {
-        std::fs::rename(entry.path(), job.backup.join(entry.file_name())).map_err(|e| {
-            format!(
+    for (moved, entry) in entries.iter().enumerate() {
+        if let Err(e) = std::fs::rename(entry.path(), job.backup.join(entry.file_name())) {
+            // Leave the current version whole: put back what already moved.
+            for back in &entries[..moved] {
+                let _ = std::fs::rename(job.backup.join(back.file_name()), back.path());
+            }
+            return Err(format!(
                 "{} is in use ({e}). Close AgentGo and try again.",
                 entry.file_name().to_string_lossy()
-            )
-        })?;
+            ));
+        }
     }
     progress(proxy, 60.0);
     stage(proxy, "w_keep", "ok");

@@ -203,18 +203,24 @@ fn is_loopback_origin(origin: &str) -> bool {
 
 fn serve(mut stream: TcpStream, number: usize) {
     let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(30)));
-    let mut reader = BufReader::new(stream.try_clone().expect("stream"));
+    let Ok(clone) = stream.try_clone() else {
+        return;
+    };
+    let mut reader = BufReader::new(clone);
+    // One header line is at most 8 KiB: a client sending an endless line is
+    // cut off instead of growing the buffer.
+    const LINE: u64 = 8 * 1024;
     let mut first = String::new();
-    if reader.read_line(&mut first).is_err() {
+    if (&mut reader).take(LINE).read_line(&mut first).is_err() {
         return;
     }
     let mut headers = std::collections::HashMap::new();
     loop {
         let mut line = String::new();
-        if reader.read_line(&mut line).is_err() || line.trim().is_empty() {
+        if (&mut reader).take(LINE + 1).read_line(&mut line).is_err() || line.trim().is_empty() {
             break;
         }
-        if headers.len() >= 64 || line.len() > 8192 {
+        if headers.len() >= 64 || line.len() as u64 > LINE {
             return respond(
                 &mut stream,
                 "431 Request Header Fields Too Large",
@@ -344,7 +350,9 @@ fn serve(mut stream: TcpStream, number: usize) {
             let _ = stream.set_read_timeout(None);
             let session = format!("ws-{number}");
             let (tx, rx) = mpsc::channel::<String>();
-            let mut writer = stream.try_clone().expect("stream");
+            let Ok(mut writer) = stream.try_clone() else {
+                return;
+            };
             std::thread::spawn(move || {
                 while let Ok(line) = rx.recv() {
                     if writer.write_all(&ws_frame(line.trim_end())).is_err() {

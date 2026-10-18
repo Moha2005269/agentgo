@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.4 (2026-10-18)
+
+Security release: fixes from a code review of 0.1.3.
+
+- **Saved passwords stay hidden from agents.** `credentials.fill` already typed a sign-in without returning it, but other commands could read it back. Now password fields cannot be read with `runtime.get_property`, `runtime.read_property`, `runtime.get_attribute` or `edit.cut`; `network.request_body` and `network.response_body` replace a typed password with `[hidden]`; page script (`runtime.evaluate`, `runtime.call_function`, `runtime.add_init_script`, `runtime.message` with data) is refused on the site where a password was typed; and `credentials.fill` refuses a tab with network interception rules, whose page an agent could have written itself.
+- **`runtime.set_property` sets plain state only** (`value`, `checked`, `selectedIndex`, `title`, `textContent`, scroll and media properties, …). Markup, addresses, event handlers and an input's `type` are refused: they could run page script without the `runtime.evaluate` gate. Payment fields still go through `act.fill` and its approval.
+- **AgentGo Setup checks a signature.** The online installer now installs only a package whose SHA-256 matches the release's `update-manifest.json` signed with AgentGo's release key (the key in-app updates already require). A missing checksum or `SHA256SUMS.txt` stops the install instead of being skipped, and link entries in a package are never unpacked.
+- **Updates roll back cleanly.** If a file is still in use while the old version is moved aside, both the portable swap and Setup's update put everything back instead of leaving a half-moved folder; the portable swap also waits for AgentGo's helper processes to exit.
+- **Agent connections**: a named-pipe handle is closed only after its writer is done, so a late reply can never reach another client's pipe. The SDK HTTP server bounds each header line to 8 KiB and no longer panics when a socket cannot be cloned.
+- **GoMini** starts its local worker with a random API key: other programs and web pages can no longer use the model on 127.0.0.1.
+- **Error pages**: a website can no longer open AgentGo's own error or "dangerous site" page with text of its choosing.
+- The Windows UI Automation helper script is checked before every run and replaced if it was changed. Update version checks treat `1.2` and `1.2.0` as equal and a pre-release as older than its release.
+- CI: a Linux job runs format, clippy, the portable crates' tests, the UI script check and `cargo audit`; GitHub Actions are pinned to commit SHAs.
+
 ## 0.1.3 (2026-10-18)
 
 - **Extension pop-ups**: clicking a pinned extension opens its own pop-up (the toolbar window it shows in Chrome) instead of the Extensions panel; the panel has Open and Options buttons. Pages are served from the extension's own origin (`agentgo-ext://<id>/`) with `chrome.runtime`, `chrome.i18n`, `chrome.storage` (shared with its content scripts), `chrome.tabs.query`/`create` and `openOptionsPage`. Websites cannot load an extension's files or endpoints, and agents cannot open extension pages. Background workers do not run yet; pop-ups of extensions that need one say so (`extension.open_popup`, operator only).

@@ -49,6 +49,14 @@
   // Values are written the way an input event would leave them; payment
   // fields are refused (they go through act.fill and its approval).
   const payment = el => /^cc-/.test(el.autocomplete || '') || /card|cvv|cvc|expir/i.test(`${el.name} ${el.id}`);
+  // A password field's value is never handed to an agent: credentials.fill
+  // types saved sign-ins without the agent seeing them.
+  const secret = el => el instanceof HTMLInputElement && el.type === 'password';
+  const readable = (el, name) => {
+    if (secret(el) && /^(value|defaultvalue)$/i.test(String(name))) throw fail('policy', 'the value of a password field is not readable');
+    return el;
+  };
+  const SETTABLE = new Set(['value', 'checked', 'selected', 'selectedIndex', 'indeterminate', 'title', 'alt', 'placeholder', 'textContent', 'innerText', 'hidden', 'open', 'scrollTop', 'scrollLeft', 'currentTime', 'volume', 'muted', 'playbackRate']);
   const setValue = (el, types, value) => {
     if (el.tagName !== 'INPUT' || !types.includes(el.type)) throw fail('params', `${describe(el)} is not a ${types.join(' or ')} field`);
     if (payment(el)) throw fail('payment', 'payment fields are filled with act.fill, which asks the person first');
@@ -112,10 +120,20 @@
     // ---- runtime: read and write single things -----------------------------
     'runtime.query': p => { const el = document.querySelector(need(p, 'selector')); return el ? { found: true, ...found([el]).matches[0], text: text(el) } : { found: false }; },
     'runtime.query_all': p => found(all(need(p, 'selector')), p.max || 50),
-    'runtime.get_attribute': p => ({ value: target(p).getAttribute(need(p, 'name')) }),
-    'runtime.get_property': p => { const value = target(p)[need(p, 'name')]; return { value: typeof value === 'object' && value !== null ? String(value) : value ?? null }; },
-    'runtime.read_property': p => { const value = target(p)[need(p, 'name')]; return { value: typeof value === 'object' && value !== null ? String(value) : value ?? null }; },
-    'runtime.set_property': p => { const el = target(p); el[need(p, 'name')] = p.value; return { value: el[p.name] ?? null }; },
+    'runtime.get_attribute': p => ({ value: readable(target(p), need(p, 'name')).getAttribute(p.name) }),
+    'runtime.get_property': p => { const value = readable(target(p), need(p, 'name'))[p.name]; return { value: typeof value === 'object' && value !== null ? String(value) : value ?? null }; },
+    'runtime.read_property': p => { const value = readable(target(p), need(p, 'name'))[p.name]; return { value: typeof value === 'object' && value !== null ? String(value) : value ?? null }; },
+    'runtime.set_property': p => {
+      const el = target(p);
+      const name = need(p, 'name');
+      // Only plain state: markup, addresses, handlers and an input's type
+      // could run script or unmask a password (that is runtime.evaluate's job,
+      // behind its own gate).
+      if (!SETTABLE.has(name)) throw fail('policy', `${name} cannot be set with runtime.set_property; use act.* or runtime.evaluate`);
+      if (name === 'value' && el.tagName === 'INPUT' && payment(el)) throw fail('payment', 'payment fields are filled with act.fill, which asks the person first');
+      el[name] = p.value;
+      return { value: secret(el) ? null : el[name] ?? null };
+    },
     'runtime.get_text': p => ({ text: clean(target(p).innerText || target(p).textContent || '', p.max || 4000) }),
     'runtime.get_html': p => ({ html: target(p).outerHTML.slice(0, p.max || 20000) }),
     'runtime.get_value': p => { const el = target(p); return { value: el.type === 'password' ? null : el.value ?? el.innerText ?? null }; },
@@ -439,6 +457,7 @@
     'edit.cut': p => {
       const el = p.ref !== undefined || p.selector ? target(p) : document.activeElement;
       if (!el || !('value' in el) || typeof el.selectionStart !== 'number') throw fail('blocked', 'select text in a field first (selection.set)');
+      if (secret(el)) throw fail('policy', 'text cannot be cut from a password field');
       const cut = el.value.slice(el.selectionStart, el.selectionEnd);
       el.focus();
       el.setRangeText('', el.selectionStart, el.selectionEnd, 'start');

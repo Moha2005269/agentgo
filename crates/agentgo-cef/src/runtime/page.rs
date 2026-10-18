@@ -120,6 +120,7 @@ pub(super) fn agent_error(value: &Value) -> Option<Fail> {
         ),
         "params" | "unknown" => Fail::params(detail),
         "timeout" => Fail::new(ErrorCode::Timeout, detail.to_string()),
+        "policy" => Fail::new(ErrorCode::PolicyDenied, detail.to_string()),
         _ => Fail::new(ErrorCode::TargetBlocked, format!("{kind}: {detail}")),
     })
 }
@@ -1863,6 +1864,13 @@ pub async fn evaluate(caller: &Caller, params: &Value) -> Reply {
         return Err(Fail::new(
             ErrorCode::PolicyDenied,
             "runtime.evaluate needs full-access mode or --allow-evaluate; prefer observe.* and act.*",
+        ));
+    }
+    // Script could read back the password credentials.fill typed here.
+    if !caller.is_shell() && super::accounts::holds_filled_password(&tab) {
+        return Err(Fail::new(
+            ErrorCode::PolicyDenied,
+            "runtime.evaluate is off on a site where AgentGo typed a saved password; use observe.* and act.*, or navigate to another site",
         ));
     }
     let expression = str_of(params, "expression")

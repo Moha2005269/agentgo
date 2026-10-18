@@ -309,6 +309,56 @@ pub fn random_token() -> String {
     base64url(&bytes)
 }
 
+/// `text` with every copy of `secret` replaced by `[hidden]`: as typed, as an
+/// HTML form sends it (`application/x-www-form-urlencoded`), percent-encoded
+/// and as a JSON string. Network bodies an agent reads pass through this
+/// after the browser typed a saved password for it.
+pub fn redact_secret(text: &str, secret: &str) -> String {
+    if secret.is_empty() {
+        return text.to_string();
+    }
+    let form: String = secret
+        .bytes()
+        .map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'*' | b'-' | b'.' | b'_' => {
+                (byte as char).to_string()
+            }
+            b' ' => "+".to_string(),
+            other => format!("%{other:02X}"),
+        })
+        .collect();
+    let json = serde_json::to_string(secret).unwrap_or_default();
+    let json = json.trim_matches('"').to_string();
+    let mut forms = vec![secret.to_string(), form, percent(secret), json];
+    for encoded in forms.clone() {
+        // Lower-case hex escapes are just as valid.
+        if encoded.contains('%') {
+            forms.push(lower_hex(&encoded));
+        }
+    }
+    // Longest first, so a form that contains another is replaced whole.
+    forms.sort_by_key(|form| std::cmp::Reverse(form.len()));
+    forms.dedup();
+    forms
+        .iter()
+        .filter(|form| !form.is_empty())
+        .fold(text.to_string(), |out, form| {
+            out.replace(form.as_str(), "[hidden]")
+        })
+}
+
+fn lower_hex(encoded: &str) -> String {
+    let mut out = String::with_capacity(encoded.len());
+    let mut chars = encoded.chars();
+    while let Some(ch) = chars.next() {
+        out.push(ch);
+        if ch == '%' {
+            out.extend(chars.by_ref().take(2).map(|hex| hex.to_ascii_lowercase()));
+        }
+    }
+    out
+}
+
 fn percent(text: &str) -> String {
     text.bytes()
         .map(|byte| match byte {
@@ -766,6 +816,24 @@ pub fn api_url(api: &Api, connector_id: &str, method: &str, path: &str) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_typed_password_never_survives_in_a_body() {
+        let secret = "Zq@9 xk/\"é";
+        for body in [
+            "user=ada&password=Zq%409+xk%2F%22%C3%A9&remember=1".to_string(),
+            "user=ada&password=Zq%409+xk%2f%22%c3%a9".to_string(),
+            "password=Zq%409%20xk%2F%22%C3%A9".to_string(),
+            r#"{"user":"ada","password":"Zq@9 xk/\"é"}"#.to_string(),
+            "raw Zq@9 xk/\"é raw".to_string(),
+        ] {
+            let clean = redact_secret(&body, secret);
+            assert!(clean.contains("[hidden]"), "{body} -> {clean}");
+            assert!(!clean.contains("xk"), "{body} -> {clean}");
+        }
+        assert_eq!(redact_secret("user=ada", secret), "user=ada");
+        assert_eq!(redact_secret("anything", ""), "anything");
+    }
 
     fn attempt() -> Attempt {
         Attempt::new("google", "client-1", 49152).unwrap()

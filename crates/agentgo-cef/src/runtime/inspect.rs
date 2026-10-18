@@ -132,11 +132,18 @@ async fn on_element(tab: &str, object: &str, function: &str) -> Reply {
     Ok(out["result"]["value"].clone())
 }
 
-fn evaluate_allowed(caller: &Caller, method: &str) -> Result<(), Fail> {
-    if caller.is_shell()
-        || state::control_mode() == "full"
-        || state::option_enabled("allowEvaluate")
-    {
+fn evaluate_allowed(caller: &Caller, tab: &str, method: &str) -> Result<(), Fail> {
+    if caller.is_shell() {
+        return Ok(());
+    }
+    // Script could read back the password credentials.fill typed here.
+    if super::accounts::holds_filled_password(tab) {
+        return Err(Fail::new(
+            ErrorCode::PolicyDenied,
+            format!("{method} runs page script, which is off on a site where AgentGo typed a saved password"),
+        ));
+    }
+    if state::control_mode() == "full" || state::option_enabled("allowEvaluate") {
         return Ok(());
     }
     Err(Fail::new(
@@ -659,7 +666,7 @@ pub async fn command(caller: &Caller, method: &str, params: &Value) -> Reply {
             )
         }
         "runtime.call_function" => {
-            evaluate_allowed(caller, method)?;
+            evaluate_allowed(caller, &tab, method)?;
             let function = params["function"].as_str().ok_or_else(|| {
                 Fail::params("function (its source, e.g. \"(a, b) => a + b\") is required")
             })?;
@@ -680,7 +687,7 @@ pub async fn command(caller: &Caller, method: &str, params: &Value) -> Reply {
             Ok(json!({"value": value}))
         }
         "runtime.add_init_script" => {
-            evaluate_allowed(caller, method)?;
+            evaluate_allowed(caller, &tab, method)?;
             let source = params["source"]
                 .as_str()
                 .ok_or_else(|| Fail::params("source is required"))?;
@@ -709,7 +716,7 @@ pub async fn command(caller: &Caller, method: &str, params: &Value) -> Reply {
             Ok(json!({"removed": id}))
         }
         "runtime.add_binding" | "runtime.remove_binding" => {
-            evaluate_allowed(caller, method)?;
+            evaluate_allowed(caller, &tab, method)?;
             let name = params["name"]
                 .as_str()
                 .filter(|n| {
@@ -733,7 +740,7 @@ pub async fn command(caller: &Caller, method: &str, params: &Value) -> Reply {
         }
         "runtime.message" => {
             if let Some(data) = params.get("data") {
-                evaluate_allowed(caller, method)?;
+                evaluate_allowed(caller, &tab, method)?;
                 cdp::page_eval(&tab, &format!("window.dispatchEvent(new MessageEvent('message', {{data: {data}, origin: 'agentgo'}})), true"), 5_000).await.map_err(Fail::internal)?;
             }
             Ok(

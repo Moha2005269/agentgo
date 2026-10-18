@@ -1260,10 +1260,11 @@ cef::wrap_request_handler! {
             let target = CefString::from(&request.url()).to_string();
             let lower = target.trim_start().to_ascii_lowercase();
             let shell_page = lower.starts_with("agentgo:");
-            // The New Tab and error pages carry no bridge access.
-            let allowed_shell = !shell_page
-                || state::is_navigable_url(&target)
-                || target.split(['?', '#']).next() == Some("agentgo://shell/error.html");
+            // The New Tab and error pages carry no bridge access. Only the
+            // error pages AgentGo itself made may open (a site could otherwise
+            // show its own "AgentGo blocked this" page).
+            let allowed_shell =
+                !shell_page || state::is_navigable_url(&target) || state::is_own_error_page(&target);
             let frame_url = frame
                 .as_ref()
                 .map(|f| CefString::from(&f.url()).to_string())
