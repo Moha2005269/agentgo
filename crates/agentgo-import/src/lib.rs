@@ -201,7 +201,9 @@ pub fn chromium_extensions(profile_dir: &Path) -> Vec<Extension> {
                 return None;
             }
             let recorded = prefs.pointer(&format!("/extensions/settings/{id}"));
-            if recorded.is_some_and(|r| r["from_webstore"] == false || r["location"].as_u64().is_some_and(|l| l != 1)) {
+            if recorded.is_some_and(|r| {
+                r["from_webstore"] == false || r["location"].as_u64().is_some_and(|l| l != 1)
+            }) {
                 return None;
             }
             let version = fs::read_dir(entry.path())
@@ -213,7 +215,7 @@ pub fn chromium_extensions(profile_dir: &Path) -> Vec<Extension> {
             Some(Extension { id, name })
         })
         .collect();
-    found.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    found.sort_by_key(|e| e.name.to_lowercase());
     found
 }
 
@@ -221,12 +223,21 @@ fn extension_name(version_dir: &Path) -> Option<String> {
     let manifest: Value =
         serde_json::from_slice(&fs::read(version_dir.join("manifest.json")).ok()?).ok()?;
     let name = manifest["name"].as_str()?.to_string();
-    let Some(key) = name.strip_prefix("__MSG_").and_then(|k| k.strip_suffix("__")) else {
+    let Some(key) = name
+        .strip_prefix("__MSG_")
+        .and_then(|k| k.strip_suffix("__"))
+    else {
         return Some(name);
     };
     let locale = manifest["default_locale"].as_str().unwrap_or("en");
     let messages: Value = serde_json::from_slice(
-        &fs::read(version_dir.join("_locales").join(locale).join("messages.json")).ok()?,
+        &fs::read(
+            version_dir
+                .join("_locales")
+                .join(locale)
+                .join("messages.json"),
+        )
+        .ok()?,
     )
     .ok()?;
     messages
@@ -1158,17 +1169,38 @@ mod tests {
             fs::write(path, body).unwrap();
         };
         // Dark Reader, two versions (the newer one names it), localised.
-        put("Extensions/eimadpbcbfnmbkopoojfekhnkhdbieeh/4.9.1_0/manifest.json", r#"{"name":"Old"}"#);
-        put("Extensions/eimadpbcbfnmbkopoojfekhnkhdbieeh/4.9.9_0/manifest.json", r#"{"name":"__MSG_extension_name__","default_locale":"en"}"#);
-        put("Extensions/eimadpbcbfnmbkopoojfekhnkhdbieeh/4.9.9_0/_locales/en/messages.json", r#"{"extension_name":{"message":"Dark Reader"}}"#);
+        put(
+            "Extensions/eimadpbcbfnmbkopoojfekhnkhdbieeh/4.9.1_0/manifest.json",
+            r#"{"name":"Old"}"#,
+        );
+        put(
+            "Extensions/eimadpbcbfnmbkopoojfekhnkhdbieeh/4.9.9_0/manifest.json",
+            r#"{"name":"__MSG_extension_name__","default_locale":"en"}"#,
+        );
+        put(
+            "Extensions/eimadpbcbfnmbkopoojfekhnkhdbieeh/4.9.9_0/_locales/en/messages.json",
+            r#"{"extension_name":{"message":"Dark Reader"}}"#,
+        );
         // A browser built-in, an unpacked one and a stray folder are not listed.
-        put("Extensions/nmmhkkegccagdldgiimedpiccmgmieda/1.0_0/manifest.json", r#"{"name":"Payments"}"#);
-        put("Extensions/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/1.0_0/manifest.json", r#"{"name":"Unpacked"}"#);
+        put(
+            "Extensions/nmmhkkegccagdldgiimedpiccmgmieda/1.0_0/manifest.json",
+            r#"{"name":"Payments"}"#,
+        );
+        put(
+            "Extensions/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/1.0_0/manifest.json",
+            r#"{"name":"Unpacked"}"#,
+        );
         put("Extensions/Temp/manifest.json", "{}");
-        put("Secure Preferences", r#"{"extensions":{"settings":{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa":{"location":4,"from_webstore":false},"eimadpbcbfnmbkopoojfekhnkhdbieeh":{"location":1,"from_webstore":true}}}}"#);
+        put(
+            "Secure Preferences",
+            r#"{"extensions":{"settings":{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa":{"location":4,"from_webstore":false},"eimadpbcbfnmbkopoojfekhnkhdbieeh":{"location":1,"from_webstore":true}}}}"#,
+        );
         assert_eq!(
             chromium_extensions(&dir),
-            vec![Extension { id: "eimadpbcbfnmbkopoojfekhnkhdbieeh".into(), name: "Dark Reader".into() }]
+            vec![Extension {
+                id: "eimadpbcbfnmbkopoojfekhnkhdbieeh".into(),
+                name: "Dark Reader".into()
+            }]
         );
         assert!(chromium_extensions(&dir.join("missing")).is_empty());
         let _ = fs::remove_dir_all(&dir);

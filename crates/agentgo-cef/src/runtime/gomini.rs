@@ -60,7 +60,10 @@ fn worker<T>(f: impl FnOnce(&mut Worker) -> T) -> T {
 pub fn layout() -> Layout {
     let root = std::env::var_os("AGENTGO_GOMINI_ROOT")
         .map(std::path::PathBuf::from)
-        .or_else(|| std::env::var_os("AGENTGO_DATA_ROOT").map(|base| std::path::PathBuf::from(base).join("gomini")))
+        .or_else(|| {
+            std::env::var_os("AGENTGO_DATA_ROOT")
+                .map(|base| std::path::PathBuf::from(base).join("gomini"))
+        })
         .or_else(Layout::default_root)
         .unwrap_or_else(|| state::data_dir().join("gomini"));
     Layout::new(root)
@@ -126,7 +129,8 @@ pub fn start_install() -> Result<Value, Fail> {
     std::thread::spawn(move || {
         let result = install::install(&layout, &cancel, &|p| {
             job(|j| {
-                j.progress = json!({"stage": p.stage, "text": p.text, "done": p.done, "total": p.total})
+                j.progress =
+                    json!({"stage": p.stage, "text": p.text, "done": p.done, "total": p.total})
             })
         });
         let ok = result.is_ok();
@@ -237,10 +241,15 @@ async fn server() -> Result<Arc<Server>, Fail> {
             return Ok(server);
         }
         if !starting {
-            return Err(Fail::internal(error.unwrap_or_else(|| "GoMini worker did not start".into())));
+            return Err(Fail::internal(
+                error.unwrap_or_else(|| "GoMini worker did not start".into()),
+            ));
         }
         if Instant::now() > deadline {
-            return Err(Fail::new(ErrorCode::Timeout, "GoMini worker did not start in time"));
+            return Err(Fail::new(
+                ErrorCode::Timeout,
+                "GoMini worker did not start in time",
+            ));
         }
         exec::sleep(100).await;
     }
@@ -285,11 +294,17 @@ fn trace(body: &str, outcome: &Result<pack::Choice, String>) {
         return;
     };
     let answer = match outcome {
-        Ok(choice) => json!({"choice": choice.choice, "probabilities": choice.probabilities, "inputTokens": choice.input_tokens}),
+        Ok(choice) => {
+            json!({"choice": choice.choice, "probabilities": choice.probabilities, "inputTokens": choice.input_tokens})
+        }
         Err(e) => json!({"error": e}),
     };
     let line = json!({"request": serde_json::from_str::<Value>(body).unwrap_or(Value::Null), "requestText": body, "answer": answer});
-    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
         use std::io::Write;
         let _ = writeln!(file, "{line}");
     }
@@ -301,9 +316,14 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
     let subgoal = params["subgoal"]
         .as_str()
         .filter(|s| !s.trim().is_empty())
-        .ok_or_else(|| Fail::params("gomini.delegate needs params.subgoal: one small step in plain words"))?;
+        .ok_or_else(|| {
+            Fail::params("gomini.delegate needs params.subgoal: one small step in plain words")
+        })?;
     let max_steps = params["maxSteps"].as_u64().unwrap_or(8).clamp(1, 12);
-    let deadline_ms = params["deadlineMs"].as_u64().unwrap_or(60_000).clamp(5_000, 180_000);
+    let deadline_ms = params["deadlineMs"]
+        .as_u64()
+        .unwrap_or(60_000)
+        .clamp(5_000, 180_000);
     let started = Instant::now();
     let deadline = started + Duration::from_millis(deadline_ms);
     let server = server().await?;
@@ -322,39 +342,40 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
     // Supplied value name -> the field GoMini put it in.
     let mut bound: Vec<(String, u64)> = Vec::new();
     let mut model_ms = 0u128;
-    let finish = |status: &str, reason: Option<String>, record: &Value, steps: &[Value], model_ms: u128| {
-        let outline: String = record["state"]["outline"]
-            .as_str()
-            .unwrap_or_default()
-            .chars()
-            .take(600)
-            .collect();
-        // Compact for the planner: each step as `choice` (failures say why),
-        // and the page excerpt only when it has to look itself.
-        let compact: Vec<Value> = steps
-            .iter()
-            .map(|s| match (s["ok"].as_bool(), s.get("error")) {
-                (_, Some(error)) => json!({"choice": s["choice"], "error": error}),
-                (Some(false), None) => json!({"choice": s["choice"], "ok": false}),
-                _ => s["choice"].clone(),
+    let finish =
+        |status: &str, reason: Option<String>, record: &Value, steps: &[Value], model_ms: u128| {
+            let outline: String = record["state"]["outline"]
+                .as_str()
+                .unwrap_or_default()
+                .chars()
+                .take(600)
+                .collect();
+            // Compact for the planner: each step as `choice` (failures say why),
+            // and the page excerpt only when it has to look itself.
+            let compact: Vec<Value> = steps
+                .iter()
+                .map(|s| match (s["ok"].as_bool(), s.get("error")) {
+                    (_, Some(error)) => json!({"choice": s["choice"], "error": error}),
+                    (Some(false), None) => json!({"choice": s["choice"], "ok": false}),
+                    _ => s["choice"].clone(),
+                })
+                .collect();
+            let mut evidence = json!({"status": record["state"]["status"]});
+            if status != "done" {
+                evidence["outline"] = json!(outline);
+            }
+            json!({
+                "status": status,
+                "reason": reason,
+                "verified": false,
+                "steps": compact,
+                "url": record["state"]["url"],
+                "title": record["state"]["title"],
+                "evidence": evidence,
+                "modelMs": model_ms as u64,
+                "ms": started.elapsed().as_millis() as u64,
             })
-            .collect();
-        let mut evidence = json!({"status": record["state"]["status"]});
-        if status != "done" {
-            evidence["outline"] = json!(outline);
-        }
-        json!({
-            "status": status,
-            "reason": reason,
-            "verified": false,
-            "steps": compact,
-            "url": record["state"]["url"],
-            "title": record["state"]["title"],
-            "evidence": evidence,
-            "modelMs": model_ms as u64,
-            "ms": started.elapsed().as_millis() as u64,
-        })
-    };
+        };
     let mut record = Value::Null;
     for step in 0..max_steps {
         while sessions::control() == Control::Paused && Instant::now() < deadline {
@@ -362,10 +383,19 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
         }
         let stopped = sessions::control() == Control::Stopped;
         if Instant::now() >= deadline {
-            return Ok(finish("needs_help", Some("the deadline passed".into()), &record, &steps, model_ms));
+            return Ok(finish(
+                "needs_help",
+                Some("the deadline passed".into()),
+                &record,
+                &steps,
+                model_ms,
+            ));
         }
         record = call(caller, "decision.record", record_params.clone()).await?;
-        let url = record["state"]["url"].as_str().unwrap_or_default().to_string();
+        let url = record["state"]["url"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
         let here = origin(&url);
         let origin_ok = start_origin.get_or_insert_with(|| here.clone()) == &here;
         let status_lines: Vec<String> = record["state"]["status"]
@@ -386,10 +416,14 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
                 let mut fields = Vec::new();
                 for name in values.keys() {
                     let held = match bound.iter().find(|(n, _)| n == name) {
-                        Some((_, reference)) => call(caller, "runtime.get_value", json!({"tabId": tab, "ref": reference}))
-                            .await
-                            .map(|v| v["value"].clone())
-                            .unwrap_or(json!("")),
+                        Some((_, reference)) => call(
+                            caller,
+                            "runtime.get_value",
+                            json!({"tabId": tab, "ref": reference}),
+                        )
+                        .await
+                        .map(|v| v["value"].clone())
+                        .unwrap_or(json!("")),
                         None => json!(""),
                     };
                     fields.push((name.clone(), held));
@@ -405,13 +439,14 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
         for (keep, outline_chars, text_chars) in [(16, 1500, 1400), (10, 700, 700), (6, 300, 300)] {
             let short = shortlist::shortlist(&record, keep, outline_chars);
             let text = cut_text(&full_text, text_chars, &status_lines);
-            let (request, actions) = match pack::from_record(&short, &text, &recent, &executor, readback.clone()) {
-                Ok(built) => built,
-                Err(e) => {
-                    outcome = Err(e);
-                    continue;
-                }
-            };
+            let (request, actions) =
+                match pack::from_record(&short, &text, &recent, &executor, readback.clone()) {
+                    Ok(built) => built,
+                    Err(e) => {
+                        outcome = Err(e);
+                        continue;
+                    }
+                };
             let asked = Instant::now();
             let body = pack::body(&request);
             outcome = exec::blocking(40_000, {
@@ -426,17 +461,37 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
             attempt_candidates = short["candidates"].as_array().cloned().unwrap_or_default();
             match &outcome {
                 Ok(_) => break,
-                Err(e) if e.contains("limit") || e.contains("exceed") || e.contains("longer") || e.contains("narrow") => continue,
+                Err(e)
+                    if e.contains("limit")
+                        || e.contains("exceed")
+                        || e.contains("longer")
+                        || e.contains("narrow") =>
+                {
+                    continue
+                }
                 Err(_) => break,
             }
         }
         let choice = match outcome {
             Ok(choice) => choice,
             Err(e) => {
-                return Ok(finish("needs_help", Some(format!("GoMini could not take this page: {e}")), &record, &steps, model_ms))
+                return Ok(finish(
+                    "needs_help",
+                    Some(format!("GoMini could not take this page: {e}")),
+                    &record,
+                    &steps,
+                    model_ms,
+                ))
             }
         };
-        let verdict = gate::gate(&choice.choice, &attempt_actions, &attempt_candidates, &executor, step, origin_ok);
+        let verdict = gate::gate(
+            &choice.choice,
+            &attempt_actions,
+            &attempt_candidates,
+            &executor,
+            step,
+            origin_ok,
+        );
         let action = attempt_actions
             .iter()
             .find(|(key, _)| key == &choice.choice)
@@ -449,11 +504,27 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
         match verdict {
             gate::Verdict::Stop => {
                 steps.push(entry);
-                return Ok(finish("stopped", Some(if stopped { "the person pressed Stop".into() } else { "budget used".into() }), &record, &steps, model_ms));
+                return Ok(finish(
+                    "stopped",
+                    Some(if stopped {
+                        "the person pressed Stop".into()
+                    } else {
+                        "budget used".into()
+                    }),
+                    &record,
+                    &steps,
+                    model_ms,
+                ));
             }
             gate::Verdict::Escalate(reason) => {
                 steps.push(entry);
-                return Ok(finish("needs_help", Some(reason), &record, &steps, model_ms));
+                return Ok(finish(
+                    "needs_help",
+                    Some(reason),
+                    &record,
+                    &steps,
+                    model_ms,
+                ));
             }
             gate::Verdict::Done => {
                 steps.push(entry);
@@ -466,12 +537,27 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
             }
             gate::Verdict::Apply => {
                 let Some(action) = action else {
-                    return Ok(finish("needs_help", Some("no action for the choice".into()), &record, &steps, model_ms));
+                    return Ok(finish(
+                        "needs_help",
+                        Some("no action for the choice".into()),
+                        &record,
+                        &steps,
+                        model_ms,
+                    ));
                 };
-                let revision = record["state"]["revision"].as_str().unwrap_or_default().to_string();
+                let revision = record["state"]["revision"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string();
                 if last.as_ref() == Some(&(choice.choice.clone(), revision.clone())) {
                     steps.push(entry);
-                    return Ok(finish("needs_help", Some("the same step on an unchanged page: no progress".into()), &record, &steps, model_ms));
+                    return Ok(finish(
+                        "needs_help",
+                        Some("the same step on an unchanged page: no progress".into()),
+                        &record,
+                        &steps,
+                        model_ms,
+                    ));
                 }
                 last = Some((choice.choice.clone(), revision));
                 let applied = call(
@@ -481,14 +567,29 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
                 )
                 .await;
                 let mut ok = applied.is_ok();
-                entry["ran"] = applied.as_ref().map(|r| r["ran"].clone()).unwrap_or(Value::Null);
+                entry["ran"] = applied
+                    .as_ref()
+                    .map(|r| r["ran"].clone())
+                    .unwrap_or(Value::Null);
                 if let Err(fail) = &applied {
                     entry["error"] = json!(fail.message);
                     // The browser's own gates (approval, sign-in, a human
                     // check) are the planner's to handle, not GoMini's.
-                    if matches!(fail.code, ErrorCode::ApprovalRequired | ErrorCode::HumanHandoff | ErrorCode::PolicyDenied | ErrorCode::TargetBlocked) {
+                    if matches!(
+                        fail.code,
+                        ErrorCode::ApprovalRequired
+                            | ErrorCode::HumanHandoff
+                            | ErrorCode::PolicyDenied
+                            | ErrorCode::TargetBlocked
+                    ) {
                         steps.push(entry);
-                        return Ok(finish("needs_help", Some(fail.message.clone()), &record, &steps, model_ms));
+                        return Ok(finish(
+                            "needs_help",
+                            Some(fail.message.clone()),
+                            &record,
+                            &steps,
+                            model_ms,
+                        ));
                     }
                 }
                 // Typing is verified by reading the field back.
@@ -501,12 +602,18 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
                             .and_then(|c| c["ref"].as_u64()),
                     ) {
                         let expected = params["values"][name].as_str().unwrap_or_default();
-                        let read = call(caller, "runtime.get_value", json!({"tabId": tab, "ref": reference}))
-                            .await
-                            .map(|v| v["value"].clone())
-                            .unwrap_or(Value::Null);
+                        let read = call(
+                            caller,
+                            "runtime.get_value",
+                            json!({"tabId": tab, "ref": reference}),
+                        )
+                        .await
+                        .map(|v| v["value"].clone())
+                        .unwrap_or(Value::Null);
                         ok = read.as_str() == Some(expected)
-                            || attempt_candidates.iter().any(|c| c["id"] == action.choose.as_str() && c["op"] == "select");
+                            || attempt_candidates
+                                .iter()
+                                .any(|c| c["id"] == action.choose.as_str() && c["op"] == "select");
                         entry["readback"] = json!(ok);
                         bound.retain(|(n, r)| n != name && *r != reference);
                         bound.push((name.to_string(), reference));
@@ -516,13 +623,25 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
                 recent.push(json!({"choice": choice.choice, "ok": ok}));
                 if !ok && steps.iter().rev().take(1).any(|s| s["ok"] == false) {
                     steps.push(entry);
-                    return Ok(finish("needs_help", Some("two steps in a row failed".into()), &record, &steps, model_ms));
+                    return Ok(finish(
+                        "needs_help",
+                        Some("two steps in a row failed".into()),
+                        &record,
+                        &steps,
+                        model_ms,
+                    ));
                 }
             }
         }
         steps.push(entry);
     }
-    Ok(finish("needs_help", Some(format!("the step budget ({max_steps}) is used")), &record, &steps, model_ms))
+    Ok(finish(
+        "needs_help",
+        Some(format!("the step budget ({max_steps}) is used")),
+        &record,
+        &steps,
+        model_ms,
+    ))
 }
 
 /// Protocol commands for GoMini.
@@ -564,6 +683,9 @@ mod tests {
     fn origins_compare_scheme_and_host() {
         assert_eq!(origin("https://Shop.example/a/b?c"), "https://shop.example");
         assert_eq!(origin("http://127.0.0.1:5000"), "http://127.0.0.1:5000");
-        assert_ne!(origin("https://shop.example/x"), origin("https://evil.example/x"));
+        assert_ne!(
+            origin("https://shop.example/x"),
+            origin("https://evil.example/x")
+        );
     }
 }

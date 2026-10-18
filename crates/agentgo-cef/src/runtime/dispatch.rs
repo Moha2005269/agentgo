@@ -158,12 +158,19 @@ async fn created_tab_ready(caller: &Caller, mut out: Value, wait: bool) -> Reply
         return Ok(out);
     };
     if wait {
-        let loaded = Box::pin(run(caller, "wait.load", json!({"tabId": tab, "timeout": 20_000}))).await;
+        let loaded = Box::pin(run(
+            caller,
+            "wait.load",
+            json!({"tabId": tab, "timeout": 20_000}),
+        ))
+        .await;
         out["loaded"] = json!(loaded.is_ok());
         out["url"] = json!(state::tab_url(&tab));
     } else if out.get("loaded").is_none() {
         out["loading"] = json!(true);
-        out["hint"] = json!(format!("wait.load {{\"tabId\": \"{tab}\"}} before reading it, or pass wait:true"));
+        out["hint"] = json!(format!(
+            "wait.load {{\"tabId\": \"{tab}\"}} before reading it, or pass wait:true"
+        ));
     }
     Ok(out)
 }
@@ -1286,9 +1293,8 @@ async fn run_ungated(caller: &Caller, method: &str, params: Value) -> Reply {
             record["state"]["status"] = status;
             Ok(record)
         }
-        "gomini.status" | "gomini.install" | "gomini.cancel" | "gomini.remove" | "gomini.delegate" => {
-            gomini::command(caller, method, &params).await
-        }
+        "gomini.status" | "gomini.install" | "gomini.cancel" | "gomini.remove"
+        | "gomini.delegate" => gomini::command(caller, method, &params).await,
         "decision.apply" => {
             let tab = page::tab_of(caller, &params)?;
             let view = page::observe_page(caller, &json!({"tabId": tab, "max": 120})).await?;

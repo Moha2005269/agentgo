@@ -68,7 +68,8 @@ impl Layout {
 
     /// The default root: `%LOCALAPPDATA%\AgentGo\gomini`.
     pub fn default_root() -> Option<PathBuf> {
-        std::env::var_os("LOCALAPPDATA").map(|base| PathBuf::from(base).join("AgentGo").join("gomini"))
+        std::env::var_os("LOCALAPPDATA")
+            .map(|base| PathBuf::from(base).join("AgentGo").join("gomini"))
     }
 
     /// The model file.
@@ -134,7 +135,8 @@ pub struct Progress {
 /// The installation recorded on disk, if its files are all still there.
 pub fn installed(layout: &Layout) -> Option<Installed> {
     let record: Value = serde_json::from_slice(&std::fs::read(layout.record_path()).ok()?).ok()?;
-    if record["model"] != artifacts::MODEL.sha256 || record["llamaBuild"] != artifacts::LLAMA_BUILD {
+    if record["model"] != artifacts::MODEL.sha256 || record["llamaBuild"] != artifacts::LLAMA_BUILD
+    {
         return None;
     }
     let runtime = match record["runtime"].as_str()? {
@@ -170,13 +172,23 @@ pub fn install(
     let mut total = download_size();
     let mut done = 0u64;
     let report = |stage: &'static str, text: String, done: u64, total: u64| {
-        progress(Progress { stage, text, done, total })
+        progress(Progress {
+            stage,
+            text,
+            done,
+            total,
+        })
     };
 
     // 1. The GPU runtime, and whether it sees a real GPU.
     report("runtime", "Downloading the GPU runtime".into(), done, total);
     fetch_runtime(layout, Runtime::Vulkan, cancel, &|n| {
-        report("runtime", "Downloading the GPU runtime".into(), done + n, total)
+        report(
+            "runtime",
+            "Downloading the GPU runtime".into(),
+            done + n,
+            total,
+        )
     })?;
     done += artifacts::RUNTIME_VULKAN.size;
     let gpu = server::usable_gpu(&server::list_devices(&layout.server_exe(Runtime::Vulkan)));
@@ -192,7 +204,12 @@ pub fn install(
     }
 
     // 3. A real decision on the chosen device; the processor if the GPU fails it.
-    report("check", "Checking GoMini on this computer".into(), done, total);
+    report(
+        "check",
+        "Checking GoMini on this computer".into(),
+        done,
+        total,
+    );
     let mut attempt = gpu.map(|(id, name)| (Runtime::Vulkan, Some(id), Some(name)));
     let mut last_error = String::new();
     for _ in 0..2 {
@@ -203,7 +220,12 @@ pub fn install(
                     total += artifacts::RUNTIME_CPU.size;
                     let base = done;
                     fetch_runtime(layout, Runtime::Cpu, cancel, &|n| {
-                        report("runtime", "Downloading the processor runtime".into(), base + n, total)
+                        report(
+                            "runtime",
+                            "Downloading the processor runtime".into(),
+                            base + n,
+                            total,
+                        )
                     })?;
                     done += artifacts::RUNTIME_CPU.size;
                 }
@@ -212,7 +234,12 @@ pub fn install(
         };
         match self_test(layout, runtime, device.as_deref()) {
             Ok(ms) => {
-                let found = Installed { runtime, device, device_name: name, decision_ms: ms };
+                let found = Installed {
+                    runtime,
+                    device,
+                    device_name: name,
+                    decision_ms: ms,
+                };
                 write_record(layout, &found)?;
                 report("done", "GoMini is ready".into(), total, total);
                 return Ok(found);
@@ -233,7 +260,8 @@ fn write_record(layout: &Layout, found: &Installed) -> Result<(), String> {
 /// Removes everything GoMini downloaded.
 pub fn remove(layout: &Layout) -> Result<(), String> {
     if layout.root.exists() {
-        std::fs::remove_dir_all(&layout.root).map_err(|e| format!("GoMini could not be removed: {e}"))?;
+        std::fs::remove_dir_all(&layout.root)
+            .map_err(|e| format!("GoMini could not be removed: {e}"))?;
     }
     Ok(())
 }
@@ -274,7 +302,8 @@ fn fetch_runtime(
 ) -> Result<(), String> {
     let dir = layout.runtime_dir(runtime);
     if server::server_exe_in(&dir).is_file()
-        && std::fs::read_to_string(dir.join(".sha256")).unwrap_or_default() == runtime.artifact().sha256
+        && std::fs::read_to_string(dir.join(".sha256")).unwrap_or_default()
+            == runtime.artifact().sha256
     {
         progress(runtime.artifact().size);
         return Ok(());
@@ -304,7 +333,11 @@ pub fn sha256_file(path: &Path) -> std::io::Result<String> {
         }
         hasher.update(&buf[..n]);
     }
-    Ok(hasher.finalize().iter().map(|b| format!("{b:02x}")).collect())
+    Ok(hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect())
 }
 
 /// Downloads one artifact to `dest` with resume, progress and cancel, and
@@ -334,7 +367,16 @@ pub fn download(
             return Err("cancelled".into());
         }
         let mut child = server::hidden(Path::new("curl.exe"))
-            .args(["-sSfL", "--retry", "3", "--connect-timeout", "20", "-C", "-", "-o"])
+            .args([
+                "-sSfL",
+                "--retry",
+                "3",
+                "--connect-timeout",
+                "20",
+                "-C",
+                "-",
+                "-o",
+            ])
             .arg(&part)
             .arg(art.url)
             .stdin(Stdio::null())
@@ -384,7 +426,8 @@ pub fn download(
 
 fn unzip(zip_path: &Path, dir: &Path) -> Result<(), String> {
     let file = std::fs::File::open(zip_path).map_err(|e| e.to_string())?;
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("bad runtime archive: {e}"))?;
+    let mut archive =
+        zip::ZipArchive::new(file).map_err(|e| format!("bad runtime archive: {e}"))?;
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
@@ -432,7 +475,8 @@ mod tests {
         // A record written for another model is ignored.
         std::fs::write(
             layout.record_path(),
-            json!({"runtime": "cpu", "model": "old", "llamaBuild": artifacts::LLAMA_BUILD}).to_string(),
+            json!({"runtime": "cpu", "model": "old", "llamaBuild": artifacts::LLAMA_BUILD})
+                .to_string(),
         )
         .unwrap();
         assert_eq!(installed(&layout), None);
@@ -463,13 +507,26 @@ mod tests {
         let cancel = AtomicBool::new(false);
         download(&good, &dir.join("a.bin"), &cancel, &|_| {}).unwrap();
         assert_eq!(std::fs::read(dir.join("a.bin")).unwrap(), b"hello");
-        let bad = Artifact { name: "b.bin", sha256: "00", ..good };
+        let bad = Artifact {
+            name: "b.bin",
+            sha256: "00",
+            ..good
+        };
         let err = download(&bad, &dir.join("b.bin"), &cancel, &|_| {}).unwrap_err();
         assert!(err.contains("pinned SHA-256"), "{err}");
         assert!(!dir.join("b.bin").exists() && !dir.join("b.part").exists());
         cancel.store(true, Ordering::SeqCst);
         assert_eq!(
-            download(&Artifact { name: "c.bin", ..good }, &dir.join("c.bin"), &cancel, &|_| {}).unwrap_err(),
+            download(
+                &Artifact {
+                    name: "c.bin",
+                    ..good
+                },
+                &dir.join("c.bin"),
+                &cancel,
+                &|_| {}
+            )
+            .unwrap_err(),
             "cancelled"
         );
         std::fs::remove_dir_all(&dir).ok();

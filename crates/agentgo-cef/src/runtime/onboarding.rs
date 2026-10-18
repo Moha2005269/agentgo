@@ -136,7 +136,12 @@ pub async fn run(params: &Value) -> Reply {
         match super::extensions::install_from_store(&extension.id).await {
             Ok(_) => extensions.push(extension.name.clone()),
             Err(fail) => {
-                let reason = fail.message.rsplit(": ").next().unwrap_or(&fail.message).to_string();
+                let reason = fail
+                    .message
+                    .rsplit(": ")
+                    .next()
+                    .unwrap_or(&fail.message)
+                    .to_string();
                 unsupported.push(json!({"name": extension.name, "reason": reason}));
             }
         }
@@ -147,7 +152,11 @@ pub async fn run(params: &Value) -> Reply {
             unsupported.len(),
             unsupported
                 .iter()
-                .map(|u| format!("{} ({})", u["name"].as_str().unwrap_or(""), u["reason"].as_str().unwrap_or("")))
+                .map(|u| format!(
+                    "{} ({})",
+                    u["name"].as_str().unwrap_or(""),
+                    u["reason"].as_str().unwrap_or("")
+                ))
                 .collect::<Vec<_>>()
                 .join("; ")
         ));

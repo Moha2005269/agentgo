@@ -27,8 +27,22 @@ pub enum Verdict {
 /// Words that make a step the planner's (or the person's) to take: final,
 /// irreversible, paying, credential or account steps.
 const SENSITIVE: &[&str] = &[
-    "pay", "purchase", "buy", "delete", "send", "publish", "transfer", "password", "otp", "captcha",
-    "submit", "checkout", "confirm", "unsubscribe", "login", "logout",
+    "pay",
+    "purchase",
+    "buy",
+    "delete",
+    "send",
+    "publish",
+    "transfer",
+    "password",
+    "otp",
+    "captcha",
+    "submit",
+    "checkout",
+    "confirm",
+    "unsubscribe",
+    "login",
+    "logout",
 ];
 const SENSITIVE_PAIRS: &[(&str, &str)] = &[
     ("remove", "account"),
@@ -81,7 +95,10 @@ pub fn gate(
     if !origin_allowed {
         return Verdict::Escalate("the tab left the site the subgoal started on".into());
     }
-    let Some(candidate) = candidates.iter().find(|c| c["id"] == action.choose.as_str()) else {
+    let Some(candidate) = candidates
+        .iter()
+        .find(|c| c["id"] == action.choose.as_str())
+    else {
         return Verdict::Escalate(format!("{} is no longer a candidate", action.choose));
     };
     let target = candidate["target"].as_str().unwrap_or_default();
@@ -97,7 +114,13 @@ mod tests {
     use serde_json::json;
 
     fn act(id: &str) -> (String, Action) {
-        (id.into(), Action { choose: id.into(), value: None })
+        (
+            id.into(),
+            Action {
+                choose: id.into(),
+                value: None,
+            },
+        )
     }
 
     #[test]
@@ -107,18 +130,58 @@ mod tests {
             json!({"id": "r2", "op": "click", "target": "link \"Next page\""}),
             json!({"id": "r3", "op": "click", "target": "button \"Sign in\""}),
         ];
-        let actions = vec![act("r1"), act("r2"), act("r3"), act("done"), act("stop"), act("wait")];
-        let live = Executor { cancelled: false, attempts_remaining: 5 };
-        assert!(matches!(gate("r1", &actions, &candidates, &live, 0, true), Verdict::Escalate(_)));
-        assert!(matches!(gate("r3", &actions, &candidates, &live, 0, true), Verdict::Escalate(_)));
-        assert_eq!(gate("r2", &actions, &candidates, &live, 0, true), Verdict::Apply);
-        assert!(matches!(gate("r2", &actions, &candidates, &live, 0, false), Verdict::Escalate(_)));
-        assert!(matches!(gate("r9", &actions, &candidates, &live, 0, true), Verdict::Escalate(_)));
-        assert_eq!(gate("done", &actions, &candidates, &live, 0, true), Verdict::Done);
-        assert_eq!(gate("wait", &actions, &candidates, &live, 0, true), Verdict::Wait);
-        let cancelled = Executor { cancelled: true, attempts_remaining: 5 };
-        assert_eq!(gate("r2", &actions, &candidates, &cancelled, 0, true), Verdict::Stop);
-        assert_eq!(gate("r2", &actions, &candidates, &live, HARD_CAP, true), Verdict::Stop);
+        let actions = vec![
+            act("r1"),
+            act("r2"),
+            act("r3"),
+            act("done"),
+            act("stop"),
+            act("wait"),
+        ];
+        let live = Executor {
+            cancelled: false,
+            attempts_remaining: 5,
+        };
+        assert!(matches!(
+            gate("r1", &actions, &candidates, &live, 0, true),
+            Verdict::Escalate(_)
+        ));
+        assert!(matches!(
+            gate("r3", &actions, &candidates, &live, 0, true),
+            Verdict::Escalate(_)
+        ));
+        assert_eq!(
+            gate("r2", &actions, &candidates, &live, 0, true),
+            Verdict::Apply
+        );
+        assert!(matches!(
+            gate("r2", &actions, &candidates, &live, 0, false),
+            Verdict::Escalate(_)
+        ));
+        assert!(matches!(
+            gate("r9", &actions, &candidates, &live, 0, true),
+            Verdict::Escalate(_)
+        ));
+        assert_eq!(
+            gate("done", &actions, &candidates, &live, 0, true),
+            Verdict::Done
+        );
+        assert_eq!(
+            gate("wait", &actions, &candidates, &live, 0, true),
+            Verdict::Wait
+        );
+        let cancelled = Executor {
+            cancelled: true,
+            attempts_remaining: 5,
+        };
+        assert_eq!(
+            gate("r2", &actions, &candidates, &cancelled, 0, true),
+            Verdict::Stop
+        );
+        assert_eq!(
+            gate("r2", &actions, &candidates, &live, HARD_CAP, true),
+            Verdict::Stop
+        );
     }
 
     #[test]

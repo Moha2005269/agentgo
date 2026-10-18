@@ -29,22 +29,38 @@ fn main() -> Result<(), String> {
     if command == "install" {
         let cancel = AtomicBool::new(false);
         let found = install::install(&layout, &cancel, &|p| {
-            eprintln!("{:>8} {:>5.1}% {}", p.stage, p.done as f64 * 100.0 / p.total.max(1) as f64, p.text)
+            eprintln!(
+                "{:>8} {:>5.1}% {}",
+                p.stage,
+                p.done as f64 * 100.0 / p.total.max(1) as f64,
+                p.text
+            )
         })?;
         println!("{}", found.to_json());
         return Ok(());
     }
     let installed = install::installed(&layout).ok_or("not installed; run install first")?;
     let mut input = String::new();
-    std::io::stdin().read_to_string(&mut input).map_err(|e| e.to_string())?;
+    std::io::stdin()
+        .read_to_string(&mut input)
+        .map_err(|e| e.to_string())?;
     let record: Value = serde_json::from_str(&input).map_err(|e| e.to_string())?;
     let executor = pack::Executor {
         cancelled: record["executor"]["cancelled"] == true,
-        attempts_remaining: record["executor"]["attempts_remaining"].as_u64().unwrap_or(3),
+        attempts_remaining: record["executor"]["attempts_remaining"]
+            .as_u64()
+            .unwrap_or(3),
     };
     let recent: Vec<Value> = record["recent"].as_array().cloned().unwrap_or_default();
-    let (request, _) =
-        pack::from_record(&record, record["text"].as_str().unwrap_or(""), &recent, &executor, record["field_readback"].as_object().map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect()))?;
+    let (request, _) = pack::from_record(
+        &record,
+        record["text"].as_str().unwrap_or(""),
+        &recent,
+        &executor,
+        record["field_readback"]
+            .as_object()
+            .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect()),
+    )?;
     let server = Server::start(&layout, &installed)?;
     let packed = pack::check(&server, &request)?;
     let mut out = json!({"body": pack::body(&request), "ids": packed.ids});

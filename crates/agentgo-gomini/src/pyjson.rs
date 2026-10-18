@@ -93,15 +93,22 @@ pub fn mcp_render(result: &Value) -> String {
     };
     let mut out = Vec::new();
     let mut rest = map.clone();
-    let view = ["page", "text", "changes"].iter().any(|key| map.contains_key(*key));
+    let view = ["page", "text", "changes"]
+        .iter()
+        .any(|key| map.contains_key(*key));
     if !view {
         if let Some(tab) = rest.remove("tabId").filter(|value| !value.is_null()) {
-            out.push(format!("tabId: {}", tab.as_str().map_or_else(|| tab.to_string(), str::to_string)));
+            out.push(format!(
+                "tabId: {}",
+                tab.as_str().map_or_else(|| tab.to_string(), str::to_string)
+            ));
         }
     }
     let mut take = |key: &str| rest.remove(key).filter(|value| !value.is_null());
     if let (Some(url), title) = (take("url"), take("title")) {
-        let title = title.and_then(|t| t.as_str().map(str::to_string)).unwrap_or_default();
+        let title = title
+            .and_then(|t| t.as_str().map(str::to_string))
+            .unwrap_or_default();
         out.push(
             format!("{title} — {}", url.as_str().unwrap_or(""))
                 .trim_start_matches(" — ")
@@ -111,13 +118,19 @@ pub fn mcp_render(result: &Value) -> String {
     for key in ["page", "text", "changes", "filled"] {
         if let Some(Value::String(body)) = take(key) {
             if key == "changes" {
-                out.push(if body.is_empty() { "(no visible change)".into() } else { format!("changed:\n{body}") });
+                out.push(if body.is_empty() {
+                    "(no visible change)".into()
+                } else {
+                    format!("changed:\n{body}")
+                });
             } else {
                 out.push(body);
             }
         }
     }
-    for key in ["tabId", "scroll", "total", "ms", "accepted", "loaded", "base64"] {
+    for key in [
+        "tabId", "scroll", "total", "ms", "accepted", "loaded", "base64",
+    ] {
         let dropped = take(key);
         if key == "loaded" && dropped == Some(Value::Bool(false)) {
             out.push("(the page had not finished loading)".into());

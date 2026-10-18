@@ -15,10 +15,48 @@ use serde_json::{json, Value};
 use crate::pack::MAX_CHOICES;
 
 const STOPWORDS: &[&str] = &[
-    "the", "and", "for", "with", "this", "that", "into", "from", "then", "page", "field", "button",
-    "link", "click", "fill", "enter", "type", "select", "choose", "value", "values", "supplied",
-    "requested", "should", "must", "have", "has", "the", "its", "your", "you", "are", "not",
-    "only", "when", "all", "every", "any", "text", "box", "open", "put",
+    "the",
+    "and",
+    "for",
+    "with",
+    "this",
+    "that",
+    "into",
+    "from",
+    "then",
+    "page",
+    "field",
+    "button",
+    "link",
+    "click",
+    "fill",
+    "enter",
+    "type",
+    "select",
+    "choose",
+    "value",
+    "values",
+    "supplied",
+    "requested",
+    "should",
+    "must",
+    "have",
+    "has",
+    "the",
+    "its",
+    "your",
+    "you",
+    "are",
+    "not",
+    "only",
+    "when",
+    "all",
+    "every",
+    "any",
+    "text",
+    "box",
+    "open",
+    "put",
 ];
 
 fn words(text: &str) -> HashSet<String> {
@@ -30,7 +68,10 @@ fn words(text: &str) -> HashSet<String> {
 }
 
 fn is_control(candidate: &Value) -> bool {
-    !candidate["id"].as_str().unwrap_or_default().starts_with('r')
+    !candidate["id"]
+        .as_str()
+        .unwrap_or_default()
+        .starts_with('r')
         || candidate.get("ref").is_none()
 }
 
@@ -50,7 +91,9 @@ fn named_bindings(subgoal: &str, names: &[String]) -> Vec<(String, String)> {
         let Some((label, name)) = part.rsplit_once('=') else {
             continue;
         };
-        let name = name.trim().trim_matches(|c: char| !c.is_alphanumeric() && c != '_' && c != '-');
+        let name = name
+            .trim()
+            .trim_matches(|c: char| !c.is_alphanumeric() && c != '_' && c != '-');
         if !names.iter().any(|n| n == name) {
             continue;
         }
@@ -84,7 +127,10 @@ pub fn bind(record: &mut Value) {
             if !matches!(candidate["op"].as_str(), Some("fill" | "select")) {
                 continue;
             }
-            let target = candidate["target"].as_str().unwrap_or_default().to_lowercase();
+            let target = candidate["target"]
+                .as_str()
+                .unwrap_or_default()
+                .to_lowercase();
             let bound: Vec<&str> = pairs
                 .iter()
                 .filter(|(label, _)| target.contains(&format!("\"{label}\"")))
@@ -113,7 +159,11 @@ pub fn shortlist(record: &Value, keep: usize, outline_chars: usize) -> Value {
         }
     }
     let candidates: Vec<Value> = record["candidates"].as_array().cloned().unwrap_or_default();
-    let controls: Vec<Value> = candidates.iter().filter(|c| is_control(c)).cloned().collect();
+    let controls: Vec<Value> = candidates
+        .iter()
+        .filter(|c| is_control(c))
+        .cloned()
+        .collect();
     let mut scored: Vec<(usize, usize, &Value)> = candidates
         .iter()
         .enumerate()
@@ -143,7 +193,11 @@ pub fn shortlist(record: &Value, keep: usize, outline_chars: usize) -> Value {
         .filter_map(|(_, c)| c["ref"].as_u64().map(|r| format!("[{r}]")))
         .collect();
     let mut outline = String::new();
-    for line in record["state"]["outline"].as_str().unwrap_or_default().lines() {
+    for line in record["state"]["outline"]
+        .as_str()
+        .unwrap_or_default()
+        .lines()
+    {
         let control = line.starts_with('[') && line.contains("] ");
         let keep_line = if control {
             refs.iter().any(|r| line.starts_with(r.as_str()))
@@ -185,9 +239,20 @@ mod tests {
             ],
         });
         let short = shortlist(&record, 16, 400);
-        let binds: Vec<Value> = short["candidates"].as_array().unwrap().iter().map(|c| c["bind"].clone()).collect();
-        assert_eq!(binds[..4], [json!(["v1"]), json!(["v2"]), json!(["v3"]), json!(["v4"])]);
-        let executor = crate::pack::Executor { cancelled: false, attempts_remaining: 8 };
+        let binds: Vec<Value> = short["candidates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["bind"].clone())
+            .collect();
+        assert_eq!(
+            binds[..4],
+            [json!(["v1"]), json!(["v2"]), json!(["v3"]), json!(["v4"])]
+        );
+        let executor = crate::pack::Executor {
+            cancelled: false,
+            attempts_remaining: 8,
+        };
         let (request, _) = crate::pack::from_record(&short, "", &[], &executor, None).unwrap();
         let keys: Vec<&str> = request.criteria.iter().map(|(k, _)| k.as_str()).collect();
         assert_eq!(&keys[..4], ["r1|v1", "r2|v2", "r3|v3", "r4|v4"]);
@@ -199,9 +264,18 @@ mod tests {
         let mut candidates: Vec<Value> = (0..60)
             .map(|i| json!({"id": format!("r{i}"), "op": "click", "ref": i, "target": format!("link \"Article {i}\"")}))
             .collect();
-        candidates.push(json!({"id": "r100", "op": "fill", "ref": 100, "target": "textbox \"Email address\""}));
+        candidates.push(
+            json!({"id": "r100", "op": "fill", "ref": 100, "target": "textbox \"Email address\""}),
+        );
         candidates.push(json!({"id": "r101", "op": "click", "ref": 101, "target": "button \"Newsletter signup\""}));
-        for id in ["scroll_down", "scroll_up", "back", "wait", "done", "escalate"] {
+        for id in [
+            "scroll_down",
+            "scroll_up",
+            "back",
+            "wait",
+            "done",
+            "escalate",
+        ] {
             candidates.push(json!({"id": id, "op": id, "target": "control"}));
         }
         let outline: String = (0..60)
@@ -221,7 +295,19 @@ mod tests {
             .iter()
             .map(|c| c["id"].as_str().unwrap())
             .collect();
-        assert_eq!(ids, ["r100", "r101", "scroll_down", "scroll_up", "back", "wait", "done", "escalate"]);
+        assert_eq!(
+            ids,
+            [
+                "r100",
+                "r101",
+                "scroll_down",
+                "scroll_up",
+                "back",
+                "wait",
+                "done",
+                "escalate"
+            ]
+        );
         let outline = short["state"]["outline"].as_str().unwrap();
         assert!(outline.contains("[100] textbox") && outline.contains("# Newsletter"));
         assert!(!outline.contains("Article 7"));

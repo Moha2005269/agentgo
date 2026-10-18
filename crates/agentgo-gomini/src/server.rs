@@ -114,9 +114,15 @@ pub fn usable_gpu(devices: &[String]) -> Option<(String, String)> {
     devices.iter().find_map(|line| {
         let (id, name) = line.split_once(':')?;
         let lower = name.to_ascii_lowercase();
-        let software = ["llvmpipe", "swiftshader", "basic render", "microsoft basic", "lavapipe"]
-            .iter()
-            .any(|s| lower.contains(s));
+        let software = [
+            "llvmpipe",
+            "swiftshader",
+            "basic render",
+            "microsoft basic",
+            "lavapipe",
+        ]
+        .iter()
+        .any(|s| lower.contains(s));
         (id.starts_with("Vulkan") && !software)
             .then(|| (id.trim().to_string(), name.trim().to_string()))
     })

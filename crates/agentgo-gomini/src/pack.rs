@@ -36,7 +36,10 @@ const SEP: &str = "<eos>";
 const MASK: &str = "<mask>";
 
 /// The supervisor control the adapter always offers.
-pub const STOP: (&str, &str) = ("stop", "Stop: cancelled, permission revoked, or attempt limit reached");
+pub const STOP: (&str, &str) = (
+    "stop",
+    "Stop: cancelled, permission revoked, or attempt limit reached",
+);
 
 /// Replaces tokenizer markers in untrusted text so a page cannot change the
 /// structure of the input (`<mask>` becomes `＜mask＞`).
@@ -115,21 +118,45 @@ pub fn from_record(
         if op == "fill" || op == "select" {
             // A field the planner named ("Postal code=postal") is offered with
             // its own value only (see shortlist::bind); otherwise with each.
-            let bound: Option<Vec<String>> = candidate["bind"]
-                .as_array()
-                .map(|names| names.iter().filter_map(|n| n.as_str().map(str::to_string)).collect());
-            for name in values.iter().filter(|n| bound.as_ref().is_none_or(|b| b.contains(n))) {
+            let bound: Option<Vec<String>> = candidate["bind"].as_array().map(|names| {
+                names
+                    .iter()
+                    .filter_map(|n| n.as_str().map(str::to_string))
+                    .collect()
+            });
+            for name in values
+                .iter()
+                .filter(|n| bound.as_ref().is_none_or(|b| b.contains(n)))
+            {
                 let key = format!("{id}|{name}");
                 choices.push((key.clone(), format!("{op} {target} with value {name}")));
-                actions.push((key, Action { choose: id.into(), value: Some(name.clone()) }));
+                actions.push((
+                    key,
+                    Action {
+                        choose: id.into(),
+                        value: Some(name.clone()),
+                    },
+                ));
             }
         } else {
             choices.push((id.into(), format!("{op} {target}")));
-            actions.push((id.into(), Action { choose: id.into(), value: None }));
+            actions.push((
+                id.into(),
+                Action {
+                    choose: id.into(),
+                    value: None,
+                },
+            ));
         }
     }
     choices.push((STOP.0.into(), STOP.1.into()));
-    actions.push((STOP.0.into(), Action { choose: STOP.0.into(), value: None }));
+    actions.push((
+        STOP.0.into(),
+        Action {
+            choose: STOP.0.into(),
+            value: None,
+        },
+    ));
     if choices.len() > MAX_CHOICES {
         return Err(format!(
             "too many candidates ({}): the subgoal must be narrowed to at most {MAX_CHOICES} choices",
@@ -138,7 +165,10 @@ pub fn from_record(
     }
     let recent: Vec<Value> = recent.iter().rev().take(3).rev().cloned().collect();
     let mut state = vec![
-        ("outline".into(), Py::Val(record["state"]["outline"].clone())),
+        (
+            "outline".into(),
+            Py::Val(record["state"]["outline"].clone()),
+        ),
         ("text".into(), Py::Val(json!(text))),
         ("values".into(), Py::Val(record["values"].clone())),
         ("recent".into(), Py::Val(json!(recent))),
@@ -146,7 +176,10 @@ pub fn from_record(
             "executor".into(),
             Py::Obj(vec![
                 ("cancelled".into(), Py::Val(json!(executor.cancelled))),
-                ("attempts_remaining".into(), Py::Val(json!(executor.attempts_remaining))),
+                (
+                    "attempts_remaining".into(),
+                    Py::Val(json!(executor.attempts_remaining)),
+                ),
             ]),
         ),
     ];
@@ -227,20 +260,32 @@ pub fn check(tok: &dyn Tokenize, request: &Request) -> Result<Packed, String> {
     let rendered: Vec<String> = request
         .criteria
         .iter()
-        .map(|(k, v)| if v.is_empty() { k.clone() } else { format!("{k}: {v}") })
+        .map(|(k, v)| {
+            if v.is_empty() {
+                k.clone()
+            } else {
+                format!("{k}: {v}")
+            }
+        })
         .collect();
     let options: Vec<Vec<i64>> = rendered
         .iter()
         .map(|text| tok.tokens(&format!(" {text}")))
         .collect::<Result<_, _>>()?;
-    if let Some((i, _)) = options.iter().enumerate().find(|(_, o)| o.len() > OPTION_LEN) {
+    if let Some((i, _)) = options
+        .iter()
+        .enumerate()
+        .find(|(_, o)| o.len() > OPTION_LEN)
+    {
         return Err(format!(
             "choice {} is longer than {OPTION_LEN} tokens; the planner must shorten it",
             request.criteria[i].0
         ));
     }
     if options.iter().map(|o| o.len() + 1).sum::<usize>() + head.len().max(16) > HEAD_LEN {
-        return Err("the subgoal and its choices exceed the 512-token head; narrow the subgoal".into());
+        return Err(
+            "the subgoal and its choices exceed the 512-token head; narrow the subgoal".into(),
+        );
     }
     let state = tok.tokens(&request.state)?;
     let mut ids = vec![cls];
@@ -262,13 +307,18 @@ pub fn check(tok: &dyn Tokenize, request: &Request) -> Result<Packed, String> {
     if ids.iter().filter(|id| **id == mask).count() != n {
         return Err("an unescaped marker reached the input".into());
     }
-    let options_text: String = rendered.iter().map(|text| format!("{MASK} {text}")).collect();
+    let options_text: String = rendered
+        .iter()
+        .map(|text| format!("{MASK} {text}"))
+        .collect();
     let prompt = format!(
         "{CLS}choice question: {}{SEP}{options_text}{SEP}{}{SEP}",
         request.instructions, request.state
     );
     if tok.tokens(&prompt)? != ids {
-        return Err("tokenisation differs between pieces and the whole input; reword or compact".into());
+        return Err(
+            "tokenisation differs between pieces and the whole input; reword or compact".into(),
+        );
     }
     Ok(Packed {
         ids,
@@ -300,8 +350,13 @@ pub fn read_answer(answer: &Value, packed: &Packed) -> Result<Choice, String> {
         return Err("the worker read a different number of tokens than were checked".into());
     }
     let next = &answer["answers"]["next"];
-    let choice = next["choice"].as_str().ok_or("the worker gave no choice")?.to_string();
-    let map = next["probabilities"].as_object().ok_or("the worker gave no probabilities")?;
+    let choice = next["choice"]
+        .as_str()
+        .ok_or("the worker gave no choice")?
+        .to_string();
+    let map = next["probabilities"]
+        .as_object()
+        .ok_or("the worker gave no probabilities")?;
     if !packed.keys.contains(&choice)
         || map.len() != packed.keys.len()
         || packed.keys.iter().any(|k| !map.contains_key(k))
@@ -320,7 +375,11 @@ pub fn read_answer(answer: &Value, packed: &Packed) -> Result<Choice, String> {
         choice,
         top_probability: sorted[0],
         margin: sorted[0] - sorted.get(1).copied().unwrap_or(0.0),
-        entropy_confidence: if sorted.len() > 1 { 1.0 - entropy / (sorted.len() as f64).ln() } else { 1.0 },
+        entropy_confidence: if sorted.len() > 1 {
+            1.0 - entropy / (sorted.len() as f64).ln()
+        } else {
+            1.0
+        },
         probabilities,
         input_tokens: packed.ids.len(),
     })
@@ -350,7 +409,11 @@ mod tests {
                     .find([' ', '<'])
                     .map_or(rest.len(), |i| (i + start).max(1));
                 let word = &rest[..end];
-                out.push(word.bytes().fold(7i64, |h, b| h.wrapping_mul(31).wrapping_add(b as i64)).abs());
+                out.push(
+                    word.bytes()
+                        .fold(7i64, |h, b| h.wrapping_mul(31).wrapping_add(b as i64))
+                        .abs(),
+                );
                 rest = &rest[end..];
             }
             Ok(out)
@@ -375,13 +438,24 @@ mod tests {
 
     #[test]
     fn a_record_becomes_the_trained_question() {
-        let executor = Executor { cancelled: false, attempts_remaining: 7 };
-        let (request, actions) =
-            from_record(&record(), "Status: Page ready.", &[json!({"choice": "r9", "ok": true})], &executor, None)
-                .unwrap();
+        let executor = Executor {
+            cancelled: false,
+            attempts_remaining: 7,
+        };
+        let (request, actions) = from_record(
+            &record(),
+            "Status: Page ready.",
+            &[json!({"choice": "r9", "ok": true})],
+            &executor,
+            None,
+        )
+        .unwrap();
         let keys: Vec<&str> = request.criteria.iter().map(|(k, _)| k.as_str()).collect();
         assert_eq!(keys, ["r748|entry", "r9", "scroll_down", "done", "stop"]);
-        assert_eq!(request.criteria[0].1, "fill textbox \"Primary Postal code\" value=\"\" with value entry");
+        assert_eq!(
+            request.criteria[0].1,
+            "fill textbox \"Primary Postal code\" value=\"\" with value entry"
+        );
         // A marker inside page text is escaped, never left as a token.
         assert_eq!(request.criteria[1].1, "click button \"＜mask＞ Save\"");
         assert_eq!(
@@ -389,7 +463,13 @@ mod tests {
             "Goal: Enter the supplied entry in Primary Postal code. Completion: Primary Postal code has the requested value. Constraints: Do not submit other forms."
         );
         assert!(request.state.starts_with(r#"{"outline": "[748] textbox \"Primary Postal code\" value=\"\"", "text": "Status: Page ready.", "values": {"entry": "Pacific-96778"}, "recent": [{"choice": "r9", "ok": true}], "executor": {"cancelled": false, "attempts_remaining": 7}}"#));
-        assert_eq!(actions[0].1, Action { choose: "r748".into(), value: Some("entry".into()) });
+        assert_eq!(
+            actions[0].1,
+            Action {
+                choose: "r748".into(),
+                value: Some("entry".into())
+            }
+        );
         let packed = check(&CharTok, &request).unwrap();
         assert_eq!(packed.keys.len(), 5);
         assert_eq!(packed.ids.iter().filter(|id| **id == -3).count(), 5);
@@ -400,27 +480,39 @@ mod tests {
 
     #[test]
     fn oversized_inputs_are_refused_not_truncated() {
-        let executor = Executor { cancelled: false, attempts_remaining: 3 };
+        let executor = Executor {
+            cancelled: false,
+            attempts_remaining: 3,
+        };
         let mut many = record();
         many["candidates"] = json!((0..30)
             .map(|i| json!({"id": format!("r{i}"), "op": "click", "target": "x"}))
             .collect::<Vec<_>>());
-        assert!(from_record(&many, "", &[], &executor, None).unwrap_err().contains("narrowed"));
+        assert!(from_record(&many, "", &[], &executor, None)
+            .unwrap_err()
+            .contains("narrowed"));
 
         let mut long = record();
         long["state"]["outline"] = json!("y ".repeat(1200));
         let (request, _) = from_record(&long, "", &[], &executor, None).unwrap();
-        assert!(check(&CharTok, &request).unwrap_err().contains("over the 1024"));
+        assert!(check(&CharTok, &request)
+            .unwrap_err()
+            .contains("over the 1024"));
 
         let mut wide = record();
         wide["candidates"][1]["target"] = json!("z ".repeat(60));
         let (request, _) = from_record(&wide, "", &[], &executor, None).unwrap();
-        assert!(check(&CharTok, &request).unwrap_err().contains("longer than 48"));
+        assert!(check(&CharTok, &request)
+            .unwrap_err()
+            .contains("longer than 48"));
     }
 
     #[test]
     fn answers_must_match_the_checked_request() {
-        let packed = Packed { ids: vec![1, 2, 3], keys: vec!["a".into(), "b".into()] };
+        let packed = Packed {
+            ids: vec![1, 2, 3],
+            keys: vec!["a".into(), "b".into()],
+        };
         let good = json!({"usage": {"input_tokens": 3}, "answers": {"next": {"choice": "b", "probabilities": {"a": 0.2, "b": 0.8}}}});
         let choice = read_answer(&good, &packed).unwrap();
         assert_eq!(choice.choice, "b");
