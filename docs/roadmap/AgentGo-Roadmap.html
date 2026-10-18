@@ -142,7 +142,7 @@
 
 <h2>Starting again</h2>
 <ul>
-  <li>Read <code>README.md</code>, then <code>docs/HANDOFF-OPUS.md</code> and <code>docs/issues-log.md</code> (every problem met and how it was solved).</li>
+  <li>Read <code>README.md</code>, then <code>docs/STATUS.md</code> and <code>docs/issues-log.md</code> (every problem met and how it was solved).</li>
   <li>Build: <code>powershell -File scripts\build.ps1 -Runtime</code> (CEF is fetched by <code>scripts\bootstrap.ps1</code> from <code>scripts\pins.json</code>). Test: <code>node scripts\dev\run-integration.js</code>. Package: <code>scripts\package.ps1 -Release</code>.</li>
   <li>Add a tool: one line in <code>scripts/dev/tools-spec.js</code> (plus a function in <code>tools.js</code> if it reads the page), then <code>gen-tools.js</code>, <code>gen-skill.js</code>, build, <code>tools_e2e</code>.</li>
 </ul>
