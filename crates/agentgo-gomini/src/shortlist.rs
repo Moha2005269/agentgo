@@ -111,8 +111,40 @@ fn named_bindings(subgoal: &str, names: &[String]) -> Vec<(String, String)> {
     out
 }
 
+/// Lower-case words of a label, without punctuation ("E-mail address:" is
+/// "e mail address").
+fn label_words(text: &str) -> String {
+    text.to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// The quoted label of a candidate (`textbox(tel) "Telephone:"`).
+fn candidate_label(target: &str) -> &str {
+    match (target.find('"'), target.rfind('"')) {
+        (Some(start), Some(end)) if end > start => &target[start + 1..end],
+        _ => target,
+    }
+}
+
+/// Whether the field's label is the one the planner named: the same words,
+/// ignoring punctuation and a trailing colon or asterisk ("Telephone" names
+/// "Telephone:"), or the named words at the start of a longer label
+/// ("Email" names "Email address").
+fn label_matches(named: &str, field: &str) -> bool {
+    let (named, field) = (label_words(named), label_words(field));
+    !named.is_empty()
+        && (field == named
+            || field.starts_with(&format!("{named} "))
+            || field.replace(' ', "") == named.replace(' ', ""))
+}
+
 /// Marks fill/select candidates whose label the planner named with the
 /// value(s) bound to them (`bind`), so each is offered with its own value.
+/// A value bound to a field on the page is not offered for other fields
+/// (`boundValues`).
 pub fn bind(record: &mut Value) {
     let names: Vec<String> = record["values"]
         .as_object()
@@ -122,24 +154,27 @@ pub fn bind(record: &mut Value) {
     if pairs.is_empty() {
         return;
     }
+    let mut placed: Vec<String> = Vec::new();
     if let Some(candidates) = record["candidates"].as_array_mut() {
         for candidate in candidates.iter_mut() {
             if !matches!(candidate["op"].as_str(), Some("fill" | "select")) {
                 continue;
             }
-            let target = candidate["target"]
-                .as_str()
-                .unwrap_or_default()
-                .to_lowercase();
+            let label =
+                candidate_label(candidate["target"].as_str().unwrap_or_default()).to_string();
             let bound: Vec<&str> = pairs
                 .iter()
-                .filter(|(label, _)| target.contains(&format!("\"{label}\"")))
+                .filter(|(named, _)| label_matches(named, &label))
                 .map(|(_, name)| name.as_str())
                 .collect();
             if !bound.is_empty() {
+                placed.extend(bound.iter().map(|n| n.to_string()));
                 candidate["bind"] = json!(bound);
             }
         }
+    }
+    if !placed.is_empty() {
+        record["boundValues"] = json!(placed);
     }
 }
 
@@ -222,6 +257,39 @@ pub fn shortlist(record: &Value, keep: usize, outline_chars: usize) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn labels_match_without_their_punctuation() {
+        let mut record = json!({
+            "subgoal": "Fill this order form using Customer name=name; Telephone=phone; E-mail address=email. Never submit.",
+            "values": {"name": "a", "phone": "b", "email": "c"},
+            "candidates": [
+                {"id": "r1", "op": "fill", "ref": 1, "target": "textbox \"Customer name:\""},
+                {"id": "r2", "op": "fill", "ref": 2, "target": "textbox(tel) \"Telephone:\""},
+                {"id": "r3", "op": "fill", "ref": 3, "target": "textbox(email) \"E-mail address:\""},
+                {"id": "r4", "op": "fill", "ref": 4, "target": "textbox \"Delivery instructions:\""}
+            ]
+        });
+        bind(&mut record);
+        let binds: Vec<Value> = record["candidates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["bind"].clone())
+            .collect();
+        assert_eq!(
+            binds,
+            vec![
+                json!(["name"]),
+                json!(["phone"]),
+                json!(["email"]),
+                Value::Null
+            ]
+        );
+        assert_eq!(record["boundValues"], json!(["name", "phone", "email"]));
+        assert!(label_matches("Email", "Email address"));
+        assert!(!label_matches("Email", "Delivery instructions"));
+    }
 
     #[test]
     fn named_fields_get_only_their_own_value() {

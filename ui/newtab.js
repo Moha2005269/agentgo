@@ -188,7 +188,8 @@ const resolve = raw => {
   if (!text) return null;
   if (/^(https?|file|about):/i.test(text)) return text;
   if (/^[^\s]+\.[^\s]+$/.test(text) || /^localhost(:\d+)?(\/|$)/.test(text)) return 'https://' + text;
-  return searchBase + encodeURIComponent(text);
+  // A custom engine is a template with %s where the words go.
+  return searchBase.includes('%s') ? searchBase.replace('%s', encodeURIComponent(text)) : searchBase + encodeURIComponent(text);
 };
 $('#omniForm').addEventListener('submit', e => {
   e.preventDefault();
@@ -260,7 +261,9 @@ const render = state => {
   if (key === lastRender) return;
   lastRender = key;
 
+  window.agentgoSetAccent(state.accent);
   applyTheme(state.theme || 'dark');
+  wire.refreshColors();
   document.documentElement.classList.toggle('no-motion', state.motion === false);
   wire.setRunning(state.motion !== false);
 

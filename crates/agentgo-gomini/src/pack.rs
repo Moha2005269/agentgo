@@ -124,10 +124,18 @@ pub fn from_record(
                     .filter_map(|n| n.as_str().map(str::to_string))
                     .collect()
             });
-            for name in values
-                .iter()
-                .filter(|n| bound.as_ref().is_none_or(|b| b.contains(n)))
-            {
+            // A value the planner bound to another field on this page is
+            // not offered here.
+            let elsewhere: Vec<&str> = record["boundValues"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .collect();
+            for name in values.iter().filter(|n| match &bound {
+                Some(b) => b.contains(n),
+                None => !elsewhere.contains(&n.as_str()),
+            }) {
                 let key = format!("{id}|{name}");
                 choices.push((key.clone(), format!("{op} {target} with value {name}")));
                 actions.push((

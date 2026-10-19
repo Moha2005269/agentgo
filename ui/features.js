@@ -23,7 +23,6 @@ const PAL_KIND = { tab: 'Tab', bookmark: 'Bookmark', history: 'History', setting
 const settingsPatch = settings => callBridge('settings.set', { settings });
 let nativeClosed = false;
 const act = (name, section = '') => { nativeClosed = true; return callBridge('ui.run_action', { name, section }); };
-const lang = () => (navigator.language || 'en').split('-')[0];
 
 const PAL_ACTIONS = () => {
   const s = settingsCache || {};
@@ -184,7 +183,6 @@ const palRun = async index => {
   }
 };
 // Actions that open another panel close this one natively; the rest close it here.
-const isNavigationalAction = async () => false;
 
 const renderPalette = async () => {
   document.body.classList.add('pal');

@@ -121,8 +121,11 @@ const AGENT_SETTINGS: [&str; 11] = [
 /// Settings a sync folder or a profile export may carry into this browser:
 /// the look, plus the person's plain preferences. Never what decides security
 /// or what agents may do; a file from elsewhere must not change those.
-const PORTABLE_SETTINGS: [&str; 6] = [
+const PORTABLE_SETTINGS: [&str; 9] = [
     "searchEngine",
+    "searchCustom",
+    "homePage",
+    "pageFontSize",
     "startup",
     "languages",
     "hardwareAcceleration",
@@ -196,6 +199,10 @@ fn not_answered(tab: &str, url: &str, ms: u64) -> Value {
     })
 }
 
+/// How long after a navigation commits `navigate.url` starts checking whether
+/// the page is already usable while it still loads.
+const USABLE_AFTER_MS: u64 = 2_500;
+
 /// Navigates and waits for the load to finish, optionally returning a view
 /// of the new page in the same reply (one model turn instead of three).
 async fn navigate_open(caller: &Caller, params: &Value) -> Reply {
@@ -226,8 +233,29 @@ async fn navigate_open(caller: &Caller, params: &Value) -> Reply {
     while cdp::generation(&tab) == generation && elapsed(&started) < timeout.min(10_000) {
         exec::sleep(25).await;
     }
+    // A page is usable long before its last tracker or video has loaded:
+    // once its document is parsed and has been still for a moment, the reply
+    // goes out (`wait: "load"` waits for the full load instead).
+    let full_load = params.get("wait").and_then(Value::as_str) == Some("load");
+    let committed_at = elapsed(&started);
+    let mut next_check = committed_at + USABLE_AFTER_MS;
+    let mut usable = false;
     while state::tab_is_loading(&tab) && elapsed(&started) < timeout {
         exec::sleep(40).await;
+        if !full_load && cdp::generation(&tab) != generation && elapsed(&started) >= next_check {
+            next_check = elapsed(&started) + 400;
+            let ready = cdp::agent_eval(
+                &tab,
+                "document.readyState !== 'loading' && __ag.settle(300,1200).then(() => true)",
+                2_000,
+            )
+            .await
+            .is_ok_and(|out| out == json!(true));
+            if ready && state::tab_is_loading(&tab) {
+                usable = true;
+                break;
+            }
+        }
     }
     let loaded = !state::tab_is_loading(&tab) && cdp::generation(&tab) != generation;
     if state::tab_is_loading(&tab) && !cdp::readable(&tab, 700).await {
@@ -268,7 +296,10 @@ async fn navigate_open(caller: &Caller, params: &Value) -> Reply {
     }
     out["loaded"] = json!(loaded);
     out["ms"] = json!(elapsed(&started));
-    if !loaded {
+    if usable && !loaded {
+        out["usable"] = json!(true);
+        out["note"] = json!("the page is ready to use; some of its resources are still loading (wait.load waits for them)");
+    } else if !loaded {
         out["note"] = json!("the page has not finished loading; what is shown may be incomplete. Call wait.load to wait longer");
     }
     if let Some(error) = state::take_load_error(&tab) {
@@ -368,6 +399,13 @@ async fn benchmark_run(caller: &Caller, params: &Value) -> Reply {
     Ok(
         json!({"runs": runs, "succeeded": succeeded, "total": runs.len(), "successRate": succeeded as f64 / runs.len().max(1) as f64}),
     )
+}
+
+thread_local! {
+    /// How many outline lines each (session, tab)'s last decision.record read:
+    /// decision.apply reads the same amount, so a long page's revision matches.
+    static RECORD_MAX: std::cell::RefCell<HashMap<(String, String), u64>> =
+        std::cell::RefCell::new(HashMap::new());
 }
 
 /// Identifies the state a choice was made for: the document and its outline.
@@ -1145,7 +1183,18 @@ async fn run_ungated(caller: &Caller, method: &str, params: Value) -> Reply {
                 .as_array()
                 .and_then(|all| all.iter().find(|t| t["tabId"] == active))
             {
-                super::extpage::set_active_tab(json!({"url": tab["url"], "title": tab["title"]}));
+                // A tab on AgentGo's error page is "at" the address it tried
+                // to open; the error page's own address (and its key) stay inside.
+                let mut url = tab["url"].as_str().unwrap_or_default().to_string();
+                if url.starts_with("agentgo://") {
+                    url = url
+                        .split_once("?url=")
+                        .map(|(_, rest)| {
+                            super::scheme::percent_decode(rest.split('&').next().unwrap_or(""))
+                        })
+                        .unwrap_or_default();
+                }
+                super::extpage::set_active_tab(json!({"url": url, "title": tab["title"]}));
             }
             // A blank window first, then the extension's page: agents cannot
             // open agentgo-ext:// pages, only the person's click does.
@@ -1158,6 +1207,9 @@ async fn run_ungated(caller: &Caller, method: &str, params: Value) -> Reply {
             let tab = out["tabId"].as_str().unwrap_or_default().to_string();
             if let Some(id) = params["id"].as_str() {
                 super::extpage::register_page_tab(&tab, id);
+                if super::extensions::is_native(id) {
+                    super::extensions::prepare_native_page(&tab, id).await;
+                }
             }
             state::navigate_tab(&tab, &url);
             Ok(json!({"url": url, "windowId": out["windowId"], "tabId": tab}))
@@ -1297,7 +1349,12 @@ async fn run_ungated(caller: &Caller, method: &str, params: Value) -> Reply {
         }
         "decision.record" => {
             let tab = page::tab_of(caller, &params)?;
-            let view = page::observe_page(caller, &json!({"tabId": tab, "max": params.get("max").and_then(Value::as_u64).unwrap_or(120)})).await?;
+            let max = params.get("max").and_then(Value::as_u64).unwrap_or(120);
+            RECORD_MAX.with(|all| {
+                all.borrow_mut()
+                    .insert((caller.session.clone(), tab.clone()), max)
+            });
+            let view = page::observe_page(caller, &json!({"tabId": tab, "max": max})).await?;
             let revision = page_revision(&tab, &view);
             // Only this session's own recent commands: another agent's
             // activity is not this caller's to see (AG-001).
@@ -1334,7 +1391,14 @@ async fn run_ungated(caller: &Caller, method: &str, params: Value) -> Reply {
         | "gomini.delegate" => gomini::command(caller, method, &params).await,
         "decision.apply" => {
             let tab = page::tab_of(caller, &params)?;
-            let view = page::observe_page(caller, &json!({"tabId": tab, "max": 120})).await?;
+            let max = RECORD_MAX
+                .with(|all| {
+                    all.borrow()
+                        .get(&(caller.session.clone(), tab.clone()))
+                        .copied()
+                })
+                .unwrap_or(120);
+            let view = page::observe_page(caller, &json!({"tabId": tab, "max": max})).await?;
             let revision = page_revision(&tab, &view);
             match decision::resolve(&caller.session, &tab, &revision, &params) {
                 Ok((step, step_params)) => {

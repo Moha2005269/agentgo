@@ -42,7 +42,11 @@ pub fn note_navigation(tab: &str, target: &str) {
         return;
     }
     if let Ok(mut all) = PAGE_TABS.lock() {
-        all.retain(|(t, id)| t != tab || target.starts_with(&format!("agentgo-ext://{id}/")));
+        all.retain(|(t, id)| {
+            t != tab
+                || target.starts_with(&format!("agentgo-ext://{id}/"))
+                || target.starts_with(&format!("chrome-extension://{id}/"))
+        });
     }
 }
 
@@ -55,6 +59,7 @@ pub fn navigation_allowed(tab: &str, frame_url: &str, target: &str) -> bool {
     };
     page_tab_of(tab).as_deref() == Some(id.as_str())
         || frame_url.starts_with(&format!("agentgo-ext://{id}/"))
+        || frame_url.starts_with(&format!("chrome-extension://{id}/"))
 }
 
 fn page_tab_of(tab: &str) -> Option<String> {
@@ -64,6 +69,20 @@ fn page_tab_of(tab: &str) -> Option<String> {
         .iter()
         .find(|(t, _)| t == tab)
         .map(|(_, e)| e.clone())
+}
+
+/// The extension whose page `tab` shows (a tab AgentGo opened for it).
+pub fn page_extension(tab: &str) -> Option<String> {
+    page_tab_of(tab)
+}
+
+/// The tab the person was on when they opened the last pop-up.
+pub fn active_tab() -> Value {
+    ACTIVE_TAB
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone())
+        .unwrap_or_else(|| json!({}))
 }
 
 /// Remembers the tab the person was on when they opened a pop-up.
@@ -101,9 +120,12 @@ fn mime(path: &str) -> &'static str {
     }
 }
 
-/// `agentgo-ext://<id>/<path>` split into id and path (without query).
+/// `agentgo-ext://<id>/<path>` (or an engine-run extension's
+/// `chrome-extension://<id>/<path>`) split into id and path (without query).
 fn split(url: &str) -> Option<(String, String)> {
-    let rest = url.strip_prefix("agentgo-ext://")?;
+    let rest = url
+        .strip_prefix("agentgo-ext://")
+        .or_else(|| url.strip_prefix("chrome-extension://"))?;
     let (id, path) = rest.split_once('/').unwrap_or((rest, ""));
     let path = path.split(['?', '#']).next().unwrap_or("").to_string();
     Some((id.to_ascii_lowercase(), path))

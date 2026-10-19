@@ -42,7 +42,7 @@ Brave's open-source blocking engine with **18 filter lists**: EasyList, EasyPriv
 <td width="50%" valign="top">
 
 ### A browser that fits you and your agent
-The agent works with its own pointer and keyboard, drawn on the page and never your mouse, in a window that stays behind yours. You see every click and keystroke, and you can pause or stop it in one click. Everything else is a normal browser: tabs, bookmarks, history, downloads, and extensions from the Chrome Web Store (their page scripts, toolbar pop-ups and options pages run; background workers don't yet).
+The agent works with its own pointer and keyboard, drawn on the page and never your mouse, in a window that stays behind yours. You see every click and keystroke, and you can pause or stop it in one click. Everything else is a normal browser: tabs, bookmarks, history, downloads, and extensions from the Chrome Web Store, which run in Chromium's own extension engine (background workers, page scripts, network rules, pop-ups and options pages).
 
 </td>
 </tr>
@@ -94,6 +94,7 @@ act.fill {ref: 1, text: "…"} →
 
 - **Command palette** (Ctrl+K): search settings, tabs, history, bookmarks and actions.
 - **First-run welcome and import** of history, bookmarks, saved passwords and open tabs from Chrome, Edge, Brave and Firefox, plus password CSV files.
+- **Make it yours**: accent colour, light/dark/system theme, page text size, six search engines or your own search address, a home page, a favorites bar and the toolbar buttons you want.
 - **Dark mode for websites** with brightness and contrast sliders and a per-site exclusion list.
 - **Translation** of a selection or a whole page into the language you pick (Settings → Languages).
 - **Site permissions that ask**: camera, microphone and location are blocked until you choose *Allow this time* or *Always allow*, and you can block a site again any time.
@@ -146,7 +147,7 @@ Agents should read `skills/agentgo/SKILL.md` first (over MCP: `browser_guide`). 
 - The ad blocker and security claims above come from our own testing. Independent benchmarks against other browsers are not published yet.
 - Chrome seals its newest passwords (app-bound encryption) so only Chrome can read them. The import says how many, opens Chrome's export page for you and takes the CSV it saves. Firefox passwords import only when no primary password is set.
 - Translation uses Google's translation service. Notifications are refused for every site. There is no VPN in this release.
-- Extensions run their page scripts with `chrome.runtime`, `chrome.i18n` and `chrome.storage`, and their toolbar pop-ups and options pages open. Background workers are not supported yet, so extensions that depend on them (password managers, VPNs, Dark Reader's live switch) do little; their pop-ups say so.
+- Extensions run in Chromium's own extension engine, but its tab APIs see only one tab per window while AgentGo shows many: calls that address a tab by id from an extension's background (`tabs.sendMessage`, `scripting.executeScript`) do not reach AgentGo's tabs yet, so extensions built on them (Dark Reader) apply partly. An extension installed or turned on while AgentGo runs is fully on after a restart.
 - Cross-origin iframes are not observed or acted in.
 - GoMini is trained and checked on AgentGo's own forms, single actions and navigation; on arbitrary sites it is not proven yet, and its confidence is not calibrated. That is why every step it picks is checked by the browser, sensitive steps go back to your agent, and "done" is a claim your agent can verify.
 - Real Google, GitHub and Yandex API sign-in has not been tried live; the OAuth flow is tested against a mock provider.

@@ -1217,6 +1217,54 @@ fn window_is_foreground(_window: &cef::Window) -> bool {
     false
 }
 
+/// A minimized window shows no page, and Chromium drops pointer input to a
+/// hidden page: before an agent acts, the window comes back, behind the
+/// person's own windows and without the focus. Returns whether it did.
+#[cfg(target_os = "windows")]
+#[allow(unsafe_code)]
+pub fn unminimize_behind() -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, ShowWindow, HWND_BOTTOM, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+        SW_SHOWNOACTIVATE,
+    };
+    let Some(window) = state()
+        .window
+        .lock()
+        .ok()
+        .and_then(|slot| slot.as_ref().map(|handle| handle.0.clone()))
+    else {
+        return false;
+    };
+    if window.is_minimized() == 0 {
+        return false;
+    }
+    let hwnd = window.window_handle().0 as windows_sys::Win32::Foundation::HWND;
+    if hwnd.is_null() {
+        return false;
+    }
+    // SAFETY: `hwnd` is AgentGo's live top-level window; the calls only change
+    // its show state and z-order, never the focus.
+    unsafe {
+        ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        SetWindowPos(
+            hwnd,
+            HWND_BOTTOM,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        );
+    }
+    log_event("AG-RUNTIME window-restored-behind-for-agent");
+    true
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn unminimize_behind() -> bool {
+    false
+}
+
 /// Returns whether a stable tab id is registered.
 pub fn tab_exists(id: &str) -> bool {
     state()
@@ -3086,10 +3134,11 @@ fn push_theme(settings: &serde_json::Value) {
             .ceil()
             + 2.0;
         let theme = settings["theme"].as_str().unwrap_or("dark");
+        let accent = settings["accent"].as_str().unwrap_or("");
         let sync = |dx: i32, dy: i32| {
             format!(
                 "window.__agentgoThemeSync && window.__agentgoThemeSync({});",
-                serde_json::json!({"theme": theme, "x": x - dx, "y": y - dy, "r": r})
+                serde_json::json!({"theme": theme, "accent": accent, "x": x - dx, "y": y - dy, "r": r})
             )
         };
         run_in(shell_view(), &sync(0, 0));
@@ -3577,14 +3626,21 @@ pub fn create_first_tab() -> Result<(), String> {
     // person's own launch unless Settings says "On startup: new tab", an
     // agent's launch only when asked.
     let options = &state().options;
-    let person_restores = !options.stdio && settings_snapshot()["startup"] != "newtab";
+    let settings = settings_snapshot();
+    let person_restores =
+        !options.stdio && settings["startup"] != "newtab" && settings["startup"] != "home";
     let restore = !smoke && options.content_url.is_empty() && (options.restore || person_restores);
     let mut session = if restore { saved_session() } else { Vec::new() }.into_iter();
+    // "On startup: home page" opens the person's own page.
+    let home = (!options.stdio && options.content_url.is_empty() && settings["startup"] == "home")
+        .then(|| home_page(&settings))
+        .flatten();
     let url = if smoke {
         "about:blank".to_string()
     } else {
         session
             .next()
+            .or(home)
             .unwrap_or_else(|| options.content_start_url())
     };
     create_content_tab_with_id("content-1", &url, Placement::Front)?;
@@ -4422,26 +4478,65 @@ fn unix_now() -> u64 {
 
 /// Search providers the operator may pick in Settings. Google is the default
 /// (ADR-0006); there is no AgentGo search.
-pub const SEARCH_ENGINES: [(&str, &str); 3] = [
+pub const SEARCH_ENGINES: [(&str, &str); 6] = [
     ("Google", "https://www.google.com/search?q="),
     ("Bing", "https://www.bing.com/search?q="),
     ("DuckDuckGo", "https://duckduckgo.com/?q="),
+    ("Brave", "https://search.brave.com/search?q="),
+    ("Ecosia", "https://www.ecosia.org/search?q="),
+    ("Startpage", "https://www.startpage.com/do/search?q="),
 ];
 
-/// The selected provider's name and query prefix.
-pub fn search_engine() -> (&'static str, &'static str) {
-    let chosen = settings_snapshot()["searchEngine"]
-        .as_str()
-        .unwrap_or("Google")
-        .to_string();
-    SEARCH_ENGINES
+/// A custom search address (`searchCustom`): https, with `%s` where the
+/// words go.
+pub fn custom_search_template(settings: &serde_json::Value) -> Option<String> {
+    let template = settings["searchCustom"].as_str()?.trim();
+    (template.starts_with("https://") && template.contains("%s") && template.len() <= 400)
+        .then(|| template.to_string())
+}
+
+/// The person's home page (`homePage`, an http or https address), if set.
+pub fn home_page(settings: &serde_json::Value) -> Option<String> {
+    let url = settings["homePage"].as_str()?.trim();
+    ((url.starts_with("https://") || url.starts_with("http://")) && url.len() <= 2048)
+        .then(|| url.to_string())
+}
+
+/// The selected provider's name and address: a query prefix, or a template
+/// with `%s` where the words go (a custom engine).
+pub fn search_engine() -> (String, String) {
+    let settings = settings_snapshot();
+    let chosen = settings["searchEngine"].as_str().unwrap_or("Google");
+    if chosen.eq_ignore_ascii_case("Custom") {
+        if let Some(template) = custom_search_template(&settings) {
+            let name = template
+                .split("://")
+                .nth(1)
+                .and_then(|rest| rest.split(['/', '?', '#']).next())
+                .unwrap_or("Custom")
+                .trim_start_matches("www.")
+                .to_string();
+            return (name, template);
+        }
+    }
+    let (name, base) = SEARCH_ENGINES
         .into_iter()
-        .find(|(name, _)| name.eq_ignore_ascii_case(&chosen))
-        .unwrap_or(SEARCH_ENGINES[0])
+        .find(|(name, _)| name.eq_ignore_ascii_case(chosen))
+        .unwrap_or(SEARCH_ENGINES[0]);
+    (name.to_string(), base.to_string())
+}
+
+/// The search address for already-encoded words.
+pub fn search_url(base: &str, encoded: &str) -> String {
+    if base.contains("%s") {
+        base.replacen("%s", encoded, 1)
+    } else {
+        format!("{base}{encoded}")
+    }
 }
 
 pub(crate) fn resolve_search_input(input: &str) -> String {
-    resolve_search_with(input, search_engine().1)
+    resolve_search_with(input, &search_engine().1)
 }
 
 fn resolve_search_with(input: &str, base: &str) -> String {
@@ -4451,7 +4546,7 @@ fn resolve_search_with(input: &str, base: &str) -> String {
     if input.contains('.') && !input.chars().any(char::is_whitespace) {
         return format!("https://{input}");
     }
-    format!("{base}{}", query_encode(input))
+    search_url(base, &query_encode(input))
 }
 
 fn site_info(tab_id: &str, url: &str) -> serde_json::Value {
@@ -5016,6 +5111,7 @@ pub fn newtab_state() -> serde_json::Value {
         "accent": settings["accent"],
         "motion": settings["motion"],
         "searchBase": search_engine().1,
+        "searchName": search_engine().0,
         "version": env!("CARGO_PKG_VERSION"),
         "chromium": crate::CEF_CHROMIUM_VERSION,
         "control": status["control"],
@@ -5212,7 +5308,8 @@ fn query_encode(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        query_encode, reserved_device_name, resolve_search_with, site_info, SEARCH_ENGINES,
+        custom_search_template, home_page, query_encode, reserved_device_name, resolve_search_with,
+        site_info, SEARCH_ENGINES,
     };
 
     #[test]
@@ -5251,6 +5348,27 @@ mod tests {
             resolve_search_with("example.com", SEARCH_ENGINES[0].1),
             "https://example.com"
         );
+        // A custom engine's template puts the words where `%s` is.
+        assert_eq!(
+            resolve_search_with("a b", "https://search.example/find?q=%s&lang=en"),
+            "https://search.example/find?q=a%20b&lang=en"
+        );
+    }
+
+    #[test]
+    fn custom_search_and_home_page_need_safe_addresses() {
+        let ok = serde_json::json!({"searchCustom": "https://s.example/?q=%s", "homePage": "https://example.com/"});
+        assert_eq!(
+            custom_search_template(&ok).as_deref(),
+            Some("https://s.example/?q=%s")
+        );
+        assert_eq!(home_page(&ok).as_deref(), Some("https://example.com/"));
+        let bad =
+            serde_json::json!({"searchCustom": "javascript:alert(%s)", "homePage": "file:///C:/x"});
+        assert_eq!(custom_search_template(&bad), None);
+        assert_eq!(home_page(&bad), None);
+        let no_slot = serde_json::json!({"searchCustom": "https://s.example/?q="});
+        assert_eq!(custom_search_template(&no_slot), None);
     }
 
     #[test]

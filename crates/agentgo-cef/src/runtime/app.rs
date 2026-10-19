@@ -409,9 +409,10 @@ wrap_app! {
     impl App {
         fn on_before_command_line_processing(
             &self,
-            _process_type: Option<&CefString>,
+            process_type: Option<&CefString>,
             command_line: Option<&mut CommandLine>,
         ) {
+            let browser_process = process_type.is_none_or(|kind| kind.to_string().is_empty());
             #[cfg(target_os = "windows")]
             if let Some(command_line) = command_line {
                 // Chromium writes its log to the file set in Settings only, not
@@ -419,10 +420,33 @@ wrap_app! {
                 if command_line.has_switch(Some(&CefString::from("enable-logging"))) == 0 {
                     command_line.append_switch(Some(&CefString::from("enable-logging")));
                 }
-                // AgentGo runs extensions itself (extensions.rs). Chromium's own
-                // extension system would read Google Chrome's external
-                // extension list from the registry and complain about it.
-                command_line.append_switch(Some(&CefString::from("disable-extensions")));
+                // Extensions with their Web Store key run in Chromium's own
+                // extension system (extensions.rs), and only those: every
+                // other extension source (Google Chrome's external list in
+                // the registry, policy, component apps) stays off.
+                let native = if browser_process {
+                    super::extensions::native_folders_at_start()
+                } else {
+                    Vec::new()
+                };
+                if native.is_empty() {
+                    command_line.append_switch(Some(&CefString::from("disable-extensions")));
+                } else {
+                    let folders = native.join(",");
+                    for switch in ["disable-extensions-except", "load-extension"] {
+                        command_line.append_switch_with_value(
+                            Some(&CefString::from(switch)),
+                            Some(&CefString::from(folders.as_str())),
+                        );
+                    }
+                    // Chromium 137+ ignores --load-extension unless told not to.
+                    merge_switch_list(
+                        command_line,
+                        "disable-features",
+                        "DisableLoadExtensionCommandLineSwitch",
+                    );
+                    state::log_event(&format!("AG-RUNTIME extensions-native count={}", native.len()));
+                }
                 // Quieter and lighter: no background component updates, field
                 // trial pings or reliability reports, and no idle spare
                 // renderer kept warm for the next navigation. These cost
@@ -477,19 +501,18 @@ wrap_app! {
                         }
                     }
                 }
+                // Agents work in a window that sits behind the person's own.
+                // Left alone, Chromium treats a covered window as hidden: it
+                // stops painting (screenshots stall) and drops pointer input
+                // to its pages, so an agent's clicks did nothing in a browser
+                // the person had started and covered. A covered window stays
+                // a visible one (a minimized one is still hidden).
+                merge_switch_list(command_line, "disable-features", "CalculateNativeWinOcclusion");
+                command_line.append_switch(Some(&CefString::from("disable-backgrounding-occluded-windows")));
                 if std::env::var_os("AGENTGO_PAGES_STAY_LIVE").is_some() {
-                    // An agent-started window sits behind the person's own
-                    // windows. Left alone, Chromium treats a covered window
-                    // as hidden: it stops painting (screenshots stall) and
-                    // slows page timers to a crawl. The agent's pages must
-                    // keep running, so these protections are turned off.
-                    merge_switch_list(
-                        command_line,
-                        "disable-features",
-                        "CalculateNativeWinOcclusion",
-                    );
+                    // An agent-started window's pages also keep full-speed
+                    // timers and a foreground renderer.
                     for switch in [
-                        "disable-backgrounding-occluded-windows",
                         "disable-renderer-backgrounding",
                         "disable-background-timer-throttling",
                     ] {
@@ -698,6 +721,14 @@ fn attach_first_tab(ui_root: &std::path::Path, content_context: RequestContext) 
     state::log_event("AG-RUNTIME content-browser-view-created");
     state::start_transports();
     super::lifecycle::start_update_checks();
+    // Web Store extensions from older versions get their key (fetched once in
+    // the background) so the engine runs them from the next start on.
+    if !state::state().options.smoke && !state::state().options.stdio {
+        super::exec::spawn(async {
+            super::exec::sleep(30_000).await;
+            super::extensions::upgrade_store_installs().await;
+        });
+    }
     // GoMini, when the person has it on, loads before the first task needs it.
     super::gomini::warm_up();
     // Tests (debug builds only) can give the browser a console of its own,
@@ -851,7 +882,20 @@ pub(crate) fn create_content_browser_view(
 ) -> Option<BrowserView> {
     let mut client = SurfaceClient::new(Surface::Content, tab_id.to_string());
     let mut delegate = AgentGoBrowserViewDelegate::new(tab_id.to_string());
-    let settings = BrowserSettings::default();
+    // Settings > Appearance > Page text size (pages that set their own sizes
+    // keep them; the minimum size still applies).
+    let (font, fixed, minimum) = match state::settings_snapshot()["pageFontSize"].as_str() {
+        Some("small") => (14, 12, 0),
+        Some("large") => (18, 15, 12),
+        Some("larger") => (22, 18, 14),
+        _ => (16, 13, 0),
+    };
+    let settings = BrowserSettings {
+        default_font_size: font,
+        default_fixed_font_size: fixed,
+        minimum_font_size: minimum,
+        ..Default::default()
+    };
     browser_view_create(
         Some(&mut client),
         Some(&CefString::from(url)),
@@ -1274,7 +1318,12 @@ cef::wrap_request_handler! {
             let web_to_file = lower.starts_with("file:") && from_web && is_redirect != 0;
             // An extension's pages open only from its toolbar button (or its
             // own pages), never from a website.
-            let foreign_extension_page = lower.starts_with("agentgo-ext:")
+            // The same holds for the pages of extensions the engine runs,
+            // whose frames inside websites (their own content) stay allowed.
+            // An engine-run extension may also open its own pages in a new
+            // tab (its options or welcome page): no document asked for it.
+            let foreign_extension_page = (lower.starts_with("agentgo-ext:")
+                || (lower.starts_with("chrome-extension:") && is_main && !frame_url.is_empty()))
                 && !super::extpage::navigation_allowed(&self.tab_id, &frame_url, &target);
             if !allowed_shell || web_to_file || foreign_extension_page {
                 state::log_event(&format!(

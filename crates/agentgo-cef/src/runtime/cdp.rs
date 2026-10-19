@@ -160,6 +160,12 @@ wrap_dev_tools_message_observer! {
                     super::accounts::page_report(&tab, payload);
                     return;
                 }
+                if let (true, Some(tab), Some(payload)) =
+                    (params["name"] == "__agExtTabs", tab.as_deref(), params["payload"].as_str())
+                {
+                    super::extensions::tabs_request(tab, payload);
+                    return;
+                }
                 if let (true, Some(payload)) = (params["name"] == "__agExt", params["payload"].as_str()) {
                     if let (Some(tab), Some(context)) = (tab.as_deref(), params["executionContextId"].as_i64()) {
                         super::extensions::storage_from_content(tab, context, payload);

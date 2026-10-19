@@ -392,8 +392,20 @@ async fn delta(
 async fn settle(tab: &str) {
     exec::sleep(30).await;
     let started = std::time::Instant::now();
+    let mut next_check = std::time::Duration::from_millis(2_500);
     while state::tab_is_loading(tab) && started.elapsed().as_secs() < 12 {
         exec::sleep(40).await;
+        // A page that is parsed and still is ready to act on, even while
+        // its trackers and media keep loading (as navigate.url does).
+        if started.elapsed() >= next_check {
+            next_check = started.elapsed() + std::time::Duration::from_millis(400);
+            let ready = cdp::agent_eval(tab, "document.readyState !== 'loading'", 1_500)
+                .await
+                .is_ok_and(|out| out == json!(true));
+            if ready {
+                break;
+            }
+        }
     }
     if cdp::dialog(tab).is_none() {
         let _ = cdp::agent_eval(tab, "__ag.settle(200,2500)", 6_000).await;
@@ -420,6 +432,10 @@ async fn begin_action(caller: &Caller, params: &Value) -> Result<String, Fail> {
     sessions::gate(caller).await?;
     let tab = tab_of(caller, params)?;
     sessions::check_handoff(caller, &tab)?;
+    if !caller.is_shell() && state::unminimize_behind() {
+        // Give the page a moment to become visible again before input.
+        exec::sleep(250).await;
+    }
     if let Some(dialog) = cdp::dialog(&tab) {
         return Err(Fail::new(
             ErrorCode::TargetBlocked,
@@ -1166,7 +1182,7 @@ async fn fill_field(
             type_text(tab, &text).await?;
         }
     }
-    let after = agent(tab, "valueOf", json!(id), 8_000).await?;
+    let after = agent(tab, "adoptFocused", json!(id), 8_000).await?;
     Ok(str_of(&after, "line").unwrap_or("").to_string())
 }
 
@@ -1294,9 +1310,44 @@ pub async fn act_check(caller: &Caller, method: &str, params: &Value) -> Reply {
         mouse(&tab, "mousePressed", x, y, "left", 1, 0).await?;
         mouse(&tab, "mouseReleased", x, y, "left", 1, 0).await?;
     }
+    // Report the state the box really has. When the click did not reach it
+    // (a custom control that hides the box, an overlay that swallowed the
+    // click), the element is clicked directly, which fires the same events.
+    let id = reference(params)?;
+    let read = |id: u64| {
+        format!("(() => {{ const el = __ag.element({id}); return el && typeof el.checked === 'boolean' ? el.checked : (el && el.getAttribute('aria-checked') === 'true'); }})()")
+    };
+    let mut now = cdp::agent_eval(&tab, &read(id), 4_000)
+        .await
+        .ok()
+        .and_then(|v| v.as_bool());
+    if now.is_some_and(|state| state != want) {
+        let _ = cdp::agent_eval(
+            &tab,
+            &format!(
+                "(() => {{ const el = __ag.element({id}); if (el) el.click(); return true; }})()"
+            ),
+            4_000,
+        )
+        .await;
+        now = cdp::agent_eval(&tab, &read(id), 4_000)
+            .await
+            .ok()
+            .and_then(|v| v.as_bool());
+    }
     let mut out = delta(caller, &tab, &before_url, generation).await?;
     out["target"] = json!(line);
-    out["checked"] = json!(want);
+    out["checked"] = json!(now.unwrap_or(want));
+    if now.is_some_and(|state| state != want) {
+        return Err(Fail::new(
+            ErrorCode::TargetBlocked,
+            format!(
+                "{line} did not change to {}",
+                if want { "checked" } else { "unchecked" }
+            ),
+        )
+        .with(out));
+    }
     Ok(out)
 }
 

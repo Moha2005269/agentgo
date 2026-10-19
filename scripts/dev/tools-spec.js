@@ -89,7 +89,7 @@ exports.aliases = [
   ["browser_ui.history", "history.list", {}, "The history list.", {}, "r.items"],
   ["browser_ui.bookmarks", "bookmark.list", {}, "The bookmarks list.", {}, "r.items"],
   ["browser_settings.read", "settings.get", {}, "Read the browser settings.", {}, "r.searchEngine"],
-  ["browser_settings.update", "settings.set", {}, "Change browser settings.", { settings: { toolsMarker: "1" } }, "r.toolsMarker === '1'"],
+  ["browser_settings.update", "settings.set", {}, "Change browser settings.", { settings: { favoritesBar: true } }, "r.favoritesBar === true"],
   ["theme.get", "settings.get", {}, "Read the theme settings.", {}, "'theme' in r || r.searchEngine"],
   ["theme.set", "settings.set", {}, "Change the theme.", { settings: { theme: "dark" } }, "r.theme === 'dark'"],
   ["appearance.motion", "settings.set", {}, "Turn interface motion on or off.", { settings: { motion: true } }, "r.motion === true"],

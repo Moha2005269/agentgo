@@ -235,7 +235,18 @@ const toggleAdBlock = async button => {
 // point the person clicked; this only makes sure the theme is right.
 let lastPointer = null;
 addEventListener('pointerdown', event => { lastPointer = [event.clientX, event.clientY]; }, true);
-const applyTheme = settings => window.agentgoSetTheme(settings.theme);const seg = (key, current, values, labels = values) => `<div class="seg">${values.map((v, i) => `<button type="button" class="${current === v ? 'on' : ''}" data-setting="${key}" data-value="${v}">${esc(labels[i])}</button>`).join('')}</div>`;
+const applyTheme = settings => { window.agentgoSetAccent(settings.accent); window.agentgoSetTheme(settings.theme); };const seg = (key, current, values, labels = values) => `<div class="seg">${values.map((v, i) => `<button type="button" class="${current === v ? 'on' : ''}" data-setting="${key}" data-value="${v}">${esc(labels[i])}</button>`).join('')}</div>`;
+// Accent colours offered in Settings > Appearance (the first is AgentGo's ember).
+const ACCENTS = [['#FF6A2B', 'Ember'], ['#E5484D', 'Red'], ['#E93D82', 'Pink'], ['#8E4EC6', 'Violet'], ['#3E63DD', 'Blue'], ['#0090FF', 'Sky'], ['#12A594', 'Teal'], ['#30A46C', 'Green'], ['#FFB224', 'Amber']];
+const SEARCH_ENGINES = ['Google', 'Bing', 'DuckDuckGo', 'Brave', 'Ecosia', 'Startpage', 'Custom'];
+const accentRow = settings => {
+  const current = String(settings.accent || '#FF6A2B').toUpperCase();
+  const known = ACCENTS.some(([value]) => value === current);
+  return `<div class="setting"><div><b>Accent colour</b><span>The colour of buttons, highlights and the live wire, everywhere in AgentGo.</span></div>
+    <div class="swatches">${ACCENTS.map(([value, label]) => `<button type="button" class="swatch${value === current ? ' on' : ''}" style="--c:${value}" title="${esc(label)}" aria-label="${esc(label)}" data-setting="accent" data-value="${value}"></button>`).join('')}
+      <label class="swatch custom${known ? '' : ' on'}" title="Any colour" style="--c:${known ? 'conic-gradient(#f43,#fb2,#3c6,#09f,#94c,#f43)' : esc(current)}"><input type="color" value="${esc(/^#[0-9A-F]{6}$/.test(current) ? current : '#FF6A2B')}" data-color="accent" aria-label="Any colour"></label></div></div>`;
+};
+const textInput = (key, value, placeholder, label) => `<input class="btn text-in" type="url" spellcheck="false" data-input="${key}" value="${esc(value || '')}" placeholder="${esc(placeholder)}" aria-label="${esc(label)}">`;
 const LANGUAGES = [['', 'Windows default'], ['en-US,en', 'English (US)'], ['en-GB,en', 'English (UK)'], ['ar,en', 'العربية'], ['fr,en', 'Français'], ['de,en', 'Deutsch'], ['es,en', 'Español'], ['tr,en', 'Türkçe'], ['ru,en', 'Русский'], ['zh-CN,zh,en', '中文'], ['ja,en', '日本語']];
 const renderSettings = (settings, version, gomini) => {
   applyTheme(settings);
@@ -244,6 +255,9 @@ const renderSettings = (settings, version, gomini) => {
     <section class="section" data-section="appearance"><h3>Appearance</h3>
       <div class="setting"><div><b>Theme</b><span>Applies to the browser chrome, panels and the New Tab page.</span></div>
         <div class="seg">${['light', 'dark', 'system'].map(v => `<button type="button" class="${(settings.theme || 'dark') === v ? 'on' : ''}" data-setting="theme" data-value="${v}">${v}</button>`).join('')}</div></div>
+      ${accentRow(settings)}
+      <div class="setting"><div><b>Page text size</b><span>The size websites use for their text when they do not set their own. Applies to tabs you open from now on.</span></div>
+        ${seg('pageFontSize', ['small', 'large', 'larger'].includes(settings.pageFontSize) ? settings.pageFontSize : 'medium', ['small', 'medium', 'large', 'larger'])}</div>
       ${siteDarkCard(settings)}
       ${toggle('motion', settings.motion !== false, 'Motion', 'The live wire, sparks and transitions. Off keeps everything still.')}
     </section>
@@ -268,12 +282,16 @@ const renderSettings = (settings, version, gomini) => {
       ${gominiCard(gomini)}
     </section>
     <section class="section" data-section="startup"><h3>On startup</h3>
-      <div class="setting"><div><b>When you open AgentGo</b><span>Continue where you left off reopens the tabs of your last session.</span></div>
-        ${seg('startup', settings.startup === 'newtab' ? 'newtab' : 'restore', ['restore', 'newtab'], ['continue', 'new tab'])}</div>
+      <div class="setting"><div><b>When you open AgentGo</b><span>Continue where you left off reopens the tabs of your last session. Home page opens the page below.</span></div>
+        ${seg('startup', ['newtab', 'home'].includes(settings.startup) ? settings.startup : 'restore', ['restore', 'newtab', 'home'], ['continue', 'new tab', 'home page'])}</div>
+      <div class="setting"><div><b>Home page</b><span>Where the Home button and "On startup: home page" go. Empty: the New Tab page.</span></div>
+        ${textInput('homePage', settings.homePage, 'https://example.com', 'Home page address')}</div>
     </section>
     <section class="section" data-section="search"><h3>Search engine</h3>
       <div class="setting"><div><b>Address bar and New Tab</b><span>What a typed search opens. Agents use the same engine for navigate.search.</span></div>
-        ${seg('searchEngine', ['Bing', 'DuckDuckGo'].includes(settings.searchEngine) ? settings.searchEngine : 'Google', ['Google', 'Bing', 'DuckDuckGo'])}</div>
+        <select class="btn" data-select="searchEngine" aria-label="Search engine">${SEARCH_ENGINES.map(name => `<option value="${name}"${(SEARCH_ENGINES.includes(settings.searchEngine) ? settings.searchEngine : 'Google') === name ? ' selected' : ''}>${name === 'Custom' ? 'Custom…' : name}</option>`).join('')}</select></div>
+      <div class="setting" data-custom-search${settings.searchEngine === 'Custom' ? '' : ' hidden'}><div><b>Custom search address</b><span>An https address with %s where your words go, like https://search.example/?q=%s</span></div>
+        ${textInput('searchCustom', settings.searchCustom, 'https://…?q=%s', 'Custom search address')}</div>
     </section>
     <section class="section" data-section="privacy"><h3>Privacy</h3>
       ${adBlockRow(settings)}
@@ -345,7 +363,11 @@ const SEARCH_KEYWORDS = [
   [/notify/i, 'notification notifications captcha alert alerts toast'],
   [/allow downloads/i, 'files save download'],
   [/when you open/i, 'startup start launch restore tabs session continue'],
-  [/address bar/i, 'search engine google bing duckduckgo omnibox'],
+  [/address bar/i, 'search engine google bing duckduckgo brave ecosia startpage omnibox'],
+  [/custom search/i, 'search engine own template url address'],
+  [/accent/i, 'color colour theme highlight orange blue green pink purple customize personalize'],
+  [/page text size/i, 'font fonts text size bigger smaller larger zoom readability accessibility'],
+  [/home page/i, 'homepage start page home button startup url'],
   [/block ads/i, 'adblock adblocker ad blocker ads advert advertising popups popup trackers tracking easylist easyprivacy privacy clean'],
   [/favorites bar/i, 'bookmarks bookmark favourites favorite star starred sites links shortcuts toolbar row'],
   [/home button/i, 'home start page new tab button toolbar'],
@@ -832,24 +854,32 @@ const menuAction = async action => {
 /* ---------- extensions ---------- */
 // Installed extensions: which are on, and which get a button in the toolbar.
 const extInitial = ext => esc((ext.name || '?').trim().charAt(0).toUpperCase() || '?');
-const renderExtensions = list => {
+// What a row says under the name: a pending restart first, then a limit.
+const extNote = ext => ext.restartNeeded
+  ? (ext.enabled ? 'Restart AgentGo to turn it on fully (background part and pop-up).' : 'Restart AgentGo to stop it completely.')
+  : ext.limited ? 'Page scripts only: its background part does not run in AgentGo, so some features may not work.'
+  : esc(ext.description || `Version ${ext.version}`);
+const renderExtensions = (list, removedPending = false) => {
   if (!list.length) {
     toolBody.innerHTML = `<div class="empty"><div><strong>No extensions yet</strong><p>Open an extension in the Chrome Web Store and press “Add to AgentGo”. It shows up here, and you choose whether it gets a button in the toolbar.</p></div></div>`;
   } else {
     toolBody.innerHTML = list.map((ext, i) => `
       <div class="ext${ext.enabled ? '' : ' off'}" style="--i:${i}" data-ext-row="${esc(ext.id)}">
         <span class="ext-ic">${ext.icon ? `<img alt="" src="${esc(ext.icon)}">` : extInitial(ext)}</span>
-        <span class="ext-text"><b>${esc(ext.name)}</b><small>${ext.limited ? 'Page scripts only: its background part does not run in AgentGo, so some features may not work.' : esc(ext.description || `Version ${ext.version}`)}</small></span>
+        <span class="ext-text"><b>${esc(ext.name)}</b><small>${extNote(ext)}</small></span>
         <span class="ext-ctl">
           <label class="ext-pin"><span>Toolbar</span><button class="switch${ext.pinned ? ' on' : ''}" type="button" role="switch" aria-checked="${ext.pinned}" aria-label="Show ${esc(ext.name)} in the toolbar" data-ext-pin="${esc(ext.id)}"></button></label>
           <label class="ext-pin"><span>On</span><button class="switch${ext.enabled ? ' on' : ''}" type="button" role="switch" aria-checked="${ext.enabled}" aria-label="Turn ${esc(ext.name)} on or off" data-ext-on="${esc(ext.id)}"></button></label>
-          ${ext.popup && ext.enabled ? `<button class="btn sm" type="button" data-ext-open="${esc(ext.id)}">Open</button>` : '}${ext.options && ext.enabled ? `<button class="btn sm" type="button" data-ext-options="${esc(ext.id)}">Options</button>` : '}
+          ${ext.popup && ext.enabled ? `<button class="btn sm" type="button" data-ext-open="${esc(ext.id)}">Open</button>` : ''}${ext.options && ext.enabled ? `<button class="btn sm" type="button" data-ext-options="${esc(ext.id)}">Options</button>` : ''}
           <button class="btn sm" type="button" data-ext-remove="${esc(ext.id)}">Remove</button>
         </span>
       </div>`).join('');
   }
   toolFoot.hidden = false;
-  toolFoot.innerHTML = '<span class="note">AgentGo runs the page scripts of extensions and opens their pop-ups and options pages. Background parts do not run yet, so features that need them may not work.</span><button class="btn" type="button" data-ext-store>Get extensions</button>';
+  const pending = removedPending || list.some(ext => ext.restartNeeded);
+  toolFoot.innerHTML = pending
+    ? '<span class="note">Changes to extensions finish when AgentGo restarts. Your tabs come back.</span><button class="btn" type="button" data-ext-restart>Restart now</button>'
+    : '<span class="note">Web Store extensions run in Chromium&rsquo;s own extension engine: background part, page scripts, network rules, pop-up and options. A few tab APIs do not reach AgentGo&rsquo;s tabs yet.</span><button class="btn" type="button" data-ext-store>Get extensions</button>';
 };
 const extensionList = async () => (await callBridge('extension.list')).extensions || [];
 const extChanged = async () => { await refresh(); window.__agentgoExtensionsChanged?.(); };
@@ -1004,9 +1034,9 @@ const loadTool = async tool => {
   } else if (tool === 'menu') {
     await renderMenu();
   } else if (tool === 'extensions') {
-    const list = await extensionList();
+    const reply = await callBridge('extension.list');
     if (tool !== activeTool) return;
-    renderExtensions(list);
+    renderExtensions(reply.extensions || [], Boolean(reply.restartNeeded));
   } else if (tool === 'bookmarks') {
     const items = (await callBridge('bookmark.list')).items || [];
     if (tool !== activeTool) return;
@@ -1255,6 +1285,8 @@ toolBody.addEventListener('click', async event => {
         target.classList.remove('pop'); void target.offsetWidth; target.classList.add('pop');
       } else if (target.closest('.seg')) {
         target.closest('.seg').querySelectorAll('button').forEach(b => b.classList.toggle('on', b === target));
+      } else if (target.classList.contains('swatch')) {
+        target.parentElement.querySelectorAll('.swatch').forEach(b => b.classList.toggle('on', b === target));
       }
       try {
         await callBridge('settings.set', { settings: { [key]: value } });
@@ -1331,8 +1363,26 @@ toolBody.addEventListener('click', async event => {
 });
 
 toolBody.addEventListener('change', async event => {
+  const color = event.target.closest('input[data-color]');
+  if (color) {
+    toolBody.querySelectorAll('.swatch').forEach(swatch => swatch.classList.toggle('on', swatch.contains(color)));
+    color.parentElement.style.setProperty('--c', color.value);
+    await callBridge('settings.set', { settings: { [color.dataset.color]: color.value.toUpperCase() } }).catch(error => console.error(error.message));
+    return;
+  }
+  const input = event.target.closest('input[data-input]');
+  if (input) {
+    const value = input.value.trim();
+    const custom = input.dataset.input === 'searchCustom';
+    const ok = !value || (custom ? /^https:\/\/\S+$/.test(value) && value.includes('%s') : /^https?:\/\/\S+$/.test(value));
+    input.classList.toggle('bad', !ok);
+    input.title = ok ? '' : custom ? 'Use an https address with %s where the words go' : 'Use an address that starts with https://';
+    if (ok) await callBridge('settings.set', { settings: { [input.dataset.input]: value } }).catch(error => console.error(error.message));
+    return;
+  }
   const select = event.target.closest('select[data-select]');
   if (!select) return;
+  if (select.dataset.select === 'searchEngine') toolBody.querySelector('[data-custom-search]')?.toggleAttribute('hidden', select.value !== 'Custom');
   await callBridge('settings.set', { settings: { [select.dataset.select]: select.value } }).catch(error => console.error(error.message));
 });
 
@@ -1382,6 +1432,10 @@ toolFoot.addEventListener('change', event => {
   if (button) { button.classList.remove('arm'); button.textContent = 'Clear history'; }
 });
 toolFoot.addEventListener('click', async event => {
+  if (event.target.closest('[data-ext-restart]')) {
+    try { await callBridge('browser.restart'); } catch (error) { console.error(error.message); }
+    return;
+  }
   if (event.target.closest('[data-ext-store]')) {
     try { await callBridge('tabs.create', { url: 'https://chromewebstore.google.com/' }); window.__agentgoRequestClose(); } catch (error) { console.error(error.message); }
     return;

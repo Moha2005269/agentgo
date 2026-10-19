@@ -83,5 +83,28 @@
     transition.finished.finally(() => { if (running === transition) running = null; });
   };
 
-  window.__agentgoThemeSync = ({ theme, x, y, r }) => window.agentgoSetTheme(theme, { x, y, r });
+  // The accent colour (Settings > Appearance). The default ember keeps the
+  // hand-tuned palettes in theme.css; any other colour gets a matching set of
+  // shades for both themes.
+  const DEFAULT_ACCENT = '#ff6a2b';
+  const mix = (rgb, to, amount) => rgb.map((c, i) => Math.round(c + (to[i] - c) * amount));
+  const hex = rgb => '#' + rgb.map(c => c.toString(16).padStart(2, '0')).join('');
+  const rgba = (rgb, a) => `rgba(${rgb.join(', ')}, ${a})`;
+  window.agentgoSetAccent = value => {
+    const color = String(value || '').trim().toLowerCase();
+    let style = document.getElementById('ag-accent');
+    if (!/^#[0-9a-f]{6}$/.test(color) || color === DEFAULT_ACCENT) { style?.remove(); return; }
+    const rgb = [1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16));
+    const bright = (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255 > 0.6;
+    const ink = bright ? '#141010' : '#fffaf6';
+    const css = `:root{--accent:${color};--accent-hi:${hex(mix(rgb, [255, 255, 255], 0.25))};--accent-deep:${hex(mix(rgb, [0, 0, 0], 0.18))};--accent-ink:${ink};--glow:${rgba(rgb, 0.55)};--glow-soft:${rgba(rgb, 0.16)}}`
+      + `html[data-theme="light"]{--accent:${hex(mix(rgb, [0, 0, 0], 0.12))};--accent-hi:${color};--accent-deep:${hex(mix(rgb, [0, 0, 0], 0.3))};--accent-ink:${ink};--glow:${rgba(rgb, 0.38)};--glow-soft:${rgba(rgb, 0.1)}}`;
+    if (!style) { style = document.createElement('style'); style.id = 'ag-accent'; document.head.appendChild(style); }
+    if (style.textContent !== css) style.textContent = css;
+  };
+
+  window.__agentgoThemeSync = ({ theme, accent, x, y, r }) => {
+    if (accent !== undefined) window.agentgoSetAccent(accent);
+    window.agentgoSetTheme(theme, { x, y, r });
+  };
 })();

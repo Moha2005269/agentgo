@@ -166,14 +166,7 @@ impl AdBlocker {
             css.push_str("{display:none!important}\n");
         }
         if top_level && !found.generichide {
-            // Plain class and id selectors are always valid, so they share
-            // rules (a hundred at a time keeps the style sheet small).
-            let mut lines = GENERIC_SELECTORS.lines().peekable();
-            while lines.peek().is_some() {
-                let group: Vec<&str> = lines.by_ref().take(100).collect();
-                css.push_str(&group.join(","));
-                css.push_str("{display:none!important}");
-            }
+            css.push_str(generic_css());
         }
         Cosmetic {
             css,
@@ -229,6 +222,23 @@ impl AdBlocker {
             }
         }
     }
+}
+
+/// The generic hiding rules for top-level pages, built once: plain class and
+/// id selectors are always valid, so they share rules (a hundred at a time
+/// keeps the style sheet small).
+fn generic_css() -> &'static str {
+    static CSS: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    CSS.get_or_init(|| {
+        let mut css = String::with_capacity(GENERIC_SELECTORS.len() + 8192);
+        let mut lines = GENERIC_SELECTORS.lines().peekable();
+        while lines.peek().is_some() {
+            let group: Vec<&str> = lines.by_ref().take(100).collect();
+            css.push_str(&group.join(","));
+            css.push_str("{display:none!important}");
+        }
+        css
+    })
 }
 
 /// The `! Version:` stamp of each bundled list, as `(title, version)`.

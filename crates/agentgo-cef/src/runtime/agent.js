@@ -338,6 +338,19 @@
     return { translated: originals.size, restored: false };
   };
 
+  // A challenge widget counts only when a person would see one to solve.
+  // Sites load invisible reCAPTCHA (v3, "size=invisible", the corner badge)
+  // and hidden Turnstile frames on ordinary pages; those are not challenges.
+  const CHALLENGE = 'iframe[src*="recaptcha"],iframe[src*="hcaptcha"],iframe[src*="challenges.cloudflare.com"],.g-recaptcha,.h-captcha,.cf-turnstile,[data-sitekey]';
+  const challengeShown = el => {
+    if (el.closest('.grecaptcha-badge') || el.getAttribute('data-size') === 'invisible') return false;
+    if (/[?&]size=invisible/.test(el.getAttribute('src') || '')) return false;
+    if (!visible(el)) return false;
+    if (el.tagName !== 'IFRAME') return true;
+    const rect = el.getBoundingClientRect();
+    return rect.width >= 60 && rect.height >= 30;
+  };
+
   const signals = () => {
     const out = {};
     const body = document.body;
@@ -346,7 +359,7 @@
       out.captcha = true;
       out.challenge = 'interstitial';
     }
-    if (document.querySelector('iframe[src*="recaptcha"],iframe[src*="hcaptcha"],iframe[src*="challenges.cloudflare.com"],.g-recaptcha,.h-captcha,#cf-challenge-running,[data-sitekey]') ||
+    if (document.querySelector('#cf-challenge-running') || [...document.querySelectorAll(CHALLENGE)].some(challengeShown) ||
         /verify (that )?you('| a)re (a )?human|i'?m not a robot|unusual traffic from your|complete the security check|are you a robot/i.test(document.title + ' ' + (body.innerText || '').slice(0, 1500))) out.captcha = true;
     if ([...document.querySelectorAll('input[type=password]')].some(visible)) out.login = true;
     if ([...document.querySelectorAll(CARD)].some(visible)) out.payment = true;
@@ -538,14 +551,32 @@
     return { editable, line: editable ? describe(el) : '' };
   };
 
-  const focusForInput = id => {
+  const editable = el => !!el && (/^(INPUT|TEXTAREA)$/.test(el.tagName) || el.isContentEditable) && !el.disabled && !el.readOnly;
+  const activeDeep = () => {
+    let at = document.activeElement;
+    while (at && at.shadowRoot && at.shadowRoot.activeElement) at = at.shadowRoot.activeElement;
+    return at;
+  };
+  const focusForInput = async id => {
     const found = lookup(id);
     if (found.error) return found;
-    const el = found.el;
+    let el = found.el;
     if (el.tagName === 'SELECT') return { kind: 'select' };
     if (!(/^(INPUT|TEXTAREA)$/.test(el.tagName) || el.isContentEditable)) return { error: 'not-editable', detail: `${describe(el)} does not accept text` };
     if (el.disabled || el.readOnly) return { error: 'disabled', detail: `${describe(el)} is read-only or disabled` };
     el.focus();
+    // Some sites swap a field for a richer one the moment it takes the focus
+    // (Wikipedia's search box): the typing goes to the field that has the
+    // focus now, and the reference follows it.
+    if (!el.isConnected || (activeDeep() !== el && !el.contains(activeDeep()))) {
+      for (let i = 0; i < 10 && !editable(activeDeep()); i++) await new Promise(r => setTimeout(r, 30));
+      const now = activeDeep();
+      if (!el.isConnected && editable(now)) {
+        el = now;
+        els.set(id, new WeakRef(el));
+        ids.set(el, id);
+      }
+    }
     if (el.select) el.select();
     else {
       const range = document.createRange();
@@ -555,6 +586,19 @@
       selection.addRange(range);
     }
     return { kind: 'text', empty: !(el.value ?? el.innerText), money: [...(el.closest('form')?.querySelectorAll(CARD) || [])].includes(el) ? 'payment card field' : null };
+  };
+
+  // After typing: a field the site swapped out while it took the focus is
+  // followed to the field that holds the focus (and the typed text) now.
+  const adoptFocused = id => {
+    const el = els.get(id)?.deref();
+    const now = activeDeep();
+    if (el && !el.isConnected && editable(now)) {
+      els.set(id, new WeakRef(now));
+      ids.set(now, id);
+      prints.set(id, describe(now).replace(/ value=.*$/, ''));
+    }
+    return valueOf(id);
   };
 
   const choose = (id, wanted) => {
@@ -588,7 +632,8 @@
       if (node.nodeType === 3) {
         // Preformatted text keeps its line breaks.
         const value = pre ? node.textContent : node.textContent.replace(/\s+/g, ' ');
-        if (value.trim()) out.push(value);
+        // A space between two inline elements (<b>a</b> <b>b</b>) keeps the words apart.
+        if (value.trim() || (value && !pre)) out.push(value.trim() ? value : ' ');
         return;
       }
       if (node.nodeType !== 1) return;
@@ -991,7 +1036,7 @@
     if (event.key === 'Enter' && event.target.tagName === 'INPUT') noticeSignIn(event.target.form || document);
   }, true);
 
-  globalThis.__ag = { expire, focusedEditable, riskAt, focusedMoney, pointerAt: () => at, pointTo, pointAt, keyNote, hideStage, typing, banner, fillLogin, searchResults, selection, find, setBase, element, rect, enterRisk, snapshot, target, focusForInput, choose, valueOf, text, links, tables, forms, settle, scroll, waitFor, meta, signals, injectionChunks, translateText, translatePage };
+  globalThis.__ag = { expire, focusedEditable, adoptFocused, riskAt, focusedMoney, pointerAt: () => at, pointTo, pointAt, keyNote, hideStage, typing, banner, fillLogin, searchResults, selection, find, setBase, element, rect, enterRisk, snapshot, target, focusForInput, choose, valueOf, text, links, tables, forms, settle, scroll, waitFor, meta, signals, injectionChunks, translateText, translatePage };
   // Helpers for the page tools (tools.js), which extend this agent.
   globalThis.__ag.h = { lookup, visible, clean, refOf, describe, signals, risk: el => moneyRisk(el) || (isSubmitter(el) && formRisk(el)) || null };
 })();

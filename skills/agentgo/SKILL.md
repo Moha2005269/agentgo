@@ -42,7 +42,9 @@ your pointer, your typing and your navigation are drawn on the page.
 
 ## The loop
 
-1. **Open**: `navigate.url {url}` (or `{query}` to search Google). The reply
+1. **Open**: `navigate.url {url}` (or `{query}` to search). It answers once the
+   page is usable (`usable: true` while trackers and media still load; pass
+   `wait: "load"` to wait for everything). The reply
    already contains the page outline.
 2. **Read** the outline. Each line is something on the page; lines that begin
    with `[n]` can be acted on by that number:

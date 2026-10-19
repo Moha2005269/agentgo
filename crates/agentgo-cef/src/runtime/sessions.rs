@@ -166,6 +166,18 @@ fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
     STATE.with(|state| f(&mut state.borrow_mut()))
 }
 
+/// Who an approval belongs to. A one-shot `agentgo call` ends right after
+/// the action that asked, so its approvals belong to one-shot calls as a
+/// whole (still bound to the tab, origin and target, and still expiring);
+/// a connection's approvals belong to that connection.
+const ONE_SHOT_OWNER: &str = "one-shot:agentgo-cli";
+fn approval_owner(state: &State, caller: &Caller) -> String {
+    match state.sessions.get(&caller.session) {
+        Some(session) if session.client == ONE_SHOT_CLIENT => ONE_SHOT_OWNER.to_string(),
+        _ => caller.session.clone(),
+    }
+}
+
 /// An agent that told the browser it is working, shown by the toolbar pill
 /// until it disconnects. Long-lived connections (MCP, stdio, a pipe client)
 /// are present for their lifetime; one-shot `agentgo call` commands are not,
@@ -539,12 +551,13 @@ pub fn require_approval(
         return Ok(());
     }
     let outcome = with(|state| {
+        let owner = approval_owner(state, caller);
         if let Some(id) = supplied {
             match state.approvals.get(id) {
                 Some(approval)
                     if approval.status == "granted"
                         && now().saturating_sub(approval.decided) <= APPROVAL_SECONDS
-                        && approval.session == caller.session
+                        && approval.session == owner
                         && approval.tab_id == tab_id
                         && approval.origin == origin
                         && approval.target == target =>
@@ -579,7 +592,7 @@ pub fn require_approval(
         let pending = state
             .approvals
             .values()
-            .filter(|approval| approval.session == caller.session && approval.status == "pending")
+            .filter(|approval| approval.session == owner && approval.status == "pending")
             .count();
         if pending >= MAX_PENDING {
             return Err(Fail::new(
@@ -592,7 +605,7 @@ pub fn require_approval(
         state.approvals.insert(
             id.clone(),
             Approval {
-                session: caller.session.clone(),
+                session: owner.clone(),
                 tab_id: tab_id.to_string(),
                 origin: origin.to_string(),
                 target: target.to_string(),
@@ -638,10 +651,11 @@ pub fn decide_approval(id: &str, grant: bool) -> Result<(), Fail> {
 /// Status of an approval as seen by the requesting session.
 pub fn approval_status(caller: &Caller, id: &str) -> Option<&'static str> {
     with(|state| {
+        let owner = approval_owner(state, caller);
         state
             .approvals
             .get(id)
-            .filter(|approval| approval.session == caller.session)
+            .filter(|approval| approval.session == owner)
             // Approvals expire after five minutes without a decision.
             .map(|approval| {
                 if (approval.status == "pending"

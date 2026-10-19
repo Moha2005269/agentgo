@@ -138,7 +138,18 @@ pub fn extension_id(spki: &[u8]) -> String {
 
 /// Checks a CRX package's signature and that it belongs to `expected_id`.
 /// Returns the zip archive inside it.
+#[cfg(test)]
 pub fn verify_crx<'a>(bytes: &'a [u8], expected_id: &str) -> Result<&'a [u8], String> {
+    verify_crx_with_key(bytes, expected_id).map(|(zip, _)| zip)
+}
+
+/// [`verify_crx`], also returning the public key (SubjectPublicKeyInfo) the
+/// package is signed with: written into the unpacked manifest as `key`, it
+/// gives the extension its Web Store id when Chromium loads the folder.
+pub fn verify_crx_with_key<'a>(
+    bytes: &'a [u8],
+    expected_id: &str,
+) -> Result<(&'a [u8], &'a [u8]), String> {
     let word = |at: usize| {
         bytes
             .get(at..at + 4)
@@ -201,7 +212,7 @@ pub fn verify_crx<'a>(bytes: &'a [u8], expected_id: &str) -> Result<&'a [u8], St
                     _ => false,
                 };
                 if ok {
-                    return Ok(zip);
+                    return Ok((zip, key));
                 }
             }
             Err("the package signature is not valid for this extension id".into())
@@ -231,7 +242,7 @@ pub fn verify_crx<'a>(bytes: &'a [u8], expected_id: &str) -> Result<&'a [u8], St
                     .verify(zip, sig)
                 })
                 .map_err(|_| "the package signature is not valid".to_string())?;
-            Ok(zip)
+            Ok((zip, key))
         }
         _ => Err("unsupported package version".into()),
     }

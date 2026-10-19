@@ -102,15 +102,7 @@ pub async fn suggestions(caller: &Caller, text: &str) -> Vec<Value> {
         }
     }
     out.truncate(6);
-    let engine = state::settings_snapshot()["searchEngine"]
-        .as_str()
-        .unwrap_or("Google")
-        .to_string();
-    let base = match engine.as_str() {
-        "Bing" => "https://www.bing.com/search?q=",
-        "DuckDuckGo" => "https://duckduckgo.com/?q=",
-        _ => "https://www.google.com/search?q=",
-    };
+    let (engine, base) = state::search_engine();
     let query: String = text
         .bytes()
         .map(|b| {
@@ -121,7 +113,7 @@ pub async fn suggestions(caller: &Caller, text: &str) -> Vec<Value> {
             }
         })
         .collect();
-    out.insert(usize::from(looks_like_address), json!({"kind": "search", "title": format!("Search {engine} for {text}"), "url": format!("{base}{query}")}));
+    out.insert(usize::from(looks_like_address), json!({"kind": "search", "title": format!("Search {engine} for {text}"), "url": state::search_url(&base, &query)}));
     for (index, item) in out.iter_mut().enumerate() {
         item["index"] = json!(index);
     }

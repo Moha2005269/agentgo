@@ -25,14 +25,18 @@ const run = (method, params) => callBridge(method, params).catch(error => consol
 
 // Same rule as the native resolver: an address opens directly, anything
 // else is a search with the provider chosen in Settings (Google by default).
-const SEARCH = { Google: "https://www.google.com/search?q=", Bing: "https://www.bing.com/search?q=", DuckDuckGo: "https://duckduckgo.com/?q=" };
+const SEARCH = { Google: "https://www.google.com/search?q=", Bing: "https://www.bing.com/search?q=", DuckDuckGo: "https://duckduckgo.com/?q=", Brave: "https://search.brave.com/search?q=", Ecosia: "https://www.ecosia.org/search?q=", Startpage: "https://www.startpage.com/do/search?q=" };
 let searchBase = SEARCH.Google;
+let searchName = 'Google';
+let homeUrl = LANDING_URL;
+// A custom engine is a template with %s where the words go.
+const searchFor = (base, text) => base.includes('%s') ? base.replace('%s', encodeURIComponent(text)) : base + encodeURIComponent(text);
 const normalize = value => {
   const text = value.trim();
   if (!text) return LANDING_URL;
   if (/^(https?|file|about):/i.test(text)) return text;
   if (/^[^\s]+\.[^\s]+$/.test(text) || /^localhost(:\d+)?(\/|$)/.test(text)) return `https://${text}`;
-  return searchBase + encodeURIComponent(text);
+  return searchFor(searchBase, text);
 };
 
 // A page that failed to load is shown by a bundled page; the tab is still
@@ -459,7 +463,15 @@ window.__agentgoToolState = tool => {
 
 window.__agentgoTheme = settings => {
   customShortcuts = settings.shortcuts && typeof settings.shortcuts === 'object' ? settings.shortcuts : {};
-  searchBase = SEARCH[settings.searchEngine] || SEARCH.Google;
+  const custom = typeof settings.searchCustom === 'string' && /^https:\/\/\S+$/.test(settings.searchCustom.trim()) && settings.searchCustom.includes('%s') ? settings.searchCustom.trim() : '';
+  if (settings.searchEngine === 'Custom' && custom) {
+    searchBase = custom;
+    try { searchName = new URL(custom.replace('%s', 'x')).hostname.replace(/^www\./, ''); } catch (_) { searchName = 'the web'; }
+  } else {
+    searchBase = SEARCH[settings.searchEngine] || SEARCH.Google;
+    searchName = SEARCH[settings.searchEngine] ? settings.searchEngine : 'Google';
+  }
+  homeUrl = typeof settings.homePage === 'string' && /^https?:\/\/\S+$/.test(settings.homePage.trim()) ? settings.homePage.trim() : LANDING_URL;
   favsOn = settings.favoritesBar !== false;
   document.body.classList.toggle('favs-on', favsOn);
   showExtensions = settings.showExtensions !== false;
@@ -467,9 +479,10 @@ window.__agentgoTheme = settings => {
   $('#home').hidden = settings.showHome === false;
   renderExtensions();
   if (favsOn) renderFavorites();
-  address.placeholder = `Search ${SEARCH[settings.searchEngine] ? settings.searchEngine : "Google"} or enter an address`;
+  address.placeholder = `Search ${searchName} or enter an address`;
   // the animated switch arrives separately (__agentgoThemeSync); this only
   // makes sure the theme is right
+  window.agentgoSetAccent(settings.accent);
   window.agentgoSetTheme(settings.theme);
 };
 
@@ -566,7 +579,7 @@ address.addEventListener('keydown', event => {
 $('#back').addEventListener('click', () => run('tab.back', { tabId: activeTabId }));
 $('#forward').addEventListener('click', () => run('tab.forward', { tabId: activeTabId }));
 $('#i-reload').addEventListener('click', () => run(activeTab()?.loading ? 'tab.stop' : 'tab.reload', { tabId: activeTabId }));
-$('#home').addEventListener('click', () => run('tabs.navigate', { tabId: activeTabId, url: LANDING_URL }));
+$('#home').addEventListener('click', () => run('tabs.navigate', { tabId: activeTabId, url: homeUrl }));
 $('#newTab').addEventListener('click', () => run('tabs.create', { url: LANDING_URL }));
 $('#star').addEventListener('click', async () => {
   const tab = activeTab();

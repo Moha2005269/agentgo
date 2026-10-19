@@ -15,7 +15,9 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -41,6 +43,31 @@ static INSTALL_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
 /// Share of the progress bar the steps before GoMini get (it is the larger
 /// download, so with GoMini chosen everything else takes about half).
 static BEFORE_GOMINI: Mutex<f64> = Mutex::new(1.0);
+/// Set when the person closes the window during an install: the worker
+/// stops at its next step, puts any old copy back and removes what it wrote.
+static CANCEL: AtomicBool = AtomicBool::new(false);
+/// What is running: nothing, an install (stops when closed) or an update or
+/// uninstall (finishes first, with the window hidden, so nothing is left half done).
+static WORKING: AtomicU8 = AtomicU8::new(IDLE);
+const IDLE: u8 = 0;
+const INSTALLING: u8 = 1;
+const FINISHING: u8 = 2;
+/// The last progress value sent to the page and when, so a fast download
+/// does not queue thousands of scripts in front of the window's own events.
+static LAST_PROGRESS: Mutex<Option<(f64, Instant)>> = Mutex::new(None);
+const CANCELLED: &str = "Setup was closed.";
+
+/// HTTP with timeouts: a stalled connection fails instead of hanging Setup.
+fn http() -> ureq::Agent {
+    ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_secs(20))
+        .timeout_read(Duration::from_secs(60))
+        .build()
+}
+
+fn cancelled() -> bool {
+    CANCEL.load(Ordering::Relaxed)
+}
 
 enum Ui {
     Eval(String),
@@ -74,6 +101,24 @@ fn stage(proxy: &Proxy, name: &str, state: &str) {
 fn progress(proxy: &Proxy, pct: f64) {
     let share = BEFORE_GOMINI.lock().map(|s| *s).unwrap_or(1.0);
     let pct = if pct >= 100.0 { pct } else { pct * share };
+    send_progress(proxy, pct);
+}
+
+/// Sends a progress value at most every 60 ms (or on a step of at least 1%,
+/// or at 100%).
+fn send_progress(proxy: &Proxy, pct: f64) {
+    if let Ok(mut last) = LAST_PROGRESS.lock() {
+        let now = Instant::now();
+        if let Some((sent, at)) = *last {
+            if pct < 100.0
+                && (pct - sent).abs() < 1.0
+                && now.duration_since(at) < Duration::from_millis(60)
+            {
+                return;
+            }
+        }
+        *last = Some((pct, now));
+    }
     emit(proxy, json!({"type": "progress", "pct": pct}));
 }
 
@@ -334,7 +379,8 @@ fn release_hash(release: &Release) -> Result<String, String> {
         .manifest
         .as_ref()
         .ok_or("the latest release has no signed update manifest")?;
-    let body = ureq::get(url)
+    let body = http()
+        .get(url)
         .set("User-Agent", "AgentGo-Setup")
         .timeout(std::time::Duration::from_secs(30))
         .call()
@@ -347,16 +393,17 @@ fn release_hash(release: &Release) -> Result<String, String> {
 }
 
 fn latest_release() -> Result<Release, String> {
-    let body = ureq::get(&format!(
-        "https://api.github.com/repos/{REPO}/releases/latest"
-    ))
-    .set("User-Agent", "AgentGo-Setup")
-    .set("Accept", "application/vnd.github+json")
-    .timeout(std::time::Duration::from_secs(20))
-    .call()
-    .map_err(|e| format!("GitHub did not answer ({e})"))?
-    .into_string()
-    .map_err(|e| e.to_string())?;
+    let body = http()
+        .get(&format!(
+            "https://api.github.com/repos/{REPO}/releases/latest"
+        ))
+        .set("User-Agent", "AgentGo-Setup")
+        .set("Accept", "application/vnd.github+json")
+        .timeout(std::time::Duration::from_secs(20))
+        .call()
+        .map_err(|e| format!("GitHub did not answer ({e})"))?
+        .into_string()
+        .map_err(|e| e.to_string())?;
     let json: Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
     let assets = json["assets"].as_array().cloned().unwrap_or_default();
     let url = |suffix: &str| {
@@ -448,7 +495,8 @@ fn install(proxy: &Proxy, options: &Value) -> Result<String, String> {
         let expected = release_hash(&release).map_err(|e| {
             format!("{e}. Download AgentGo-Setup-full.exe from github.com/{REPO}/releases instead.")
         })?;
-        let response = ureq::get(&release.zip)
+        let response = http()
+            .get(&release.zip)
             .set("User-Agent", "AgentGo-Setup")
             .call()
             .map_err(|e| format!("The download failed ({e})"))?;
@@ -460,6 +508,9 @@ fn install(proxy: &Proxy, options: &Value) -> Result<String, String> {
         let mut out = File::create(&temp).map_err(|e| e.to_string())?;
         let (mut done, mut buf) = (0u64, vec![0u8; 1 << 18]);
         loop {
+            if cancelled() {
+                return Err(CANCELLED.into());
+            }
             let n = body
                 .read(&mut buf)
                 .map_err(|e| format!("The download broke off ({e})"))?;
@@ -484,12 +535,18 @@ fn install(proxy: &Proxy, options: &Value) -> Result<String, String> {
     let mut reader = reader;
     let mut read = 0u64;
     let actual = hash_reader(&mut reader, |n| {
+        if cancelled() {
+            return;
+        }
         read += n;
         if total > 0 && read % (16 << 20) < (1 << 20) {
             progress(proxy, 35.0 + read as f64 / total as f64 * 8.0);
         }
     })
     .map_err(|e| e.to_string())?;
+    if cancelled() {
+        return Err(CANCELLED.into());
+    }
     if actual != expected {
         return Err(
             "The package does not match its signed checksum. Download AgentGo Setup again.".into(),
@@ -508,7 +565,15 @@ fn install(proxy: &Proxy, options: &Value) -> Result<String, String> {
         std::fs::rename(&dir, &backup)
             .map_err(|_| "The old AgentGo folder is in use. Close AgentGo and any window showing that folder, then try again.".to_string())?;
     }
-    let result = extract(proxy, reader, &dir).and_then(|()| check_sums(proxy, &dir));
+    let result = extract(proxy, reader, &dir)
+        .and_then(|()| check_sums(proxy, &dir))
+        .and_then(|()| {
+            if cancelled() {
+                Err(CANCELLED.to_string())
+            } else {
+                Ok(())
+            }
+        });
     if let Err(error) = result {
         let _ = std::fs::remove_dir_all(&dir);
         if had_old {
@@ -681,6 +746,9 @@ fn extract(proxy: &Proxy, reader: Box<dyn ReadSeek>, dir: &Path) -> Result<(), S
     let mut done = 0u64;
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     for i in 0..zip.len() {
+        if cancelled() {
+            return Err(CANCELLED.into());
+        }
         let mut entry = zip.by_index(i).map_err(|e| e.to_string())?;
         // enclosed_name refuses absolute paths and `..` (zip slip).
         let Some(name) = entry.enclosed_name() else {
@@ -731,6 +799,9 @@ fn check_sums(proxy: &Proxy, dir: &Path) -> Result<(), String> {
     })?;
     let lines: Vec<&str> = sums.lines().filter(|l| !l.trim().is_empty()).collect();
     for (i, line) in lines.iter().enumerate() {
+        if cancelled() {
+            return Err(CANCELLED.into());
+        }
         let Some((hash, name)) = line.split_once("  ") else {
             continue;
         };
@@ -759,15 +830,11 @@ fn check_sums(proxy: &Proxy, dir: &Path) -> Result<(), String> {
 fn install_gomini(proxy: &Proxy) -> Result<String, String> {
     use agentgo_gomini::{install, Layout};
     let layout = Layout::new(data_root().join("gomini"));
-    let cancel = std::sync::atomic::AtomicBool::new(false);
     let last = Mutex::new(-1i64);
-    let found = install::install(&layout, &cancel, &|p| {
+    let found = install::install(&layout, &CANCEL, &|p| {
         let frac = p.done as f64 / p.total.max(1) as f64;
         // GoMini takes the second half of the bar, up to 97%.
-        emit(
-            proxy,
-            json!({"type": "progress", "pct": 48.5 + frac * 48.5}),
-        );
+        send_progress(proxy, 48.5 + frac * 48.5);
         let tenth = (frac * 10.0) as i64;
         if let Ok(mut seen) = last.lock() {
             if tenth != *seen {
@@ -1446,6 +1513,40 @@ fn spawn(work: impl FnOnce() + Send + 'static) {
     std::thread::spawn(work);
 }
 
+/// Runs an install, update or uninstall on its own thread, marked as working.
+fn spawn_job(kind: u8, work: impl FnOnce() + Send + 'static) {
+    WORKING.store(kind, Ordering::SeqCst);
+    std::thread::spawn(move || {
+        work();
+        WORKING.store(IDLE, Ordering::SeqCst);
+    });
+}
+
+/// Closing the window: right away when nothing runs. During an install the
+/// window disappears at once, the install stops at its next step and cleans
+/// up, then Setup exits; an update or uninstall finishes out of sight first.
+fn close_requested(window: &tao::window::Window, proxy: &Proxy) -> bool {
+    let kind = WORKING.load(Ordering::SeqCst);
+    if kind == IDLE {
+        return true;
+    }
+    CANCEL.store(kind == INSTALLING, Ordering::SeqCst);
+    window.set_visible(false);
+    let proxy = proxy.clone();
+    std::thread::spawn(move || {
+        let started = Instant::now();
+        while WORKING.load(Ordering::SeqCst) != IDLE {
+            // A stalled network read cannot hold a closed installer open.
+            if kind == INSTALLING && started.elapsed() > Duration::from_secs(8) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let _ = proxy.send_event(Ui::Exit(0));
+    });
+    false
+}
+
 fn handle(proxy: &Proxy, message: &str, uninstall_mode: bool) {
     let Ok(msg) = serde_json::from_str::<Value>(message) else {
         return;
@@ -1513,13 +1614,14 @@ fn handle(proxy: &Proxy, message: &str, uninstall_mode: bool) {
         }),
         "install" => {
             let options = msg["options"].clone();
-            spawn(move || match install(&p, &options) {
+            CANCEL.store(false, Ordering::SeqCst);
+            spawn_job(INSTALLING, move || match install(&p, &options) {
                 Ok(note) => emit(&p, json!({"type": "done", "note": note})),
                 Err(message) => emit(&p, json!({"type": "error", "message": message})),
             });
         }
         "update" => {
-            spawn(move || match update_args() {
+            spawn_job(FINISHING, move || match update_args() {
                 Some(job) => match apply_update(&p, &job) {
                     Ok((version, relaunched)) => emit(
                         &p,
@@ -1538,7 +1640,7 @@ fn handle(proxy: &Proxy, message: &str, uninstall_mode: bool) {
         }
         "uninstall" => {
             let remove_profile = msg["removeProfile"] == true;
-            spawn(move || match uninstall(&p, remove_profile) {
+            spawn_job(FINISHING, move || match uninstall(&p, remove_profile) {
                 Ok(note) => emit(&p, json!({"type": "done", "note": note})),
                 Err(message) => emit(&p, json!({"type": "error", "message": message})),
             });
@@ -1675,7 +1777,12 @@ fn main() {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
-            } => *control_flow = ControlFlow::Exit,
+            } => {
+                if close_requested(&window, &proxy) {
+                    delete_self_later();
+                    *control_flow = ControlFlow::Exit;
+                }
+            }
             Event::UserEvent(Ui::Eval(script)) => {
                 let _ = webview.evaluate_script(&script);
             }
@@ -1684,8 +1791,18 @@ fn main() {
             }
             Event::UserEvent(Ui::Minimize) => window.set_minimized(true),
             Event::UserEvent(Ui::Close) => {
+                if close_requested(&window, &proxy) {
+                    delete_self_later();
+                    *control_flow = ControlFlow::Exit;
+                }
+            }
+            Event::UserEvent(Ui::Exit(code)) => {
+                // The download, if an install was stopped before it cleaned up.
+                let _ = std::fs::remove_file(
+                    std::env::temp_dir().join(format!("agentgo-setup-{}.zip", std::process::id())),
+                );
                 delete_self_later();
-                *control_flow = ControlFlow::Exit;
+                *control_flow = ControlFlow::ExitWithCode(code);
             }
             Event::UserEvent(Ui::Browse(start)) => {
                 let mut dialog = rfd::FileDialog::new()

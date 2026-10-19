@@ -8,8 +8,17 @@
 //! `document_idle`). The person installs, enables and removes extensions;
 //! agents can list them and read their settings.
 //!
-//! Not provided: the `chrome.*` extension APIs (toolbar buttons, context
-//! menus, background workers, native messaging).
+//! Extensions whose manifest carries their public key (every Web Store
+//! install: AgentGo writes the package's key into it, which gives the folder
+//! its store id) run in Chromium's own extension system instead: background
+//! service workers, content scripts at every run_at, the `chrome.*` APIs and
+//! their real pop-ups. The engine reads them from its command line, so one
+//! installed or turned on while AgentGo runs is fully on after a restart
+//! (until then its content scripts run here, as before).
+//!
+//! Folders without a key keep the content-script runner below: its scripts
+//! with `chrome.runtime`, `chrome.i18n` and `chrome.storage`, but no
+//! background worker, context menus or native messaging.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -54,6 +63,95 @@ struct Script {
     exclude: Vec<String>,
     js: String,
     css: String,
+}
+
+/// Extensions the engine itself runs this session (their ids). Fixed when the
+/// browser process starts: Chromium loads them from its command line.
+static NATIVE: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+
+/// Engine-run extensions removed in this session: the engine keeps running
+/// them until AgentGo restarts.
+static REMOVED_NATIVE: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// Standard base64 (the manifest's `key`), ignoring whitespace.
+fn base64_decode(text: &str) -> Option<Vec<u8>> {
+    let mut out = Vec::with_capacity(text.len() * 3 / 4);
+    let (mut buffer, mut bits) = (0u32, 0u32);
+    for byte in text.bytes() {
+        let value = match byte {
+            b'A'..=b'Z' => byte - b'A',
+            b'a'..=b'z' => byte - b'a' + 26,
+            b'0'..=b'9' => byte - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            b'=' | b' ' | b'\n' | b'\r' | b'\t' => continue,
+            _ => return None,
+        };
+        buffer = (buffer << 6) | u32::from(value);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buffer >> bits) as u8);
+        }
+    }
+    Some(out)
+}
+
+/// The id Chromium gives a folder whose manifest names its `key`.
+fn key_id(manifest: &Value) -> Option<String> {
+    let der = base64_decode(manifest["key"].as_str()?)?;
+    (!der.is_empty()).then(|| super::pack::extension_id(&der))
+}
+
+/// Whether Chromium can run this extension under the id AgentGo knows it by.
+fn native_ready(extension: &Extension) -> bool {
+    let (manifest, _) = manifest_and_messages(Path::new(&extension.source));
+    key_id(&manifest).as_deref() == Some(extension.id.as_str())
+}
+
+/// The folders of the extensions the engine should load, for the browser
+/// process's command line (called once, before CEF starts).
+pub fn native_folders_at_start() -> Vec<String> {
+    let chosen: Vec<Extension> = load()
+        .into_iter()
+        .filter(|extension| extension.enabled && native_ready(extension))
+        // The command line separates folders with commas.
+        .filter(|extension| !extension.source.contains(','))
+        .collect();
+    let _ = NATIVE.set(chosen.iter().map(|e| e.id.clone()).collect());
+    chosen.into_iter().map(|e| e.source).collect()
+}
+
+/// Whether Chromium runs this extension in this session.
+pub fn is_native(id: &str) -> bool {
+    NATIVE
+        .get()
+        .is_some_and(|ids| ids.iter().any(|known| known == id))
+}
+
+/// Whether the extension changed in a way only a restart applies: turned on
+/// or installed for the engine (not running yet), or turned off or removed
+/// while the engine still runs it.
+fn restart_needed(extension: &Extension) -> bool {
+    is_native(&extension.id) != (extension.enabled && native_ready(extension))
+}
+
+/// Writes the package's public key into the unpacked manifest, so Chromium
+/// gives the folder the extension's Web Store id.
+fn add_manifest_key(folder: &Path, key: &[u8]) -> Result<(), String> {
+    let path = folder.join("manifest.json");
+    let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let mut manifest: Value = serde_json::from_str(text.trim_start_matches('\u{feff}'))
+        .map_err(|e| format!("manifest.json is not valid JSON ({e})"))?;
+    let Some(map) = manifest.as_object_mut() else {
+        return Err("manifest.json is not an object".into());
+    };
+    map.insert("key".into(), json!(super::sdk::base64(key)));
+    std::fs::write(
+        &path,
+        serde_json::to_vec_pretty(&manifest).unwrap_or_default(),
+    )
+    .map_err(|e| e.to_string())
 }
 
 fn file() -> PathBuf {
@@ -161,13 +259,18 @@ fn read_folder(folder: &Path) -> Result<Extension, Fail> {
     }
     let mut permissions = strings(&manifest["permissions"]);
     permissions.extend(strings(&manifest["host_permissions"]));
-    let id: String = name
-        .to_ascii_lowercase()
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
-        .collect();
+    // A folder that names its key has the id Chromium gives it; others are
+    // known by their name.
+    let id: String = key_id(&manifest).unwrap_or_else(|| {
+        let slug: String = name
+            .to_ascii_lowercase()
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+            .collect();
+        slug.trim_matches('-').chars().take(40).collect()
+    });
     Ok(Extension {
-        id: id.trim_matches('-').chars().take(40).collect(),
+        id,
         name,
         version: manifest["version"].as_str().unwrap_or("0").to_string(),
         source: folder.display().to_string(),
@@ -235,9 +338,13 @@ fn summary(extension: &Extension) -> Value {
         "pinned": extension.pinned, "icon": extension.icon, "description": extension.description,
         "popup": !pages(extension).0.is_empty(), "options": !pages(extension).1.is_empty(),
         "contentScripts": extension.scripts.iter().map(|s| json!({"matches": s.matches, "jsBytes": s.js.len(), "cssBytes": s.css.len()})).collect::<Vec<_>>(),
-        // Its background page does not run in AgentGo: features that need it
-        // (pop-ups, toolbar actions, syncing) will not work.
-        "limited": needs_background(Path::new(&extension.source)),
+        // Run by the engine itself: background worker, chrome.* APIs, real pop-up.
+        "native": is_native(&extension.id),
+        "restartNeeded": restart_needed(extension),
+        // Its background page does not run: features that need it (toolbar
+        // actions, syncing, live switches) will not work. Not the case for
+        // an extension the engine runs, or will run after a restart.
+        "limited": needs_background(Path::new(&extension.source)) && !native_ready(extension),
     })
 }
 
@@ -294,6 +401,9 @@ pub fn page_url(params: &Value) -> Result<String, Fail> {
             extension.name
         )));
     }
+    if is_native(&extension.id) {
+        return Ok(format!("chrome-extension://{}/{page}", extension.id));
+    }
     Ok(format!("agentgo-ext://{}/{page}", extension.id))
 }
 
@@ -310,7 +420,16 @@ fn find<'a>(all: &'a mut [Extension], params: &Value) -> Result<&'a mut Extensio
 pub fn command(method: &str, params: &Value) -> Reply {
     let mut all = load();
     match method {
-        "extension.list" => Ok(json!({"extensions": all.iter().map(summary).collect::<Vec<_>>()})),
+        "extension.list" => {
+            // A restart also finishes removing an extension the engine runs.
+            let removed = REMOVED_NATIVE
+                .lock()
+                .map(|ids| !ids.is_empty())
+                .unwrap_or(false);
+            Ok(
+                json!({"extensions": all.iter().map(summary).collect::<Vec<_>>(), "restartNeeded": removed}),
+            )
+        }
         "extension.install" => {
             let folder = params["path"].as_str().ok_or_else(|| {
                 Fail::params("params.path: the extension's folder (with manifest.json)")
@@ -346,7 +465,13 @@ pub fn command(method: &str, params: &Value) -> Reply {
                 return Err(Fail::params(format!("no extension {id}")));
             }
             save(&all)?;
-            Ok(json!({"id": id, "uninstalled": true}))
+            let restart = is_native(id);
+            if restart {
+                if let Ok(mut removed) = REMOVED_NATIVE.lock() {
+                    removed.push(id.to_string());
+                }
+            }
+            Ok(json!({"id": id, "uninstalled": true, "restartNeeded": restart}))
         }
         "extension.enable" | "extension.disable" => {
             let known = find(&mut all, params)?;
@@ -435,7 +560,7 @@ pub async fn install_from_store(store: &str) -> Reply {
         )));
     }
     // The package must be signed by the key its id derives from.
-    let zip = super::pack::verify_crx(&bytes, &id).map_err(|reason| {
+    let (zip, key) = super::pack::verify_crx_with_key(&bytes, &id).map_err(|reason| {
         Fail::new(
             ErrorCode::PolicyDenied,
             format!("the extension package was refused: {reason}"),
@@ -451,6 +576,14 @@ pub async fn install_from_store(store: &str) -> Reply {
             "the extension package could not be unpacked: {reason}"
         )));
     }
+    // The store's key in the manifest: Chromium then runs the folder under
+    // the extension's own id (a package whose manifest names another key
+    // keeps AgentGo's content-script runner).
+    if let Err(reason) = add_manifest_key(&folder, key) {
+        state::log_event(&format!(
+            "AG-RUNTIME extension-key-not-written {id}: {reason}"
+        ));
+    }
     let mut extension = read_folder(&folder)?;
     // Names like __MSG_appName__ come from the extension's own translations.
     if extension.name == "Extension" {
@@ -458,11 +591,97 @@ pub async fn install_from_store(store: &str) -> Reply {
     }
     extension.id = id.clone();
     let mut all = load();
+    // An update keeps the person's choices and the extension's storage.
+    if let Some(known) = all.iter().find(|known| known.id == extension.id) {
+        extension.enabled = known.enabled;
+        extension.pinned = known.pinned;
+        extension.storage = known.storage.clone();
+    }
     all.retain(|known| known.id != extension.id);
     let out = summary(&extension);
     all.push(extension);
     save(&all)?;
     Ok(out)
+}
+
+/// Prepares a tab AgentGo opened for a page of an extension the engine runs
+/// (before it navigates there): `chrome.tabs.query` answers with the tab the
+/// person opened it over, and `chrome.tabs.create` / `openOptionsPage` open
+/// AgentGo tabs (extnative.js).
+pub async fn prepare_native_page(tab: &str, id: &str) {
+    let source = format!(
+        "{}({},{});",
+        include_str!("extnative.js"),
+        super::extpage::active_tab(),
+        json!(id)
+    );
+    let _ = cdp::call(
+        tab,
+        "Page.addScriptToEvaluateOnNewDocument",
+        json!({"source": source}),
+    )
+    .await;
+    let _ = cdp::call(tab, "Runtime.addBinding", json!({"name": "__agExtTabs"})).await;
+}
+
+/// A request from an engine-run extension's page (extnative.js): open a
+/// website or one of the extension's own pages in a new tab. Honoured only
+/// while the tab still shows that extension's page, never for a website.
+pub fn tabs_request(tab: &str, payload: &str) {
+    let Some(id) = super::extpage::page_extension(tab) else {
+        return;
+    };
+    let own = format!("chrome-extension://{id}/");
+    if !state::tab_url(tab).starts_with(&own) {
+        return;
+    }
+    let Ok(message) = serde_json::from_str::<Value>(payload) else {
+        return;
+    };
+    let target = match message["op"].as_str() {
+        Some("options") => page_url(&json!({"id": id, "options": true})).ok(),
+        Some("create") => message["url"].as_str().map(str::to_string),
+        _ => None,
+    };
+    let Some(target) = target.filter(|url| {
+        url.starts_with(&own) || url.starts_with("https://") || url.starts_with("http://")
+    }) else {
+        return;
+    };
+    if target.starts_with(&own) {
+        let Ok(created) = state::create_content_tab("about:blank") else {
+            return;
+        };
+        let Some(new_tab) = created["tabId"].as_str().map(str::to_string) else {
+            return;
+        };
+        super::extpage::register_page_tab(&new_tab, &id);
+        let extension = id.clone();
+        super::exec::spawn(async move {
+            prepare_native_page(&new_tab, &extension).await;
+            state::navigate_tab(&new_tab, &target);
+        });
+    } else {
+        let _ = state::create_content_tab(&target);
+    }
+    state::log_event(&format!("AG-RUNTIME extension-opened-tab {id}"));
+}
+
+/// Web Store extensions installed before AgentGo kept their key (0.1.3 and
+/// older) are fetched again once, with their key, so the engine runs them
+/// from the next start on.
+pub async fn upgrade_store_installs() {
+    let root = state::state().options.cache_root.join("extensions");
+    let stale: Vec<String> = load()
+        .into_iter()
+        .filter(|e| store_id(&e.id).as_deref() == Some(e.id.as_str()))
+        .filter(|e| Path::new(&e.source) == root.join(&e.id) && !native_ready(e))
+        .map(|e| e.id)
+        .collect();
+    for id in stale {
+        let ok = install_from_store(&id).await.is_ok();
+        state::log_event(&format!("AG-RUNTIME extension-upgraded {id} ok={ok}"));
+    }
 }
 
 fn localized_name(folder: &Path) -> Option<String> {
@@ -558,6 +777,13 @@ pub fn store_request(tab: &str, id: &str) {
             // The reason without the folder it was checked in.
             let reason = reason.rsplit(": ").next().unwrap_or(reason);
             state::notify_operator(&format!("The extension was not installed: {reason}"));
+        } else if let Ok(installed) = &result {
+            if installed["restartNeeded"] == true {
+                state::notify_operator(&format!(
+                    "{} is installed. Its page scripts run now; restart AgentGo (Extensions > Restart now) to turn on its background part and pop-up.",
+                    installed["name"].as_str().unwrap_or("The extension")
+                ));
+            }
         }
         reply_to_store(&tab, &id, result);
         state::notify_shell_state();
@@ -680,7 +906,11 @@ pub async fn inject(tab: String) {
         .await;
     }
     let mut code = Vec::new();
-    for extension in load().into_iter().filter(|extension| extension.enabled) {
+    // The engine runs its own extensions' content scripts.
+    for extension in load()
+        .into_iter()
+        .filter(|extension| extension.enabled && !is_native(&extension.id))
+    {
         for script in &extension.scripts {
             if script.matches.iter().any(|p| matches(p, &url))
                 && !script.exclude.iter().any(|p| matches(p, &url))

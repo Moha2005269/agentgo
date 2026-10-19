@@ -335,7 +335,7 @@ pub fn inject(frame: &mut Frame, scripts: bool) {
 thread_local! {
     /// Documents that got their styles at load start (most recent last).
     static INJECTED: std::cell::RefCell<std::collections::VecDeque<String>> =
-        std::cell::RefCell::new(std::collections::VecDeque::new());
+        const { std::cell::RefCell::new(std::collections::VecDeque::new()) };
 }
 
 /// Records an injection into the document at `url`. At load start it always

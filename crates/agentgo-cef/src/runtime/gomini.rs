@@ -518,6 +518,23 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
             }
             gate::Verdict::Escalate(reason) => {
                 steps.push(entry);
+                // Every supplied value is in place and what is left (submit,
+                // pay, sign in) is the planner's: the subgoal is done.
+                let filled = params["values"].as_object().is_some_and(|v| !v.is_empty())
+                    && reason.ends_with("is a step for the planner, not GoMini")
+                    && unfilled(caller, &tab, params, &bound).await.is_empty();
+                if filled {
+                    let next = reason.trim_end_matches(" is a step for the planner, not GoMini");
+                    return Ok(finish(
+                        "done",
+                        Some(format!(
+                            "every value is filled in; the next step ({next}) is yours"
+                        )),
+                        &record,
+                        &steps,
+                        model_ms,
+                    ));
+                }
                 return Ok(finish(
                     "needs_help",
                     Some(reason),
@@ -527,8 +544,30 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
                 ));
             }
             gate::Verdict::Done => {
+                // "Done" holds only when every supplied value is in its field.
+                let missing = unfilled(caller, &tab, params, &bound).await;
+                if missing.is_empty() {
+                    steps.push(entry);
+                    return Ok(finish("done", None, &record, &steps, model_ms));
+                }
+                entry["ok"] = json!(false);
+                entry["error"] = json!(format!("not done: {} not filled yet", missing.join(", ")));
                 steps.push(entry);
-                return Ok(finish("done", None, &record, &steps, model_ms));
+                let again = recent.last().is_some_and(|r| r["choice"] == choice.choice);
+                recent.push(json!({"choice": choice.choice, "ok": false}));
+                if again || step + 1 == max_steps {
+                    return Ok(finish(
+                        "needs_help",
+                        Some(format!(
+                            "GoMini called it done, but these values are not in the page yet: {}",
+                            missing.join(", ")
+                        )),
+                        &record,
+                        &steps,
+                        model_ms,
+                    ));
+                }
+                continue;
             }
             gate::Verdict::Wait => {
                 let _ = call(caller, "wait.settle", json!({"tabId": tab})).await;
@@ -559,7 +598,6 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
                         model_ms,
                     ));
                 }
-                last = Some((choice.choice.clone(), revision));
                 let applied = call(
                     caller,
                     "decision.apply",
@@ -567,6 +605,14 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
                 )
                 .await;
                 let mut ok = applied.is_ok();
+                // Only a step that ran counts for "no progress": one refused
+                // because the page moved on is simply tried again.
+                if ok {
+                    last = Some((choice.choice.clone(), revision));
+                }
+                let stale = applied.as_ref().err().is_some_and(|fail| {
+                    fail.code == ErrorCode::TargetStale || fail.message.starts_with("stale")
+                });
                 entry["ran"] = applied
                     .as_ref()
                     .map(|r| r["ran"].clone())
@@ -620,6 +666,12 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
                     }
                 }
                 entry["ok"] = json!(ok);
+                if stale {
+                    entry["retried"] = json!(true);
+                    steps.push(entry);
+                    let _ = call(caller, "wait.settle", json!({"tabId": tab})).await;
+                    continue;
+                }
                 recent.push(json!({"choice": choice.choice, "ok": ok}));
                 if !ok && steps.iter().rev().take(1).any(|s| s["ok"] == false) {
                     steps.push(entry);
@@ -642,6 +694,43 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
         &steps,
         model_ms,
     ))
+}
+
+/// The supplied values that are not (or no longer) in the field GoMini typed
+/// them into, by name.
+async fn unfilled(
+    caller: &Caller,
+    tab: &str,
+    params: &Value,
+    bound: &[(String, u64)],
+) -> Vec<String> {
+    let mut missing = Vec::new();
+    for (name, expected) in params["values"].as_object().into_iter().flatten() {
+        let Some(expected) = expected.as_str() else {
+            continue;
+        };
+        let filled = match bound.iter().find(|(n, _)| n == name) {
+            Some((_, reference)) => {
+                match call(
+                    caller,
+                    "runtime.get_value",
+                    json!({"tabId": tab, "ref": reference}),
+                )
+                .await
+                {
+                    Ok(v) => v["value"].as_str() == Some(expected),
+                    // The field is gone because the page moved on (the
+                    // search ran, the form was sent): the value was used.
+                    Err(fail) => fail.code == ErrorCode::TargetStale,
+                }
+            }
+            None => false,
+        };
+        if !filled {
+            missing.push(name.clone());
+        }
+    }
+    missing
 }
 
 /// Protocol commands for GoMini.

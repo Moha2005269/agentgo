@@ -729,7 +729,8 @@ $$('#themes .chip').forEach(c=>c.onclick=()=>{$$('#themes .chip').forEach(x=>x.c
 function placeBar(){const b=$('#engine button.on'),bar=$('#engine .bar');bar.style.left=b.offsetLeft+'px';bar.style.width=b.offsetWidth+'px'}
 $$('#engine button').forEach(b=>b.onclick=()=>{$$('#engine button').forEach(x=>x.classList.toggle('on',x===b));placeBar();SFX.tick()});
 $('#min').onclick=()=>send({cmd:'minimize'});
-$('#close').onclick=()=>fold(()=>send({cmd:'close'}));
+// While Setup works, close at once: the window goes and the install stops and cleans up behind it.
+$('#close').onclick=()=>flow[at]===4?send({cmd:'close'}):fold(()=>send({cmd:'close'}));
 document.addEventListener('mousedown',e=>{if(e.button===0&&e.target.closest('[data-drag]'))send({cmd:'drag'})});
 $('#browse').onclick=()=>send({cmd:'browse',dir:$('#dir').value});
 $('#dir').addEventListener('input',pathFixed);
