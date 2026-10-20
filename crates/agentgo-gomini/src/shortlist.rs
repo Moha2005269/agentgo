@@ -63,8 +63,27 @@ fn words(text: &str) -> HashSet<String> {
     text.to_lowercase()
         .split(|c: char| !c.is_alphanumeric())
         .filter(|w| w.len() >= 3 && !STOPWORDS.contains(w))
-        .map(str::to_string)
+        // "tabs" names "Tab 2", "folders" a folder: compare singular forms.
+        .map(|w| match w.strip_suffix('s') {
+            Some(stem) if stem.len() >= 3 && !stem.ends_with('s') => stem.to_string(),
+            _ => w.to_string(),
+        })
         .collect()
+}
+
+/// Controls that reveal other controls (a tab, a tree item, a collapsed
+/// section, a "more" menu): the way to a target the subgoal names but the
+/// page does not show yet.
+fn reveals(candidate: &Value) -> bool {
+    let target = candidate["target"].as_str().unwrap_or_default();
+    target.starts_with("tab ")
+        || target.starts_with("treeitem ")
+        || target.starts_with("menuitem ")
+        || target.contains(" collapsed")
+        || target.contains("(icon: more")
+        || target.contains("(icon: menu")
+        || target.contains("(icon: toggle")
+        || target.contains("(icon: expand")
 }
 
 fn is_control(candidate: &Value) -> bool {
@@ -87,7 +106,8 @@ fn width(candidate: &Value, values: usize) -> usize {
 /// subgoal binds the value `city` to the field labelled "Primary City".
 fn named_bindings(subgoal: &str, names: &[String]) -> Vec<(String, String)> {
     let mut out = Vec::new();
-    for part in subgoal.split([';', ',', '.', '\n']) {
+    // " and " separates pairs as often as a comma does in plain language.
+    for part in subgoal.replace(" and ", ";").split([';', ',', '.', '\n']) {
         let Some((label, name)) = part.rsplit_once('=') else {
             continue;
         };
@@ -97,18 +117,62 @@ fn named_bindings(subgoal: &str, names: &[String]) -> Vec<(String, String)> {
         if !names.iter().any(|n| n == name) {
             continue;
         }
-        // The label is what precedes "=", after a lead-in such as "using".
-        let label = label.trim();
-        let label = label
-            .rsplit_once(" using ")
-            .map_or(label, |(_, after)| after)
-            .trim()
-            .trim_matches('"');
-        if !label.is_empty() {
-            out.push((label.to_lowercase(), name.to_string()));
+        if let Some(label) = label_before(label, name) {
+            out.push((label, name.to_string()));
         }
     }
     out
+}
+
+/// The field label written before `=name`. Takes the planner's usual forms:
+/// "using Primary City=city", "Primary City=city", and the plain-language
+/// "fill the Username field with user=user" (label "username"), where the
+/// text before "=" ends in the value's own name.
+fn label_before(text: &str, name: &str) -> Option<String> {
+    let mut label = text.trim().trim_matches('"').to_lowercase();
+    // "... Username field with user=user": the label is before "with".
+    let tail = format!(" with {}", name.to_lowercase());
+    if let Some(head) = label.strip_suffix(&tail) {
+        label = head.to_string();
+    }
+    for lead in [" using ", " with ", " into "] {
+        if let Some((_, after)) = label.rsplit_once(lead) {
+            if !after.trim().is_empty() {
+                label = after.to_string();
+            }
+        }
+    }
+    let mut words: Vec<&str> = label
+        .split(|c: char| c.is_whitespace())
+        .filter(|w| !w.is_empty())
+        .collect();
+    while words.first().is_some_and(|w| {
+        matches!(
+            *w,
+            "fill"
+                | "enter"
+                | "type"
+                | "put"
+                | "set"
+                | "the"
+                | "a"
+                | "an"
+                | "in"
+                | "into"
+                | "and"
+                | "then"
+        )
+    }) {
+        words.remove(0);
+    }
+    while words
+        .last()
+        .is_some_and(|w| matches!(*w, "field" | "box" | "input" | "textbox" | "fields"))
+    {
+        words.pop();
+    }
+    let label = words.join(" ").trim_matches('"').trim().to_string();
+    (!label.is_empty() && label != name.to_lowercase()).then_some(label)
 }
 
 /// Lower-case words of a label, without punctuation ("E-mail address:" is
@@ -199,18 +263,33 @@ pub fn shortlist(record: &Value, keep: usize, outline_chars: usize) -> Value {
         .filter(|c| is_control(c))
         .cloned()
         .collect();
+    // Ranked: controls the subgoal's words name (best match first), then
+    // controls that reveal others (tabs, tree items, "more" menus), then the
+    // rest of the page in order. A small page fits whole; on a large one the
+    // named controls and the ways to hidden ones come first.
     let mut scored: Vec<(usize, usize, &Value)> = candidates
         .iter()
         .enumerate()
         .filter(|(_, c)| !is_control(c))
-        .filter_map(|(i, c)| {
+        .map(|(i, c)| {
             let overlap = words(c["target"].as_str().unwrap_or_default())
                 .intersection(&goal)
                 .count();
-            (overlap > 0).then_some((overlap, i, c))
+            let rank = if overlap > 0 {
+                100 + overlap
+            } else if reveals(c) {
+                50
+            } else {
+                0
+            };
+            (rank, i, c)
         })
         .collect();
-    // Best match first; ties keep page order.
+    // Unnamed, non-revealing controls only when the whole page fits; on a
+    // large page they would only crowd out the ones that matter.
+    let page_fits = scored.len() <= keep;
+    scored.retain(|(rank, _, _)| *rank > 0 || page_fits);
+    // Best rank first; ties keep page order.
     scored.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
     let mut budget = MAX_CHOICES - 1 - controls.len();
     let mut kept: Vec<(usize, Value)> = Vec::new();
@@ -257,6 +336,26 @@ pub fn shortlist(record: &Value, keep: usize, outline_chars: usize) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plain_language_subgoals_name_their_fields() {
+        let names = vec!["user".to_string(), "pw".to_string(), "city".to_string()];
+        let pairs = named_bindings(
+            "Fill the Username field with user=user and the Password field with pw=pw",
+            &names,
+        );
+        assert!(
+            pairs.contains(&("username".into(), "user".into())),
+            "{pairs:?}"
+        );
+        let pairs = named_bindings("Fill this travel form using Primary City=city", &names);
+        assert_eq!(pairs, vec![("primary city".into(), "city".into())]);
+        let pairs = named_bindings("Enter city=city", &names);
+        assert!(
+            pairs.is_empty(),
+            "a value named after itself names no field: {pairs:?}"
+        );
+    }
 
     #[test]
     fn labels_match_without_their_punctuation() {

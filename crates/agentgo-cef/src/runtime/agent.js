@@ -9,11 +9,26 @@
   const els = new Map();
   const prints = new Map();
   let next = 0;
+  // Elements DevTools reported a click/mousedown listener on (see
+  // listenerCandidates); script-driven controls with no pointer cursor and no
+  // text (icons, calendar cells, chart slices) are only found this way.
+  const listened = new WeakSet();
+  // How often an element was asked about: pages often bind their listeners a
+  // moment after drawing the element, so a miss is asked again (3 times).
+  const checked = new WeakMap();
+  let candidateBatch = [];
 
   const TAG_ROLE = { A: 'link', BUTTON: 'button', SELECT: 'combobox', TEXTAREA: 'textbox', SUMMARY: 'button', OPTION: 'option', IMG: 'img' };
   const INPUT_ROLE = { button: 'button', submit: 'button', reset: 'button', image: 'button', checkbox: 'checkbox', radio: 'radio', range: 'slider', search: 'searchbox', file: 'file' };
   const ROLES = new Set(['button', 'link', 'checkbox', 'radio', 'tab', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'option', 'switch', 'combobox', 'textbox', 'searchbox', 'slider', 'spinbutton', 'treeitem', 'listbox']);
   const MONEY = /\b(buy|purchase|pay|place (your )?order|check ?out|subscribe|donate|bid|confirm (order|payment|purchase)|complete (order|purchase)|send money|transfer funds|upgrade (now|plan))\b/i;
+  // Words that are a payment only when a price is in sight: a newsletter
+  // "Subscribe" or a "Donate" link alone moves no money.
+  const SOFT_MONEY = /\b(subscribe|donate|bid|upgrade (now|plan))\b/i;
+  const HARD_MONEY = /\b(buy|purchase|pay|place (your )?order|check ?out|confirm (order|payment|purchase)|complete (order|purchase)|send money|transfer funds)\b/i;
+  const PRICE = /([$€£¥₹]\s?\d)|(\d[\d.,]*\s?([$€£¥₹]|\b(usd|eur|gbp|sar|aed|jod|egp|kwd|qar|try|inr|jpy|cny)\b))|(\b(usd|eur|gbp|sar|aed|jod|egp|kwd|qar|try|inr|jpy|cny)\s?\d)|(\/\s?(mo|month|yr|year)\b)|\bper (month|year|week)\b/i;
+  // Inputs whose value is set as a whole (a picker, not typed characters).
+  const VALUE_TYPES = /^(date|time|datetime-local|month|week|color|range)$/;
   const CARD = 'input[autocomplete^="cc-"],input[name*="card" i],input[name*="cvv" i],input[name*="cvc" i],input[id*="cardnumber" i]';
   // The same words in other languages (no \b: it only knows ASCII letters).
   const MONEY_INTL = /(jetzt kaufen|kaufen|bezahlen|zahlungspflichtig|kostenpflichtig bestellen|acheter|payer|commander et payer|comprar|pagar|finalizar compra|acquista|paga ora|ordina e paga|kopen|betalen|afrekenen|köp|betala|kup teraz|zapłać|купить|оплатить|оформить заказ|購入|支払|注文を確定|구매|결제|购买|支付|付款|提交订单|شراء|ادفع|إتمام الشراء|satın al|öde)/i;
@@ -25,6 +40,15 @@
     return value.length > max ? value.slice(0, max - 1) + '…' : value;
   };
   const quote = text => JSON.stringify(text);
+  // A field's value as it is (edge spaces and line breaks kept), only cut:
+  // an agent copies it, and a trimmed copy is a different value.
+  const exact = (text, max = 60) => {
+    const value = String(text ?? '');
+    return value.length > max ? value.slice(0, max - 1) + '…' : value;
+  };
+  // What identifies an outline line across re-renders: without the value
+  // and the row context, which change while the element stays the same.
+  const printOf = line => line.replace(/ in ".*"$/, '').replace(/ value=.*$/, '');
 
   const visible = el => {
     if (!el.isConnected) return false;
@@ -37,7 +61,9 @@
     const explicit = el.getAttribute('role');
     if (explicit) return explicit.split(' ')[0];
     if (el.tagName === 'INPUT') return INPUT_ROLE[el.type] || 'textbox';
-    if (el.tagName === 'A') return el.hasAttribute('href') ? 'link' : 'generic';
+    // A list shown open (select multiple, or with a size): a listbox.
+    if (el.tagName === 'SELECT' && (el.multiple || el.size > 1)) return 'listbox';
+    if (el.tagName === 'A') return el.hasAttribute('href') ? 'link' : 'clickable';
     if (el.isContentEditable) return 'textbox';
     if (!TAG_ROLE[el.tagName] && el.getAttribute('draggable') === 'true') return 'draggable';
     return TAG_ROLE[el.tagName] || 'clickable';
@@ -61,23 +87,86 @@
     return '';
   };
 
+  // A name for a control that has no text at all (an icon): its id or class
+  // words, as "(icon: send reply)", so the agent can tell icons apart.
+  const GENERIC_CLASS = /^(icon|icons|ico|btn|button|fa|fas|far|fab|material-icons|glyphicon|svg|img|ui|js|is|has|active|hover|selected|clickable|pointer|hide|hidden|show|row|col|item|wrapper|container|inner|outer)$/i;
+  const words = s => String(s || '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/(\p{L})[-_]+(?=\p{L})/gu, '$1 ').replace(/_+/g, ' ').replace(/\b(fa|icon|ico|btn|glyphicon)\b/gi, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+  const iconHint = el => {
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) || el.getAttribute('role')) return '';
+    for (const node of [el, ...el.querySelectorAll('*')].slice(0, 4)) {
+      const own = words(node.id);
+      if (own && !/\d{3,}/.test(own)) return `(icon: ${own})`;
+      const cls = [...(node.classList || [])].filter(c => !GENERIC_CLASS.test(c) && !/\d{3,}|^[a-z]{1,2}$|^(css|sc|jsx|_)/i.test(c));
+      if (cls.length) return `(icon: ${[...new Set(words(cls.slice(0, 2).join(' ')).split(' '))].join(' ')})`;
+    }
+    return '';
+  };
+
+  // A field with no label element but a text right before it ("Genre" in a
+  // div, then the input), as many sites build forms: that text names it.
+  const visualLabel = el => {
+    if (!/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) return '';
+    for (let prev = el.previousElementSibling, steps = 0; prev && steps < 2; prev = prev.previousElementSibling, steps++) {
+      if (prev.matches('input,select,textarea,button')) break;
+      // A label is one short line, not a list or table that happens to come
+      // before the field.
+      if (/^(UL|OL|TABLE|DL)$/.test(prev.tagName)) break;
+      const text = (prev.innerText || '').trim();
+      if (text && text.length <= 40 && !text.includes('\n') && !prev.querySelector('input,select,textarea,button')) return text;
+    }
+    // The text of the field's own small box ("Name: [field]"), measured
+    // before it is cut: a whole page around the field is not its label.
+    const parent = el.parentElement;
+    const own = parent && parent !== document.body ? ownText(parent).replace(/\s+/g, ' ').trim() : '';
+    if (own.length >= 2 && own.length <= 40) return own;
+    // A field alone in its own box ("Departure Date" in a div, then a div
+    // holding only the input): the text before the box names it.
+    const box = el.parentElement;
+    if (box && box.children.length === 1 && box !== document.body) {
+      const prev = box.previousElementSibling;
+      const text = (prev?.innerText || '').trim();
+      if (prev && text && text.length <= 40 && !text.includes('\n') && !prev.querySelector('input,select,textarea,button')) return text;
+    }
+    return '';
+  };
+
+  // The text an element shows without the nested lists it holds: an open
+  // tree folder is "Keli", not "Keli Briana Jess".
+  const shownText = el => {
+    // innerText is what is shown; textContent (hidden text too) only for SVG,
+    // which has no innerText.
+    if (![...el.children].some(child => /^(UL|OL)$/.test(child.tagName) || child.getAttribute('role') === 'group')) return el.innerText ?? el.textContent;
+    return [...el.childNodes].filter(node => !(node.nodeType === 1 && (/^(UL|OL)$/.test(node.tagName) || node.getAttribute('role') === 'group'))).map(node => node.nodeType === 1 ? node.innerText : node.textContent).join(' ');
+  };
+  // "radio 2 of 3" for a radio or checkbox nothing names: "the 2nd radio
+  // button" then needs no counting.
+  const ordinal = el => {
+    if (!/^(radio|checkbox)$/.test(el.type) || !el.name) return '';
+    const group = [...(el.form || document).querySelectorAll(`input[type=${el.type}]`)].filter(other => other.name === el.name);
+    return group.length > 1 ? `${group.indexOf(el) + 1} of ${group.length}` : '';
+  };
+
   const nameOf = el => clean(
     el.getAttribute('aria-label') || labelText(el) ||
     (el.tagName === 'INPUT' && /^(button|submit|reset)$/.test(el.type) ? el.value : '') ||
     el.getAttribute('placeholder') || el.getAttribute('alt') ||
-    (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) ? el.getAttribute('title') || el.name : el.innerText || el.textContent) ||
+    (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) ? el.getAttribute('title') || visualLabel(el) || (/^(radio|checkbox)$/.test(el.type) ? '' : el.name) : shownText(el)) ||
     el.getAttribute('title') || el.querySelector?.('img[alt]')?.alt || el.querySelector?.('svg title')?.textContent ||
     // A control with no name of its own (a bare checkbox in a list row) is
     // named by the row it sits in, as a person reads it.
     (/^(checkbox|radio)$/.test(el.type || '') || !el.textContent?.trim()
       ? (el.closest('li,tr,[role=row],[role=listitem],label')?.innerText || '').slice(0, 80)
-      : '') || ''
+      : '') || ordinal(el) || (/^(radio|checkbox)$/.test(el.type || '') ? el.name : '') || iconHint(el) || ''
   );
 
   const interactive = el => {
     const tag = el.tagName;
     if (tag === 'INPUT') return el.type !== 'hidden';
+    if (listened.has(el)) return true;
     if (tag === 'A' && el.hasAttribute('href')) return true;
+    // A link without an address that a script handles (a datepicker's Prev
+    // and Next): it says so with a title or a data-handler.
+    if (tag === 'A' && (el.hasAttribute('title') || [...el.attributes].some(a => /^data-(handler|action|event)$/.test(a.name)))) return true;
     if (tag === 'BUTTON' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'SUMMARY') return true;
     if (ROLES.has(el.getAttribute('role'))) return true;
     if (el.isContentEditable && !el.parentElement?.isContentEditable) return true;
@@ -85,7 +174,7 @@
     if (el.getAttribute('draggable') === 'true') return true;
     // Script-driven controls (a div with a click listener) usually show the
     // pointer cursor. Only the outermost such element counts, not its text.
-    if (/^(A|DIV|SPAN|LI|IMG|SVG|I|TD|TR|P|SECTION|ARTICLE|LABEL)$/i.test(tag) && el.firstChild !== null || tag === 'IMG' || tag === 'A') {
+    if (/^(A|DIV|SPAN|LI|IMG|SVG|I|TD|TR|P|SECTION|ARTICLE|LABEL|H[1-6]|DT|SUMMARY)$/i.test(tag) && el.firstChild !== null || tag === 'IMG' || tag === 'A') {
       const parent = el.parentElement;
       // `cursor` is inherited, so a pointer parent does not make a child a
       // second target... unless the parent is a menu or list of such items,
@@ -144,28 +233,91 @@
     const role = roleOf(el);
     let line = `${role === 'textbox' && el.type && el.type !== 'text' && el.type !== 'textarea' ? `textbox(${el.type})` : role} ${quote(nameOf(el))}`;
     if (/^(INPUT|TEXTAREA)$/.test(el.tagName) && !/^(checkbox|radio|button|submit|reset|file|password|image)$/.test(el.type)) {
-      if (el.value) line += ` value=${quote(clean(el.value, 60))}`;
+      if (el.value) line += ` value=${quote(exact(el.value))}`;
+    } else if (el.tagName === 'SELECT' && (el.multiple || el.size > 1)) {
+      // An open list shows its options, not one value: name a few of them.
+      const chosen = [...el.selectedOptions].map(o => clean(o.textContent, 30)).join(', ');
+      line += ` value=${quote(clean(chosen, 60))}${el.multiple ? ' multiple' : ''}`;
+      const all = [...el.options].map(o => clean(o.textContent, 24));
+      line += ` options=${quote(all.slice(0, 6).join(' | ') + (all.length > 6 ? ` … ${all.length} in all` : ''))}`;
     } else if (el.tagName === 'SELECT') {
       line += ` value=${quote(clean(el.selectedOptions[0]?.textContent, 40))}`;
     } else if (el.isContentEditable) {
       const text = clean(el.innerText, 60);
       if (text) line = `textbox ${quote(clean(el.getAttribute('aria-label') || el.getAttribute('data-placeholder') || 'editor'))} value=${quote(text)}`;
     }
+    // "+", "x" or an icon means nothing on its own when a page has many of
+    // them: say which row it belongs to ("+" in "Chicken wings 2").
+    const own = nameOf(el);
+    let context = '';
+    if (!/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) && (own.length <= 1 || !/\p{L}{2}/u.test(own) || own.startsWith('(icon:'))) {
+      for (let up = el.parentElement, depth = 0; up && depth < 4 && up !== document.body; up = up.parentElement, depth++) {
+        // Without the symbols of the row's own buttons ("Chicken wings - +").
+        const around = (up.innerText || '').replace(/(^|\s)[^\p{L}\p{N}\s]{1,2}(?=\s|$)/gu, ' ').replace(/\s+/g, ' ').trim();
+        // Past a row's size it is a card or a page, not this control's row.
+        if (around.length > 80) break;
+        if (around.length > own.length + 2) {
+          // A row of numbers (a calendar week) says nothing more than the label.
+          if (/\p{L}{3,}/u.test(around)) context = ` in ${quote(clean(around, 60))}`;
+          break;
+        }
+      }
+    }
     if (el.checked || el.getAttribute('aria-checked') === 'true') line += ' checked';
     if (el.getAttribute('aria-selected') === 'true') line += ' selected';
     if (el.getAttribute('aria-expanded')) line += el.getAttribute('aria-expanded') === 'true' ? ' expanded' : ' collapsed';
+    // A menu item with a submenu opens it on hover; clicking may choose it.
+    else if (/^(true|menu)$/.test(el.getAttribute('aria-haspopup') || '')) line += ' haspopup';
     if (el.disabled || el.getAttribute('aria-disabled') === 'true') line += ' disabled';
+    else if (el.readOnly && /^(INPUT|TEXTAREA)$/.test(el.tagName)) line += ' readonly';
     if (el.required) line += ' required';
-    return line;
+    return line + context;
   };
+
+  // A popup's question ("Exit to home page?") is plain text, so the outline
+  // showed only its OK/Cancel. Dialogs, and containers named like popups that
+  // sit above the page with a button in them, get one text line.
+  const POPUP_NAME = /popup|modal|dialog|overlay|toast|alert|consent|cookie|lightbox|datepicker|calendar|picker/i;
+  const overlayText = el => {
+    const role = el.getAttribute('role');
+    const marked = role === 'dialog' || role === 'alertdialog' || el.getAttribute('aria-modal') === 'true';
+    if (!marked) {
+      if (!/^(DIV|SECTION|ASIDE|FORM)$/.test(el.tagName) || !POPUP_NAME.test(`${el.id} ${typeof el.className === 'string' ? el.className : ''}`)) return '';
+      if (!el.querySelector('button,[role=button],input[type=button],input[type=submit],a[href]')) return '';
+      if (!/^(fixed|absolute|sticky)$/.test(getComputedStyle(el).position)) return '';
+    }
+    if (!visible(el)) return '';
+    let text = el.innerText || '';
+    for (const control of el.querySelectorAll('button,[role=button],a[href],input,select,textarea')) {
+      const label = (control.innerText || control.value || '').trim();
+      if (label) text = text.replace(new RegExp(`(^|\\s)${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|$)`), '$1 ');
+    }
+    return clean(text, 160);
+  };
+
+  // Text of an element with that of its inline children (not controls),
+  // which are added to `absorbed` so they are not read a second time.
+  const INLINE = /^(SPAN|B|I|EM|STRONG|SMALL|SUB|SUP|MARK|CODE|KBD|ABBR|TIME|Q|S|U|FONT|BDI|DATA|VAR|CITE|DFN)$/;
+  const inlineText = (el, absorbed) => [...el.childNodes].map(node => {
+    if (node.nodeType === 3) return node.textContent;
+    if (node.nodeType !== 1 || !INLINE.test(node.tagName) || interactive(node) || node.querySelector('a[href],button,input,select,textarea')) return ' ';
+    absorbed.add(node);
+    return inlineText(node, absorbed);
+  }).join('');
 
   const collect = (opts = {}) => {
     const items = [];
+    const absorbed = new WeakSet();
     const height = innerHeight, width = innerWidth;
     walk(document.documentElement, (el, offset) => {
       if (el.getAttribute('aria-hidden') === 'true' && !el.contains(document.activeElement)) return false;
-      const heading = /^H[1-4]$/.test(el.tagName);
       const isInteractive = interactive(el);
+      // A heading that opens something (an accordion section) is a control.
+      const heading = /^H[1-4]$/.test(el.tagName) && !isInteractive;
+      if (!heading && !isInteractive) {
+        const said = overlayText(el);
+        if (said.length >= 4) items.push({ line: `dialog ${quote(said)}` });
+      }
       if (!heading && !isInteractive && !opts.text) return true;
       if (!visible(el)) return isInteractive || heading ? false : true;
       if (opts.viewport) {
@@ -180,18 +332,39 @@
       if (isInteractive) {
         const line = describe(el);
         const id = refOf(el);
-        prints.set(id, line.replace(/ value=.*$/, ''));
+        prints.set(id, printOf(line));
         items.push({ id, line, el });
         // Controls inside a link/button are part of that one target.
         return !/^(A|BUTTON|SUMMARY|SELECT)$/.test(el.tagName) && !/^(button|link|tab|menuitem|option)$/.test(el.getAttribute('role') || '');
       }
-      if (opts.text && /^(P|LI|TD|TH|DT|DD|BLOCKQUOTE|PRE|FIGCAPTION|LABEL|SPAN|DIV)$/.test(el.tagName)) {
-        const own = clean([...el.childNodes].filter(node => node.nodeType === 3).map(node => node.textContent).join(' '), 200);
+      if (opts.text && /^(P|LI|TD|TH|DT|DD|BLOCKQUOTE|PRE|FIGCAPTION|SPAN|DIV)$/.test(el.tagName) && !absorbed.has(el)) {
+        // A sentence with a word in its own inline element ("lower than
+        // <span>5</span>.") is read whole, and that element not again.
+        const own = clean(inlineText(el, absorbed), 200);
         if (own.length > 2) items.push({ line: `· ${own}` });
       }
       return true;
     });
-    return items;
+    // A clickable inside a clickable with the same name (a menu row and the
+    // wrapper of its text, a tree row and its label) is one target: keep the
+    // inner one, whose centre is surely on it.
+    return items.filter((item, i) => {
+      if (!item.el || roleOf(item.el) !== 'clickable') return true;
+      const name = nameOf(item.el);
+      // A drawn shape named only by its classes and the text label drawn on
+      // it (a pie menu's slice and its letter) are one target: keep the label.
+      const next = items[i + 1]?.el;
+      if (name.startsWith('(icon:') && next && !item.el.contains(next) && !next.contains(item.el) && !nameOf(next).startsWith('(icon:')) {
+        const box = item.el.getBoundingClientRect(), label = next.getBoundingClientRect();
+        const cx = label.left + label.width / 2, cy = label.top + label.height / 2;
+        if (cx >= box.left && cx <= box.right && cy >= box.top && cy <= box.bottom && label.width * label.height < box.width * box.height) return false;
+      }
+      for (let j = i + 1; j < Math.min(items.length, i + 4); j++) {
+        const inner = items[j].el;
+        if (inner && item.el.contains(inner) && roleOf(inner) === 'clickable' && nameOf(inner) === name) return false;
+      }
+      return true;
+    });
   };
 
   // Cloudflare's full-page check ("Just a moment..."). Recognised by its
@@ -202,6 +375,11 @@
   const interstitial = () => {
     if (document.querySelector('#challenge-form,#challenge-running,#challenge-stage,#cf-challenge-running,#cf-please-wait,.cf-browser-verification,[id^="cf-chl-widget"]')) return true;
     if (document.querySelector('script[src*="/cdn-cgi/challenge-platform/"][src*="/orchestrate/"],script[src*="/cdn-cgi/challenge-platform/"][src*="/chl_page/"]')) return true;
+    // AWS WAF's browser check: a nearly empty page that loads its challenge
+    // script and reloads itself when it passes.
+    // Sites behind AWS WAF also load its token script on ordinary pages
+    // (IMDb, Hugging Face): only a page with next to no text is the check.
+    if (document.body.children.length < 12 && (document.body.innerText || '').trim().length < 300 && document.querySelector('script[src*="awswaf"],script[src*="/challenge.js"],script[src*="/challenge.compact.js"]')) return true;
     if (document.body.children.length < 12) {
       for (const script of document.scripts) {
         if (!script.src && script.text.length < 30000 && script.text.includes('_cf_chl_opt')) return true;
@@ -341,7 +519,7 @@
   // A challenge widget counts only when a person would see one to solve.
   // Sites load invisible reCAPTCHA (v3, "size=invisible", the corner badge)
   // and hidden Turnstile frames on ordinary pages; those are not challenges.
-  const CHALLENGE = 'iframe[src*="recaptcha"],iframe[src*="hcaptcha"],iframe[src*="challenges.cloudflare.com"],.g-recaptcha,.h-captcha,.cf-turnstile,[data-sitekey]';
+  const CHALLENGE = 'iframe[src*="recaptcha"],iframe[src*="hcaptcha"],iframe[src*="challenges.cloudflare.com"],iframe[src*="captcha-delivery.com"],iframe[src*="arkoselabs"],iframe[src*="funcaptcha"],.g-recaptcha,.h-captcha,.cf-turnstile,[data-sitekey]';
   const challengeShown = el => {
     if (el.closest('.grecaptcha-badge') || el.getAttribute('data-size') === 'invisible') return false;
     if (/[?&]size=invisible/.test(el.getAttribute('src') || '')) return false;
@@ -366,6 +544,160 @@
     return out;
   };
 
+  // Elements the outline would skip that might be script-driven controls:
+  // visible, not already a target, not inside one, not page-sized (a page or
+  // section-wide listener is delegation, not a control). The native layer
+  // asks DevTools which of them have a click/mousedown listener and passes
+  // the indexes to markListened. Each element is checked once.
+  const listenerCandidates = (limit = 300) => {
+    const out = [];
+    // Text-less elements (icons) go first: nothing else finds them, while a
+    // text element usually shows a pointer cursor too.
+    const later = [];
+    const area = innerWidth * innerHeight;
+    let scanned = 0;
+    walk(document.documentElement, el => {
+      if (out.length >= limit || ++scanned > 6000) return false;
+      if (el === document.body || /^(HTML|HEAD|BR|HR|OPTION|IFRAME)$/.test(el.tagName)) return true;
+      if (/^(A|BUTTON|SELECT|TEXTAREA|INPUT|SUMMARY|LABEL)$/.test(el.tagName)) return false;
+      const tries = checked.get(el) || 0;
+      if (tries >= 3) return true;
+      if (interactive(el) || !visible(el)) return true;
+      checked.set(el, tries + 1);
+      const rect = el.getBoundingClientRect();
+      if (rect.width * rect.height > area * 0.35) return true;
+      if (/^(presentation|none)$/.test(el.getAttribute('role') || '')) return true;
+      // Text inside a row that is already a target (a date, a rating in a
+      // clickable list row) is part of that row; an icon there is its own.
+      if ((el.innerText || '').trim()) {
+        let covered = false;
+        // ...unless the element is one of a list of alike rows under that
+        // listener (menu items under a menu that delegates).
+        for (let up = el.parentElement, child = el, depth = 0; up && depth < 4 && !covered; child = up, up = up.parentElement, depth++) {
+          const alike = [...up.children].filter(other => other.tagName === child.tagName).length;
+          covered = (listened.has(up) || interactive(up)) && alike < 2;
+        }
+        if (covered) return true;
+        later.push(el);
+        return true;
+      }
+      out.push(el);
+      return true;
+    });
+    const all = out.concat(later.slice(0, Math.max(0, limit - out.length)));
+    candidateBatch = all;
+    return all;
+  };
+  const markListened = indexes => {
+    const marked = [];
+    for (const i of indexes) {
+      const el = candidateBatch[i];
+      if (el?.isConnected) { listened.add(el); marked.push(el); }
+    }
+    candidateBatch = [];
+    // A container of controls (a menu, a list with a delegated listener) is
+    // not itself a target, and a wrapper whose text is that of the control
+    // inside it is that control: keep only the control.
+    const CONTROL = 'a[href],button,input,select,textarea,[role=button],[role=link],[role=menuitem],[role=option],[role=tab],[role=checkbox],[role=radio],[role=treeitem]';
+    for (const el of marked) {
+      // Controls inside: native ones and script-driven ones found now or
+      // before (a row's trash and star icons).
+      const inner = [...el.querySelectorAll('*')].filter(node => (node.matches(CONTROL) || listened.has(node)) && visible(node));
+      const text = (el.innerText || '').trim();
+      if (inner.length > 1 || (inner.length === 1 && (inner[0].innerText || '').trim() === text)) listened.delete(el);
+    }
+    // A listener on a row and another on its text are one target to a
+    // person: keep the outer one when both show the same text.
+    for (const el of marked) {
+      const text = (el.innerText || '').trim();
+      for (let up = el.parentElement, depth = 0; up && depth < 3; up = up.parentElement, depth++) {
+        if ((listened.has(up) || interactive(up)) && (up.innerText || '').trim() === text && text) { listened.delete(el); break; }
+      }
+    }
+    return { marked: marked.filter(el => listened.has(el)).length };
+  };
+
+  // Sets a picker-style input (date, time, color, range...) to a value given
+  // in the field's own format or a common written one, with the events a
+  // person's change fires. Returns the value the field holds afterwards.
+  const pad = n => String(n).padStart(2, '0');
+  const normalizeValue = (type, raw) => {
+    const text = String(raw).trim();
+    const date = s => {
+      let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      if (m) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+      m = s.match(/^(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})$/);
+      if (m) {
+        let [a, b] = [+m[1], +m[2]];
+        // Month first unless the first number cannot be a month.
+        if (a > 12 && b <= 12) [a, b] = [b, a];
+        return `${m[3]}-${pad(a)}-${pad(b)}`;
+      }
+      const parsed = new Date(s);
+      return isNaN(parsed) ? s : `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}`;
+    };
+    const time = s => {
+      const m = s.match(/^(\d{1,2})(?::(\d{2}))?(?::(\d{2}))?\s*([ap]\.?m\.?)?$/i);
+      if (!m) return s;
+      let h = +m[1];
+      if (m[4]) { const pm = /p/i.test(m[4]); if (h === 12) h = pm ? 12 : 0; else if (pm) h += 12; }
+      return `${pad(h)}:${m[2] || '00'}${m[3] ? ':' + m[3] : ''}`;
+    };
+    switch (type) {
+      case 'date': return date(text);
+      case 'time': return time(text);
+      case 'datetime-local': {
+        const m = text.match(/^(.+?)[T\s,]+(\d{1,2}(?::\d{2}){0,2}\s*(?:[ap]\.?m\.?)?)$/i);
+        return m ? `${date(m[1])}T${time(m[2])}` : text;
+      }
+      case 'month': {
+        const m = text.match(/^(\d{1,2})[\/.-](\d{4})$/);
+        return m ? `${m[2]}-${pad(m[1])}` : text;
+      }
+      case 'color': {
+        const m = text.match(/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i);
+        if (!m) return text.toLowerCase();
+        const hex = m[1].length === 3 ? m[1].split('').map(c => c + c).join('') : m[1];
+        return '#' + hex.toLowerCase();
+      }
+      default: return text;
+    }
+  };
+  const setValue = (id, raw) => {
+    const found = lookup(id);
+    if (found.error) return found;
+    const el = found.el;
+    if (el.disabled || el.readOnly) return { error: 'disabled', detail: `${describe(el)} is read-only or disabled` };
+    const wanted = normalizeValue(el.type, raw);
+    el.focus();
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    setter.call(el, wanted);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    if (el.value !== wanted && !(el.type === 'range' && el.value === String(Number(wanted)))) {
+      const format = { date: 'YYYY-MM-DD or MM/DD/YYYY', time: 'HH:MM', 'datetime-local': 'YYYY-MM-DDTHH:MM', month: 'YYYY-MM', week: 'YYYY-Www', color: '#rrggbb', range: `a number from ${el.min || 0} to ${el.max || 100}` }[el.type] || 'its own format';
+      return { error: 'invalid', detail: `${describe(el)} did not take ${quote(String(raw))}; it expects ${format}` };
+    }
+    return { value: el.value, line: describe(el) };
+  };
+
+  // Whether a field holds a supplied value: the same text, the same value in
+  // a picker's own format (09/20/2019 is 2019-09-20), or a select showing it.
+  const holds = (id, raw) => {
+    const found = lookup(id);
+    if (found.error) return found;
+    const el = found.el, want = String(raw);
+    if (el.tagName === 'SELECT') {
+      const option = el.selectedOptions[0];
+      const low = want.trim().toLowerCase();
+      return { holds: !!option && (option.value.toLowerCase() === low || option.textContent.trim().toLowerCase() === low) };
+    }
+    const value = el.value ?? el.innerText ?? '';
+    if (value === want) return { holds: true };
+    if (el.tagName === 'INPUT' && VALUE_TYPES.test(el.type)) return { holds: value === normalizeValue(el.type, want) };
+    return { holds: false };
+  };
+
   const scrollState = () => {
     const root = document.scrollingElement || document.documentElement;
     return { y: Math.round(root.scrollTop), h: root.scrollHeight, vh: innerHeight };
@@ -374,7 +706,21 @@
   const snapshot = (opts = {}) => {
     const max = opts.max || 150;
     const start = opts.offset || 0;
-    let items = collect(opts);
+    // A short page is shown whole (its text lines too): one read instead of
+    // an outline and then the text.
+    const small = !opts.text && !opts.viewport && (document.body?.innerText || '').length <= 800;
+    let items = collect(small ? { ...opts, text: true } : opts);
+    if (small) {
+      // Text that only repeats a control's name (its label) is already there.
+      const names = items.filter(item => item.id).map(item => ((item.line.match(/"(.*?)"/) || [])[1] || '').toLowerCase()).filter(Boolean);
+      items = items.filter(item => {
+        if (item.id || !item.line.startsWith('· ')) return true;
+        const text = item.line.slice(2).toLowerCase().replace(/[:*]\s*$/, '').trim();
+        // "Username:" repeats the field "Username"; "5 - x = 79" does not
+        // repeat the field "x =" it explains.
+        return !names.some(name => name === text || name.includes(text) || (text.length <= 40 && text.includes(name) && name.length * 2 >= text.length));
+      });
+    }
     if (opts.filter) {
       const needle = String(opts.filter).toLowerCase();
       items = items.filter(item => item.line.toLowerCase().includes(needle));
@@ -429,7 +775,7 @@
     if (el?.isConnected) return { el };
     const print = prints.get(id);
     if (!print) return { error: 'stale', detail: `reference ${id} does not exist in this document` };
-    const matches = collect().filter(item => item.id && item.line.replace(/ value=.*$/, '') === print);
+    const matches = collect().filter(item => item.id && printOf(item.line) === print);
     if (matches.length === 1) return { el: matches[0].el, healed: matches[0].id };
     return { error: matches.length ? 'ambiguous' : 'stale', detail: `${matches.length} elements match ${print}` };
   };
@@ -453,7 +799,17 @@
 
   const moneyRisk = el => {
     const label = `${nameOf(el)} ${el.value || ''}`;
-    if (MONEY.test(label) || MONEY_INTL.test(label)) return clean(label, 60);
+    if (MONEY.test(label) || MONEY_INTL.test(label)) {
+      // "Subscribe", "Donate" or a ticked box move money only with a price
+      // in sight (on the control or in its small surrounding block).
+      const soft = SOFT_MONEY.test(label) && !HARD_MONEY.test(label) && !MONEY_INTL.test(label);
+      const choice = /^(checkbox|radio)$/.test(el.type || '');
+      if (soft || choice) {
+        const around = (el.closest('form,fieldset,li,tr,section,article') || el.parentElement)?.innerText || '';
+        if (!PRICE.test(label) && !PRICE.test(around.slice(0, 600))) return null;
+      }
+      return clean(label, 60);
+    }
     if (isSubmitter(el) && formRisk(el) === 'money') return 'submits a form with payment card fields';
     return null;
   };
@@ -524,8 +880,21 @@
     if (found.error) return found;
     const el = found.el;
     if (!visible(el)) return { error: 'hidden', detail: `${describe(el)} is not visible` };
-    el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
-    const rect = el.getBoundingClientRect();
+    // An open tree folder's box holds its children: its centre is on one of
+    // them. Aim at the folder's own label (its first part that is not the
+    // nested list).
+    const nested = node => node.nodeType === 1 && (/^(UL|OL)$/.test(node.tagName) || node.getAttribute('role') === 'group');
+    const head = [...el.children].some(nested) ? [...el.children].find(child => !nested(child) && visible(child)) : null;
+    (head || el).scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+    let rect = (head || el).getBoundingClientRect();
+    if (!head && [...el.children].some(nested)) {
+      const text = [...el.childNodes].find(node => node.nodeType === 3 && node.textContent.trim());
+      if (text) {
+        const range = document.createRange();
+        range.selectNodeContents(text);
+        rect = range.getBoundingClientRect();
+      }
+    }
     const [fx, fy] = frameOffset(el);
     const x = Math.round(fx + Math.min(Math.max(rect.left + rect.width / 2, 1), innerWidth - 1));
     const y = Math.round(fy + Math.min(Math.max(rect.top + rect.height / 2, 1), innerHeight - 1));
@@ -539,8 +908,27 @@
       money: moneyRisk(el), healed: found.healed || null,
       href: el.tagName === 'A' ? el.href : null,
     };
-    if (!ok && !opts.force) out.covered = hit ? describe(hit) : 'nothing at that point';
+    if (!ok && !opts.force) {
+      out.covered = hit ? describe(hit) : 'nothing at that point';
+      // An autocomplete's suggestions, left open over the form, close with
+      // Escape; the caller does that and asks again.
+      if (hit && hit.closest(SUGGESTIONS) && !el.closest(SUGGESTIONS)) out.coverMenu = true;
+    }
     return out;
+  };
+
+  // After text goes into a field that suggests (an autocomplete), waits for
+  // its suggestion list (scripts show it after a delay, often 300 ms) so the
+  // change set has it. Returns whether one is showing.
+  const SUGGESTIONS = '.ui-autocomplete,.ui-menu,[role=listbox],.autocomplete-suggestions,.tt-menu,.pac-container,.awesomplete ul,.typeahead.dropdown-menu';
+  const awaitSuggestions = async id => {
+    const el = els.get(id)?.deref() || activeDeep();
+    if (!el || !(el.matches?.('.ui-autocomplete-input,[aria-autocomplete],[role=combobox],[list],[data-autocomplete],.typeahead,.tt-input'))) return { suggests: false };
+    for (let waited = 0; waited < 900; waited += 60) {
+      if ([...document.querySelectorAll(SUGGESTIONS)].some(menu => visible(menu) && menu.querySelector('li,[role=option],div'))) return { suggests: true, shown: true };
+      await new Promise(resolve => setTimeout(resolve, 60));
+    }
+    return { suggests: true, shown: false };
   };
 
   // The field that has the keyboard focus, if it takes text.
@@ -562,8 +950,10 @@
     if (found.error) return found;
     let el = found.el;
     if (el.tagName === 'SELECT') return { kind: 'select' };
+    if (el.tagName === 'INPUT' && VALUE_TYPES.test(el.type)) return { kind: 'value', type: el.type };
     if (!(/^(INPUT|TEXTAREA)$/.test(el.tagName) || el.isContentEditable)) return { error: 'not-editable', detail: `${describe(el)} does not accept text` };
-    if (el.disabled || el.readOnly) return { error: 'disabled', detail: `${describe(el)} is read-only or disabled` };
+    if (el.disabled) return { error: 'disabled', detail: `${describe(el)} is disabled` };
+    if (el.readOnly) return { error: 'disabled', detail: `${describe(el)} is read-only: click it to open its picker, then choose the value there` };
     el.focus();
     // Some sites swap a field for a richer one the moment it takes the focus
     // (Wikipedia's search box): the typing goes to the field that has the
@@ -596,7 +986,7 @@
     if (el && !el.isConnected && editable(now)) {
       els.set(id, new WeakRef(now));
       ids.set(now, id);
-      prints.set(id, describe(now).replace(/ value=.*$/, ''));
+      prints.set(id, printOf(describe(now)));
     }
     return valueOf(id);
   };
@@ -606,14 +996,23 @@
     if (found.error) return found;
     const el = found.el;
     if (el.tagName !== 'SELECT') return { error: 'not-select', detail: `${describe(el)} is not a native select` };
-    const want = String(wanted).trim().toLowerCase();
-    const option = [...el.options].find(o => o.value.toLowerCase() === want || o.textContent.trim().toLowerCase() === want) ||
-      [...el.options].find(o => o.textContent.trim().toLowerCase().includes(want));
-    if (!option) return { error: 'no-option', detail: `options: ${[...el.options].slice(0, 30).map(o => clean(o.textContent, 30)).join(' | ')}` };
-    el.value = option.value;
+    const find = wanted => {
+      const want = String(wanted).trim().toLowerCase();
+      return [...el.options].find(o => o.value.toLowerCase() === want || o.textContent.trim().toLowerCase() === want) ||
+        [...el.options].find(o => o.textContent.trim().toLowerCase().includes(want));
+    };
+    // Several values for a list that takes several (select multiple): these
+    // options and no others, with one input and change event.
+    const many = Array.isArray(wanted) ? wanted : null;
+    if (many && !el.multiple) return { error: 'invalid', detail: `${describe(el)} takes one option; pass one value` };
+    const options = (many || [wanted]).map(find);
+    const missing = (many || [wanted]).filter((_, i) => !options[i]);
+    if (missing.length) return { error: 'no-option', detail: `no option ${missing.map(quote).join(', ')}; options: ${[...el.options].slice(0, 30).map(o => clean(o.textContent, 30)).join(' | ')}` };
+    if (many) for (const o of el.options) o.selected = options.includes(o);
+    else el.value = options[0].value;
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
-    return { value: clean(option.textContent, 60) };
+    return { value: many ? options.map(o => clean(o.textContent, 40)) : clean(options[0].textContent, 60) };
   };
 
   const valueOf = id => {
@@ -720,20 +1119,23 @@
   };
 
   // Resolves once the document has been quiet for `quiet` ms.
-  const settle = (quiet = 250, timeout = 4000) => new Promise(resolve => {
+  // `still`: when nothing at all changed for that long after an action, the
+  // page is not reacting and the full quiet window would only cost time.
+  const settle = (quiet = 250, timeout = 4000, still = 0) => new Promise(resolve => {
     const started = performance.now();
-    let last = started;
-    const observer = new MutationObserver(() => { last = performance.now(); });
+    let last = started, changed = false;
+    const observer = new MutationObserver(() => { last = performance.now(); changed = true; });
     observer.observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
     const check = () => {
       const now = performance.now();
       const quietFor = now - last;
-      if ((quietFor >= quiet && document.readyState === 'complete') || now - started >= timeout) {
+      const unmoved = still > 0 && !changed && now - started >= still && document.readyState === 'complete';
+      if (unmoved || (quietFor >= quiet && document.readyState === 'complete') || now - started >= timeout) {
         observer.disconnect();
         resolve({ stable: quietFor >= quiet, ms: Math.round(now - started) });
       } else setTimeout(check, 50);
     };
-    setTimeout(check, Math.min(quiet, 60));
+    setTimeout(check, Math.min(quiet, still || 60, 60));
   });
 
   const scroll = (opts = {}) => {
@@ -1036,7 +1438,7 @@
     if (event.key === 'Enter' && event.target.tagName === 'INPUT') noticeSignIn(event.target.form || document);
   }, true);
 
-  globalThis.__ag = { expire, focusedEditable, adoptFocused, riskAt, focusedMoney, pointerAt: () => at, pointTo, pointAt, keyNote, hideStage, typing, banner, fillLogin, searchResults, selection, find, setBase, element, rect, enterRisk, snapshot, target, focusForInput, choose, valueOf, text, links, tables, forms, settle, scroll, waitFor, meta, signals, injectionChunks, translateText, translatePage };
+  globalThis.__ag = { expire, focusedEditable, adoptFocused, riskAt, focusedMoney, pointerAt: () => at, pointTo, pointAt, keyNote, hideStage, typing, banner, fillLogin, searchResults, selection, find, setBase, element, rect, enterRisk, snapshot, target, focusForInput, choose, valueOf, text, links, tables, forms, settle, scroll, waitFor, meta, signals, injectionChunks, translateText, translatePage, listenerCandidates, markListened, setValue, holds, awaitSuggestions };
   // Helpers for the page tools (tools.js), which extend this agent.
   globalThis.__ag.h = { lookup, visible, clean, refOf, describe, signals, risk: el => moneyRisk(el) || (isSubmitter(el) && formRisk(el)) || null };
 })();

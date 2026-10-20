@@ -41,11 +41,12 @@ pub const RUNTIME_CPU: Artifact = Artifact {
 /// Hugging Face commit the model files are taken from.
 pub const MODEL_COMMIT: &str = "faa23e1366a356335d846b9e7c8434d94f1bd213";
 
-/// GoMini v4, Q8_0.
+/// GoMini v5, Q8_0 (the `v5` tag of the model repository; the SHA-256 is
+/// what makes it the file, so a changed upload is refused).
 pub const MODEL: Artifact = Artifact {
-    name: "GoMini-v4-Q8_0.gguf",
-    url: "https://huggingface.co/Mhmadhassnz/GoMini/resolve/faa23e1366a356335d846b9e7c8434d94f1bd213/gguf/GoMini-v4-Q8_0.gguf",
-    sha256: "f9093ddd6dceb436ee6581a5f886415125938f8d8585b585e9b4b67918cf0fd0",
+    name: "GoMini-v5-Q8_0.gguf",
+    url: "https://huggingface.co/Mhmadhassnz/GoMini/resolve/v5/gguf/GoMini-v5-Q8_0.gguf",
+    sha256: "a84988e5ea1a97e83e638355741cb343b6c6cee41189925decd1aaa50c9f04ba",
     size: 356_866_560,
 };
 
@@ -72,4 +73,4 @@ pub const MODEL_NOTICES: [Artifact; 3] = [
 ];
 
 /// Model name reported to agents and in Settings.
-pub const MODEL_NAME: &str = "GoMini-v4-Q8_0";
+pub const MODEL_NAME: &str = "GoMini-v5-Q8_0";

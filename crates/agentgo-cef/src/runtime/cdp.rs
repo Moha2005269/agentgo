@@ -543,6 +543,26 @@ pub async fn call_timeout(tab_id: &str, method: &str, params: Value, timeout_ms:
         .unwrap_or_else(|| Err(format!("{method} timed out after {timeout_ms} ms")))
 }
 
+/// Sends several DevTools calls at once, then waits for each (results in
+/// order): many small calls cost about one round trip instead of one each.
+pub async fn call_all(tab_id: &str, calls: Vec<(&str, Value)>, timeout_ms: u64) -> Vec<CdpResult> {
+    let sent: Vec<(String, Result<Slot<CdpResult>, String>)> = calls
+        .into_iter()
+        .map(|(method, params)| (method.to_string(), send(tab_id, method, params)))
+        .collect();
+    let mut out = Vec::with_capacity(sent.len());
+    for (method, slot) in sent {
+        out.push(match slot {
+            Ok(slot) => slot
+                .wait(timeout_ms)
+                .await
+                .unwrap_or_else(|| Err(format!("{method} timed out after {timeout_ms} ms"))),
+            Err(error) => Err(error),
+        });
+    }
+    out
+}
+
 /// Sends an input event and waits for its result, but stops waiting as soon
 /// as the page opens a JavaScript dialog: the renderer is then blocked inside
 /// the event handler and would only answer after the dialog is handled.
@@ -690,6 +710,32 @@ pub async fn agent_object(tab_id: &str, expression: &str) -> Result<String, Stri
         .as_str()
         .map(str::to_string)
         .ok_or_else(|| "element reference is no longer in the document".to_string())
+}
+
+/// [`agent_object`] with the remote objects kept in `group`, so everything
+/// derived from them is freed with one `Runtime.releaseObjectGroup`.
+pub async fn agent_object_in(
+    tab_id: &str,
+    expression: &str,
+    group: &str,
+) -> Result<String, String> {
+    // A page whose site has not answered has no document to ask yet: say so
+    // at once, as agent_eval does, instead of waiting out the call.
+    if super::state::tab_is_loading(tab_id) && !readable(tab_id, 1_500).await {
+        return Err(format!("{PENDING}: the site has not answered yet"));
+    }
+    let context = agent_context(tab_id).await?;
+    let result = call_timeout(
+        tab_id,
+        "Runtime.evaluate",
+        json!({"expression": expression, "contextId": context, "objectGroup": group}),
+        5_000,
+    )
+    .await?;
+    result["result"]["objectId"]
+        .as_str()
+        .map(str::to_string)
+        .ok_or_else(|| "the page returned nothing".to_string())
 }
 
 /// Evaluates in the page's own (main) world. Policy gates this upstream.

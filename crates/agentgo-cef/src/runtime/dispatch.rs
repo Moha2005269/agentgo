@@ -258,6 +258,21 @@ async fn navigate_open(caller: &Caller, params: &Value) -> Reply {
         }
     }
     let loaded = !state::tab_is_loading(&tab) && cdp::generation(&tab) != generation;
+    // Many pages build their content in load handlers, timers or requests
+    // started at load: wait for the document to be still for a moment (at
+    // most 1.5 s) so the reply shows the page an agent will act on, instead
+    // of the agent spending a turn reading it again.
+    if loaded {
+        let _ = cdp::agent_eval(&tab, "__ag.settle(200,800).then(() => true)", 1_500).await;
+    }
+    // A second navigation still in flight (a browser check reloading the
+    // page) is waited for within the same timeout before giving up.
+    while state::tab_is_loading(&tab)
+        && elapsed(&started) < timeout
+        && !cdp::readable(&tab, 700).await
+    {
+        exec::sleep(150).await;
+    }
     if state::tab_is_loading(&tab) && !cdp::readable(&tab, 700).await {
         return Ok(not_answered(&tab, &url, elapsed(&started)));
     }
@@ -284,6 +299,48 @@ async fn navigate_open(caller: &Caller, params: &Value) -> Reply {
         }
         other => other?,
     };
+    // A page that redirected itself while it was being read (a script or
+    // meta refresh, a passed browser check) is read again once, when its
+    // destination has loaded: an empty outline helps nobody.
+    // A browser check that passes on its own takes a few seconds, then
+    // navigates: up to about 10 s, read again while the page stays empty. A
+    // challenge a person must solve is handed over instead.
+    for _ in 0..4 {
+        let empty = out["page"].as_str().is_some_and(|p| !p.contains("] "));
+        let human = out.get("handoff").is_some() || out["signals"]["captcha"] == true;
+        if !(view != "none" && empty && !human && elapsed(&started) < timeout) {
+            break;
+        }
+        {
+            let before = cdp::generation(&tab);
+            let wait_until = std::time::Instant::now() + std::time::Duration::from_millis(2_500);
+            // Wait for the navigation the check starts, then for its load.
+            while cdp::generation(&tab) == before
+                && !state::tab_is_loading(&tab)
+                && std::time::Instant::now() < wait_until
+            {
+                exec::sleep(50).await;
+            }
+            let wait_until = std::time::Instant::now() + std::time::Duration::from_millis(4_000);
+            while state::tab_is_loading(&tab) && std::time::Instant::now() < wait_until {
+                exec::sleep(50).await;
+            }
+            let _ = cdp::agent_eval(&tab, "__ag.settle(250,1500).then(() => true)", 2_500).await;
+            let again = if view == "text" {
+                page::observe_view(
+                    caller,
+                    "observe.text",
+                    &json!({"tabId": tab, "max": params.get("max")}),
+                )
+                .await
+            } else {
+                page::observe_page(caller, &json!({"tabId": tab, "max": params.get("max")})).await
+            };
+            if let Ok(again) = again {
+                out = again;
+            }
+        }
+    }
     if loaded && !caller.is_shell() {
         let host = url
             .split("://")

@@ -26,8 +26,9 @@ use serde_json::{json, Value};
 /// Version of the record. Change it whenever a field changes meaning.
 pub const SCHEMA: &str = "agentgo.gomini.decision/1";
 
-/// (session, tab) -> (page revision, candidates offered, values supplied).
-type Offered = HashMap<(String, String), (String, Vec<Value>, Value)>;
+/// (session, tab) -> (page revision, candidates offered, values supplied,
+/// whether the subgoal clears boxes).
+type Offered = HashMap<(String, String), (String, Vec<Value>, Value, bool)>;
 
 thread_local! {
     /// The last record built per (session, tab): what `decision.apply` may run.
@@ -44,6 +45,22 @@ fn operation(role: &str) -> &'static str {
     }
 }
 
+/// Whether a subgoal asks to clear boxes rather than tick them.
+pub fn clears(subgoal: &str) -> bool {
+    let lower = subgoal.to_lowercase();
+    [
+        "uncheck",
+        "untick",
+        "deselect",
+        "unselect",
+        "clear the",
+        "turn off",
+        "unmark",
+    ]
+    .iter()
+    .any(|word| lower.contains(word))
+}
+
 /// Turns the outline (`[7] button "Save"` lines) into candidates.
 pub fn candidates(outline: &str) -> Vec<Value> {
     let mut out: Vec<Value> = outline
@@ -57,7 +74,16 @@ pub fn candidates(outline: &str) -> Vec<Value> {
             if label.contains(" disabled") {
                 return None;
             }
-            Some(json!({"id": format!("r{reference}"), "op": operation(role), "ref": reference, "target": label}))
+            let state = label.split(" in \"").next().unwrap_or(label);
+            let mut op = operation(role);
+            // A read-only field (a date picker's box) opens its picker when
+            // clicked; it takes no typed text.
+            if op == "fill" && state.contains(" readonly") {
+                op = "click";
+            }
+            Some(
+                json!({"id": format!("r{reference}"), "op": op, "ref": reference, "target": label}),
+            )
         })
         .collect();
     for (id, op, meaning) in [
@@ -98,11 +124,12 @@ pub fn record(
         _ => return Err("params.values must be an object of up to 20 named text values".into()),
     };
     let outline = view["page"].as_str().unwrap_or("");
+    let clearing = clears(subgoal);
     let offered = candidates(outline);
     OFFERED.with(|all| {
         all.borrow_mut().insert(
             (session.to_string(), tab.to_string()),
-            (revision.clone(), offered.clone(), values.clone()),
+            (revision.clone(), offered.clone(), values.clone(), clearing),
         )
     });
     Ok(json!({
@@ -129,7 +156,7 @@ pub fn resolve(
     let choice = params["choose"]
         .as_str()
         .ok_or("decision.apply needs params.choose: a candidate id from decision.record")?;
-    let (offered_at, offered, supplied) = OFFERED
+    let (offered_at, offered, supplied, clearing) = OFFERED
         .with(|all| {
             all.borrow()
                 .get(&(session.to_string(), tab.to_string()))
@@ -152,7 +179,18 @@ pub fn resolve(
     let reference = &candidate["ref"];
     Ok(match (candidate["op"].as_str().unwrap_or(""), choice) {
         ("click", _) => ("act.click".into(), json!({"tabId": tab, "ref": reference})),
-        ("check", _) => ("act.toggle".into(), json!({"tabId": tab, "ref": reference})),
+        // A radio button is chosen, never cleared by choosing it again.
+        ("check", _)
+            if candidate["target"]
+                .as_str()
+                .is_some_and(|t| t.starts_with("radio")) =>
+        {
+            ("act.check".into(), json!({"tabId": tab, "ref": reference}))
+        }
+        // A box is ticked (never cleared by choosing it again), or cleared
+        // when that is what the subgoal asks.
+        ("check", _) if clearing => ("act.toggle".into(), json!({"tabId": tab, "ref": reference})),
+        ("check", _) => ("act.check".into(), json!({"tabId": tab, "ref": reference})),
         ("fill", _) => (
             "act.fill".into(),
             json!({"tabId": tab, "ref": reference, "text": value()?}),
@@ -202,6 +240,56 @@ mod tests {
                 "done:done",
                 "escalate:escalate"
             ]
+        );
+    }
+
+    #[test]
+    fn boxes_are_ticked_and_read_only_fields_clicked() {
+        let outline = concat!(
+            "[1] checkbox \"Hhc\" checked\n",
+            "[2] checkbox \"4jU\"\n",
+            "[3] textbox \"\" readonly\n",
+            "[4] radio \"A\" checked"
+        );
+        let ops: Vec<String> = candidates(outline)
+            .iter()
+            .take_while(|c| c.get("ref").is_some())
+            .map(|c| {
+                format!(
+                    "{}:{}",
+                    c["id"].as_str().unwrap(),
+                    c["op"].as_str().unwrap()
+                )
+            })
+            .collect();
+        assert_eq!(ops, ["r1:check", "r2:check", "r3:click", "r4:check"]);
+        let view = json!({"page": outline});
+        record(
+            "c",
+            "t",
+            "1".into(),
+            &view,
+            json!([]),
+            &json!({"subgoal": "Check 4jU"}),
+        )
+        .unwrap();
+        // Choosing a ticked box again leaves it ticked.
+        assert_eq!(
+            resolve("c", "t", "1", &json!({"choose": "r1"})).unwrap().0,
+            "act.check"
+        );
+        record(
+            "c",
+            "t",
+            "2".into(),
+            &view,
+            json!([]),
+            &json!({"subgoal": "Uncheck Hhc"}),
+        )
+        .unwrap();
+        assert_eq!(
+            resolve("c", "t", "2", &json!({"choose": "r1"})).unwrap().0,
+            "act.toggle"
         );
     }
 

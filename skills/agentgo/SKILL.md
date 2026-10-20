@@ -18,7 +18,9 @@ Three files:
 - `references/gomini.md`: GoMini, the local model that takes routine steps.
 
 Over MCP the same text is served by `browser_guide` (`topic`: `start`,
-`commands`, `gomini`).
+`commands`, `gomini`). The command list is long (about 25,000 tokens): find
+what you need with `browser_guide {topic: "commands", query: "<words>"}`, or
+read one section with `group`.
 
 ## Connect
 

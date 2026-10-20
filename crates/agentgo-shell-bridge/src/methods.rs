@@ -1616,7 +1616,7 @@ const METHODS: &[(&str, &str, u8, &str)] = &[
     ),
     (
         "act.select_option",
-        "Choose an option of a native select.",
+        "Choose an option of a native select (value), or several of a multiple list (values).",
         4,
         "integration.agent_e2e",
     ),

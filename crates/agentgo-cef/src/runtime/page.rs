@@ -138,7 +138,149 @@ struct Snapshot {
 /// human is asked. In a real browser these usually finish by themselves.
 const INTERSTITIAL_GRACE_MS: u64 = 8_000;
 
+/// Listener types that make an element something a person can press.
+const PRESS_LISTENERS: &[&str] = &[
+    "click",
+    "mousedown",
+    "mouseup",
+    "pointerdown",
+    "pointerup",
+    "dblclick",
+    "touchstart",
+];
+
+/// Finds script-driven controls the outline cannot see from the page alone
+/// (an icon span with a click listener, a calendar cell listening for
+/// mousedown): DevTools reports each candidate's own listeners, asked all at
+/// once, and the page agent marks the ones a person could press. Each element
+/// is asked about once, so later observations only check new elements.
+async fn mark_listeners(tab: &str) {
+    const GROUP: &str = "agentgo-listeners";
+    let began = std::time::Instant::now();
+    let array = match cdp::agent_object_in(tab, "__ag.listenerCandidates(450)", GROUP).await {
+        Ok(array) => array,
+        Err(error) => {
+            listener_trace(&format!("candidates failed: {error}"));
+            return;
+        }
+    };
+    let props = cdp::call(
+        tab,
+        "Runtime.getProperties",
+        json!({"objectId": array, "ownProperties": true}),
+    )
+    .await;
+    if let Err(error) = &props {
+        listener_trace(&format!("getProperties failed: {error}"));
+    }
+    let elements: Vec<(u64, String)> = props
+        .ok()
+        .and_then(|p| p["result"].as_array().cloned())
+        .into_iter()
+        .flatten()
+        .filter_map(|p| {
+            let index = p["name"].as_str()?.parse::<u64>().ok()?;
+            Some((index, p["value"]["objectId"].as_str()?.to_string()))
+        })
+        .collect();
+    if !elements.is_empty() {
+        // DevTools reports only the listeners added in the world the node
+        // handle comes from; the page's own are in its main world, so each
+        // node is resolved there first (describe -> backend id -> resolve).
+        let described = cdp::call_all(
+            tab,
+            elements
+                .iter()
+                .map(|(_, object)| ("DOM.describeNode", json!({"objectId": object})))
+                .collect(),
+            3_000,
+        )
+        .await;
+        let resolved = cdp::call_all(
+            tab,
+            described
+                .iter()
+                .map(|d| {
+                    let backend = d
+                        .as_ref()
+                        .ok()
+                        .and_then(|d| d["node"]["backendNodeId"].as_u64());
+                    (
+                        "DOM.resolveNode",
+                        json!({"backendNodeId": backend.unwrap_or(0), "objectGroup": GROUP}),
+                    )
+                })
+                .collect(),
+            3_000,
+        )
+        .await;
+        let calls = resolved
+            .iter()
+            .map(|r| {
+                let object = r
+                    .as_ref()
+                    .ok()
+                    .and_then(|r| r["object"]["objectId"].as_str())
+                    .unwrap_or("")
+                    .to_string();
+                ("DOMDebugger.getEventListeners", json!({"objectId": object}))
+            })
+            .collect();
+        let answers = cdp::call_all(tab, calls, 3_000).await;
+        let hits: Vec<u64> = elements
+            .iter()
+            .zip(answers.iter())
+            .filter(|(_, answer)| {
+                answer.as_ref().is_ok_and(|a| {
+                    a["listeners"].as_array().into_iter().flatten().any(|l| {
+                        l["type"]
+                            .as_str()
+                            .is_some_and(|t| PRESS_LISTENERS.contains(&t))
+                    })
+                })
+            })
+            .map(|((index, _), _)| *index)
+            .collect();
+        listener_trace(&format!(
+            "{} ms: candidates {} described {} resolved {} answered {} hits {} first-errors {:?}",
+            began.elapsed().as_millis(),
+            elements.len(),
+            described.iter().filter(|d| d.is_ok()).count(),
+            resolved.iter().filter(|r| r.is_ok()).count(),
+            answers.iter().filter(|a| a.is_ok()).count(),
+            hits.len(),
+            described
+                .iter()
+                .chain(resolved.iter())
+                .chain(answers.iter())
+                .find_map(|r| r.as_ref().err()),
+        ));
+        let _ = agent(tab, "markListened", json!([hits]), 4_000).await;
+    }
+    let _ = cdp::call(
+        tab,
+        "Runtime.releaseObjectGroup",
+        json!({"objectGroup": GROUP}),
+    )
+    .await;
+}
+
+/// With `AGENTGO_TRACE_LISTENERS=<file>`, what listener detection found.
+fn listener_trace(line: &str) {
+    if let Some(path) = std::env::var_os("AGENTGO_TRACE_LISTENERS") {
+        use std::io::Write;
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+        {
+            let _ = writeln!(file, "{line}");
+        }
+    }
+}
+
 async fn snapshot(tab: &str, options: Value) -> Result<Snapshot, Fail> {
+    mark_listeners(tab).await;
     let mut value = agent(tab, "snapshot", options.clone(), 10_000).await?;
     if value["signals"]["challenge"] == "interstitial" {
         let started = std::time::Instant::now();
@@ -150,6 +292,14 @@ async fn snapshot(tab: &str, options: Value) -> Result<Snapshot, Fail> {
                 let cleared = fresh["signals"]["challenge"] != "interstitial";
                 value = fresh;
                 if cleared {
+                    // The check passed and the site is loading the real page:
+                    // read that page once it has loaded and settled, not the
+                    // empty document of the moment the check ended.
+                    settle(tab).await;
+                    mark_listeners(tab).await;
+                    if let Ok(after) = agent(tab, "snapshot", options.clone(), 10_000).await {
+                        value = after;
+                    }
                     break;
                 }
             }
@@ -330,12 +480,47 @@ fn diff_lines(old: &[String], new: &[String]) -> Vec<String> {
         }
     }
     let new_plain: HashSet<&str> = new.iter().map(String::as_str).collect();
+    // Removed references as runs ("- [215]-[245]" for a calendar month that
+    // was redrawn); removed text lines are only counted, since the agent saw
+    // them already. Headings and dialogs that went away are still named.
+    let mut gone: Vec<u64> = Vec::new();
+    let mut text_gone = 0;
     for line in old {
         match line_id(line) {
-            Some(id) if !seen.contains(id) => out.push(format!("- [{id}]")),
-            None if !new_plain.contains(line.as_str()) => out.push(format!("- {line}")),
+            Some(id) if !seen.contains(id) => {
+                if let Ok(n) = id.parse() {
+                    gone.push(n);
+                }
+            }
+            None if !new_plain.contains(line.as_str()) => {
+                if line.starts_with("· ") {
+                    text_gone += 1;
+                } else {
+                    out.push(format!("- {line}"));
+                }
+            }
             _ => {}
         }
+    }
+    gone.sort_unstable();
+    let mut i = 0;
+    while i < gone.len() {
+        let mut j = i;
+        while j + 1 < gone.len() && gone[j + 1] == gone[j] + 1 {
+            j += 1;
+        }
+        if j - i >= 2 {
+            out.push(format!("- [{}]-[{}]", gone[i], gone[j]));
+        } else {
+            out.extend(gone[i..=j].iter().map(|n| format!("- [{n}]")));
+        }
+        i = j + 1;
+    }
+    if text_gone > 0 {
+        out.push(format!(
+            "- {text_gone} text line{}",
+            if text_gone == 1 { "" } else { "s" }
+        ));
     }
     out
 }
@@ -347,7 +532,7 @@ async fn delta(
     before_url: &str,
     before_generation: u64,
 ) -> Result<Value, Fail> {
-    exec::sleep(60).await;
+    exec::sleep(40).await;
     if let Some(dialog) = dialog_note(tab) {
         return Ok(json!({"dialog": dialog}));
     }
@@ -359,7 +544,20 @@ async fn delta(
     let navigated = cdp::generation(tab) != before_generation || snap.url != before_url;
     let old = cdp::swap_lines(tab, snap.lines.clone());
     let mut out = json!({});
-    if navigated || old.is_empty() {
+    // Only the fragment changed (a link to #section, a hash router's small
+    // step): the change set says more for less, unless most of it changed.
+    let unhashed = |url: &str| url.split('#').next().unwrap_or("").to_string();
+    let fragment_only = navigated && unhashed(&snap.url) == unhashed(before_url);
+    let changes = (!old.is_empty() && fragment_only)
+        .then(|| diff_lines(&old, &snap.lines))
+        .filter(|changes| changes.len() <= 40);
+    if let Some(changes) = changes {
+        out["url"] = json!(snap.url);
+        out["changes"] = json!(changes.join(
+            "
+"
+        ));
+    } else if navigated || old.is_empty() {
         let shown: Vec<&str> = snap.lines.iter().take(60).map(String::as_str).collect();
         out["navigated"] = json!(navigated);
         out["url"] = json!(snap.url);
@@ -376,7 +574,14 @@ async fn delta(
             out["moreChanges"] = json!(changes.len() - shown.len());
         }
     }
-    if has_signals(&snap.signals) {
+    // A page's standing signals (it has a password field) were in the last
+    // observation already; after an action only news is worth the tokens: a
+    // new page, or a human check that appeared.
+    if has_signals(&snap.signals)
+        && (navigated
+            || snap.signals.get("captcha").is_some()
+            || snap.signals.get("challenge").is_some())
+    {
         out["signals"] = snap.signals.clone();
     }
     if let Some(handoff) = handoff_if_challenged(caller, tab, &snap.signals) {
@@ -408,7 +613,7 @@ async fn settle(tab: &str) {
         }
     }
     if cdp::dialog(tab).is_none() {
-        let _ = cdp::agent_eval(tab, "__ag.settle(200,2500)", 6_000).await;
+        let _ = cdp::agent_eval(tab, "__ag.settle(200,2500,120)", 6_000).await;
     }
 }
 
@@ -457,15 +662,27 @@ async fn resolve_target(
     submits: bool,
 ) -> Result<Value, Fail> {
     let id = reference(params)?;
-    let target = agent(
-        tab,
-        "target",
-        json!([id, {"force": bool_of(params, "force")}]),
-        8_000,
-    )
-    .await?;
+    let ask = || {
+        agent(
+            tab,
+            "target",
+            json!([id, {"force": bool_of(params, "force")}]),
+            8_000,
+        )
+    };
+    let mut target = ask().await?;
     if let Some(fail) = agent_error(&target) {
         return Err(fail);
+    }
+    // An autocomplete's suggestions left open over the form (after typing
+    // into it) are closed the way a person does, with Escape.
+    if target["coverMenu"] == true {
+        press_key(tab, "Escape", 0).await?;
+        exec::sleep(120).await;
+        target = ask().await?;
+        if let Some(fail) = agent_error(&target) {
+            return Err(fail);
+        }
     }
     let line = str_of(&target, "line").unwrap_or("element").to_string();
     if target["disabled"] == true {
@@ -849,6 +1066,44 @@ async fn press_key(tab: &str, name: &str, modifiers: u64) -> Result<(), Fail> {
     Ok(())
 }
 
+/// Types text as key presses (keydown, the character, keyup), for pages that
+/// listen for keys rather than for input events. A newline presses Enter and
+/// a tab presses Tab. Past 500 characters the rest is inserted at once.
+async fn type_keys(tab: &str, text: &str) -> Result<(), Fail> {
+    show(tab, "typing", json!([])).await;
+    let chars: Vec<char> = text.chars().collect();
+    let (keyed, rest) = chars.split_at(chars.len().min(500));
+    for c in keyed {
+        match c {
+            '\n' => press_key(tab, "Enter", 0).await?,
+            '\t' => press_key(tab, "Tab", 0).await?,
+            c => {
+                let s = c.to_string();
+                if c.is_ascii_graphic() && key_named(&s).is_some() {
+                    press_key(tab, &s, 0).await?;
+                } else {
+                    for (kind, with_text) in [("keyDown", true), ("keyUp", false)] {
+                        let mut event = json!({"type": kind, "key": s});
+                        if with_text {
+                            event["text"] = json!(s);
+                        }
+                        cdp::input(tab, "Input.dispatchKeyEvent", event)
+                            .await
+                            .map_err(Fail::internal)?;
+                    }
+                }
+            }
+        }
+    }
+    if !rest.is_empty() {
+        let rest: String = rest.iter().collect();
+        cdp::input(tab, "Input.insertText", json!({"text": rest}))
+            .await
+            .map_err(Fail::internal)?;
+    }
+    Ok(())
+}
+
 /// Whether the agent's pointer, typing and notices are drawn on the page.
 fn animated() -> bool {
     state::settings_snapshot()["agentAnimations"] != false
@@ -1118,7 +1373,10 @@ pub async fn act_press(caller: &Caller, params: &Value) -> Reply {
     Ok(out)
 }
 
-/// `act.type` / `keyboard.type`: inserts text at the current focus.
+/// `act.type` / `keyboard.type`: types text as key presses, into the element
+/// `ref` names (focused first, caret at the end) or else at the current focus.
+/// Unlike `act.fill` it keeps what the field holds and fires real key events,
+/// which pages that listen for keys (terminals, some autocompletes) need.
 pub async fn act_type(caller: &Caller, params: &Value) -> Reply {
     let tab = begin_action(caller, params).await?;
     let text = str_of(params, "text").ok_or_else(|| Fail::params("act.type needs params.text"))?;
@@ -1127,13 +1385,53 @@ pub async fn act_type(caller: &Caller, params: &Value) -> Reply {
     }
     let before_url = state::tab_url(&tab);
     let generation = cdp::generation(&tab);
+    if params.get("ref").is_some() {
+        let id = reference(params)?;
+        let focus = agent(&tab, "focusForInput", json!(id), 8_000).await?;
+        match agent_error(&focus) {
+            // Not a text field (a terminal box, a canvas editor): click it so
+            // the page moves its own focus there, then type.
+            Some(fail) if fail.code != ErrorCode::TargetStale => {
+                let target = resolve_target(caller, &tab, params, false).await?;
+                let (x, y) = (
+                    target["x"].as_f64().unwrap_or(0.0),
+                    target["y"].as_f64().unwrap_or(0.0),
+                );
+                mouse(&tab, "mouseMoved", x, y, "none", 0, 0).await?;
+                mouse(&tab, "mousePressed", x, y, "left", 1, 0).await?;
+                mouse(&tab, "mouseReleased", x, y, "left", 1, 0).await?;
+            }
+            Some(fail) => return Err(fail),
+            None if str_of(&focus, "kind") == Some("value") => {
+                let set = agent(&tab, "setValue", json!([id, text]), 8_000).await?;
+                if let Some(fail) = agent_error(&set) {
+                    return Err(fail);
+                }
+                let mut out = delta(caller, &tab, &before_url, generation).await?;
+                out["typed"] = json!(text.chars().count());
+                return Ok(out);
+            }
+            // focusForInput selects the content for a replacement; typing
+            // appends, so put the caret at the end.
+            None => {
+                let _ = cdp::agent_eval(
+                    &tab,
+                    "(() => { const el = document.activeElement; if (el && el.setSelectionRange && typeof el.value === 'string') { try { el.setSelectionRange(el.value.length, el.value.length); } catch (_) {} } else { const s = getSelection(); if (s && s.rangeCount) s.collapseToEnd(); } return true; })()",
+                    2_000,
+                )
+                .await;
+            }
+        }
+    }
     typing_gate(caller, &tab, params).await?;
     if bool_of(params, "submit") {
         enter_gate(caller, &tab, str_of(params, "approvalId")).await?;
     }
-    type_text(&tab, text).await?;
+    type_keys(&tab, text).await?;
     if bool_of(params, "submit") {
         press_key(&tab, "Enter", 0).await?;
+    } else if let Ok(id) = reference(params) {
+        let _ = agent(&tab, "awaitSuggestions", json!(id), 3_000).await;
     }
     let mut out = delta(caller, &tab, &before_url, generation).await?;
     out["typed"] = json!(text.chars().count());
@@ -1169,6 +1467,16 @@ async fn fill_field(
         if let Some(fail) = agent_error(&chosen) {
             return Err(fail);
         }
+    } else if str_of(&focus, "kind") == Some("value") {
+        // Date, time, colour and range inputs take no typed characters.
+        let text = match value {
+            Value::String(text) => text.clone(),
+            other => other.to_string(),
+        };
+        let set = agent(tab, "setValue", json!([id, text]), 8_000).await?;
+        if let Some(fail) = agent_error(&set) {
+            return Err(fail);
+        }
     } else {
         let text = match value {
             Value::String(text) => text.clone(),
@@ -1183,6 +1491,7 @@ async fn fill_field(
         }
     }
     let after = agent(tab, "adoptFocused", json!(id), 8_000).await?;
+    let _ = agent(tab, "awaitSuggestions", json!(id), 3_000).await;
     Ok(str_of(&after, "line").unwrap_or("").to_string())
 }
 
@@ -1355,10 +1664,14 @@ pub async fn act_check(caller: &Caller, method: &str, params: &Value) -> Reply {
 pub async fn act_select(caller: &Caller, params: &Value) -> Reply {
     let tab = begin_action(caller, params).await?;
     let id = reference(params)?;
+    // `values` chooses several options of a list that takes several.
     let value = params
-        .get("value")
+        .get("values")
+        .or_else(|| params.get("value"))
         .or_else(|| params.get("text"))
-        .ok_or_else(|| Fail::params("act.select_option needs params.value"))?;
+        .ok_or_else(|| {
+            Fail::params("act.select_option needs params.value (or values for a multiple list)")
+        })?;
     let before_url = state::tab_url(&tab);
     let generation = cdp::generation(&tab);
     show(&tab, "pointAt", json!([id, "click"])).await;

@@ -22,7 +22,7 @@ use agentgo_protocol::ErrorCode;
 use serde_json::{json, Value};
 
 use super::sessions::{self, Caller, Control, Fail, Reply};
-use super::{dispatch, exec, page, state};
+use super::{decision, dispatch, exec, page, state};
 
 /// The installation job, read by Settings while it runs.
 #[derive(Default)]
@@ -341,6 +341,8 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
     let mut last: Option<(String, String)> = None;
     // Supplied value name -> the field GoMini put it in.
     let mut bound: Vec<(String, u64)> = Vec::new();
+    // Steps that ran and checked out.
+    let mut steps_ran = 0usize;
     let mut model_ms = 0u128;
     let finish =
         |status: &str, reason: Option<String>, record: &Value, steps: &[Value], model_ms: u128| {
@@ -355,6 +357,8 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
             let compact: Vec<Value> = steps
                 .iter()
                 .map(|s| match (s["ok"].as_bool(), s.get("error")) {
+                    // Chosen but left for the planner (a send, a submit).
+                    _ if s["held"] == true => json!({"choice": s["choice"], "held": true}),
                     (_, Some(error)) => json!({"choice": s["choice"], "error": error}),
                     (Some(false), None) => json!({"choice": s["choice"], "ok": false}),
                     _ => s["choice"].clone(),
@@ -408,6 +412,18 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
             cancelled: stopped,
             attempts_remaining: max_steps - step,
         };
+        // A subgoal that names its boxes in quotes ("Check "Hhc" and "4jU"")
+        // is done when exactly those are ticked: say so instead of asking.
+        let named = named_boxes(subgoal, &record);
+        if !named.is_empty() && named.iter().all(|(_, _, checked)| *checked) {
+            return Ok(finish(
+                "done",
+                Some("every box the subgoal names is checked".into()),
+                &record,
+                &steps,
+                model_ms,
+            ));
+        }
         let full_text = page_text(caller, &tab).await;
         // What each supplied value's field holds now, so GoMini can tell a
         // finished form from an unfinished one (as in its form training).
@@ -415,7 +431,15 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
             Some(values) if !values.is_empty() => {
                 let mut fields = Vec::new();
                 for name in values.keys() {
+                    let expected = params["values"][name].as_str().unwrap_or_default();
                     let held = match bound.iter().find(|(n, _)| n == name) {
+                        // A field that holds the value in its own format (a
+                        // date picker) is shown as holding it, as supplied.
+                        Some((_, reference))
+                            if holds(&tab, *reference, expected).await == Ok(true) =>
+                        {
+                            json!(expected)
+                        }
                         Some((_, reference)) => call(
                             caller,
                             "runtime.get_value",
@@ -472,7 +496,7 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
                 Err(_) => break,
             }
         }
-        let choice = match outcome {
+        let mut choice = match outcome {
             Ok(choice) => choice,
             Err(e) => {
                 return Ok(finish(
@@ -484,6 +508,106 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
                 ))
             }
         };
+        // Supplied values come first: while one is not in its field, a click
+        // (Search, Submit), a planner's step or "done" is premature. Take
+        // GoMini's most likely step that fills a missing value, if the gate
+        // would allow it (it never offers a step the page does not have).
+        let missing_now: Vec<String> = readback
+            .as_ref()
+            .map(|fields| {
+                fields
+                    .iter()
+                    .filter(|(name, held)| held.as_str() != params["values"][name].as_str())
+                    .map(|(name, _)| name.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let fills_missing = |key: &str| {
+            attempt_actions
+                .iter()
+                .find(|(k, _)| k == key)
+                .and_then(|(_, a)| a.value.as_ref())
+                .is_some_and(|v| missing_now.contains(v))
+        };
+        let mut overridden = None;
+        if !missing_now.is_empty() && !fills_missing(&choice.choice) {
+            let best = choice
+                .probabilities
+                .iter()
+                .filter(|(key, _)| fills_missing(key))
+                .filter(|(key, _)| {
+                    gate::gate(
+                        key,
+                        &attempt_actions,
+                        &attempt_candidates,
+                        &executor,
+                        step,
+                        origin_ok,
+                    ) == gate::Verdict::Apply
+                })
+                .max_by(|a, b| a.1.total_cmp(&b.1))
+                .map(|(key, _)| key.clone());
+            if let Some(best) = best {
+                overridden = Some(std::mem::replace(&mut choice.choice, best));
+            }
+        }
+        // A value already in its field is not typed into a second one (it
+        // filled the same number into every textbox): take GoMini's best step
+        // that does not.
+        let placed: Vec<(String, u64)> = bound
+            .iter()
+            .filter(|(name, _)| !missing_now.contains(name))
+            .cloned()
+            .collect();
+        let refills = |key: &str| {
+            let Some((_, action)) = attempt_actions.iter().find(|(k, _)| k == key) else {
+                return false;
+            };
+            let target = attempt_candidates
+                .iter()
+                .find(|c| c["id"] == action.choose.as_str())
+                .and_then(|c| c["ref"].as_u64());
+            action.value.as_ref().is_some_and(|value| {
+                placed
+                    .iter()
+                    .any(|(name, reference)| name == value && Some(*reference) != target)
+            })
+        };
+        if refills(&choice.choice) {
+            let best = choice
+                .probabilities
+                .iter()
+                .filter(|(key, _)| !refills(key))
+                .max_by(|a, b| a.1.total_cmp(&b.1))
+                .map(|(key, _)| key.clone());
+            if let Some(best) = best {
+                let first = std::mem::replace(&mut choice.choice, best);
+                overridden.get_or_insert(first);
+            }
+        }
+        // With named boxes, a box step is one of them that is not ticked yet;
+        // GoMini's most likely such step is taken instead of another box.
+        let is_box = |key: &str| {
+            attempt_candidates.iter().any(|c| {
+                c["id"] == key
+                    && c["target"]
+                        .as_str()
+                        .is_some_and(|t| t.starts_with("checkbox "))
+            })
+        };
+        let wanted = |key: &str| named.iter().any(|(id, _, checked)| id == key && !checked);
+        if !named.is_empty() && is_box(&choice.choice) && !wanted(&choice.choice) {
+            let best = choice
+                .probabilities
+                .iter()
+                .filter(|(key, _)| wanted(key) && attempt_actions.iter().any(|(k, _)| k == key))
+                .max_by(|a, b| a.1.total_cmp(&b.1))
+                .map(|(key, _)| key.clone());
+            if let Some(best) = best {
+                let first = std::mem::replace(&mut choice.choice, best);
+                overridden.get_or_insert(first);
+            }
+        }
         let verdict = gate::gate(
             &choice.choice,
             &attempt_actions,
@@ -501,6 +625,9 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
             "p": (choice.top_probability * 1000.0).round() / 1000.0,
             "verdict": format!("{verdict:?}"),
         });
+        if let Some(first) = &overridden {
+            entry["instead_of"] = json!(first);
+        }
         match verdict {
             gate::Verdict::Stop => {
                 steps.push(entry);
@@ -517,14 +644,33 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
                 ));
             }
             gate::Verdict::Escalate(reason) => {
+                if reason.ends_with("is a step for the planner, not GoMini") {
+                    entry["held"] = json!(true);
+                }
                 steps.push(entry);
                 // Every supplied value is in place and what is left (submit,
                 // pay, sign in) is the planner's: the subgoal is done.
                 let filled = params["values"].as_object().is_some_and(|v| !v.is_empty())
                     && reason.ends_with("is a step for the planner, not GoMini")
-                    && unfilled(caller, &tab, params, &bound).await.is_empty();
+                    && unfilled(&tab, params, &bound).await.is_empty();
                 if filled {
-                    let next = reason.trim_end_matches(" is a step for the planner, not GoMini");
+                    // The planner gets the step with its reference, so it can
+                    // press it without reading the page again.
+                    let next = attempt_candidates
+                        .iter()
+                        .find(|c| c["id"] == choice.choice.as_str())
+                        .and_then(|c| {
+                            Some(format!(
+                                "[{}] {}",
+                                c["ref"].as_u64()?,
+                                c["target"].as_str()?
+                            ))
+                        })
+                        .unwrap_or_else(|| {
+                            reason
+                                .trim_end_matches(" is a step for the planner, not GoMini")
+                                .to_string()
+                        });
                     return Ok(finish(
                         "done",
                         Some(format!(
@@ -544,24 +690,44 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
                 ));
             }
             gate::Verdict::Done => {
-                // "Done" holds only when every supplied value is in its field.
-                let missing = unfilled(caller, &tab, params, &bound).await;
-                if missing.is_empty() {
+                // "Done" holds only when every supplied value is in its field,
+                // and, for a subgoal with no values, only after a step ran:
+                // a subgoal is something to do, so "done" before doing
+                // anything means GoMini found nothing it could do.
+                let missing = unfilled(&tab, params, &bound).await;
+                let has_values = params["values"].as_object().is_some_and(|v| !v.is_empty());
+                if missing.is_empty() && (has_values || steps_ran > 0) {
                     steps.push(entry);
-                    return Ok(finish("done", None, &record, &steps, model_ms));
+                    // The subgoal ended with a final step ("...and send it")
+                    // that GoMini leaves to the planner: say which control.
+                    let reason = final_step(subgoal, &record, &steps).map(|line| {
+                        format!(
+                            "the values are in place; {line} was not pressed: that step is yours"
+                        )
+                    });
+                    return Ok(finish("done", reason, &record, &steps, model_ms));
                 }
+                let why = if missing.is_empty() {
+                    "not done: no step was taken yet".to_string()
+                } else {
+                    format!("not done: {} not filled yet", missing.join(", "))
+                };
                 entry["ok"] = json!(false);
-                entry["error"] = json!(format!("not done: {} not filled yet", missing.join(", ")));
+                entry["error"] = json!(why);
                 steps.push(entry);
                 let again = recent.last().is_some_and(|r| r["choice"] == choice.choice);
                 recent.push(json!({"choice": choice.choice, "ok": false}));
                 if again || step + 1 == max_steps {
                     return Ok(finish(
                         "needs_help",
-                        Some(format!(
-                            "GoMini called it done, but these values are not in the page yet: {}",
-                            missing.join(", ")
-                        )),
+                        Some(if missing.is_empty() {
+                            "GoMini found no step to take toward this subgoal; read the page and act yourself or give a narrower subgoal".to_string()
+                        } else {
+                            format!(
+                                "GoMini called it done, but these values are not in the page yet: {}",
+                                missing.join(", ")
+                            )
+                        }),
                         &record,
                         &steps,
                         model_ms,
@@ -589,10 +755,47 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
                     .unwrap_or_default()
                     .to_string();
                 if last.as_ref() == Some(&(choice.choice.clone(), revision.clone())) {
+                    let target = attempt_candidates
+                        .iter()
+                        .find(|c| c["id"] == choice.choice.as_str())
+                        .and_then(|c| c["target"].as_str())
+                        .unwrap_or("it")
+                        .to_string();
                     steps.push(entry);
+                    // The subgoal named this very control in quotes ("Click
+                    // the "Next" button") and the click ran: that was the job.
+                    let label = target
+                        .split_once('"')
+                        .and_then(|(_, rest)| rest.rsplit_once('"'))
+                        .map(|(label, _)| label.trim().to_lowercase())
+                        .unwrap_or_default();
+                    let pressed = matches!(
+                        attempt_candidates
+                            .iter()
+                            .find(|c| c["id"] == choice.choice.as_str())
+                            .and_then(|c| c["op"].as_str()),
+                        Some("click" | "check")
+                    );
+                    if pressed
+                        && !label.is_empty()
+                        && subgoal.to_lowercase().contains(&format!("\"{label}\""))
+                    {
+                        return Ok(finish(
+                            "done",
+                            Some(format!("{target} was pressed as the subgoal asked; the page shows no visible change")),
+                            &record,
+                            &steps,
+                            model_ms,
+                        ));
+                    }
+                    // The step ran and checked out, but the page shows no
+                    // change: it may have done the job (a click that only
+                    // records something). The planner looks; GoMini cannot tell.
                     return Ok(finish(
                         "needs_help",
-                        Some("the same step on an unchanged page: no progress".into()),
+                        Some(format!(
+                            "the step ran ({target}) but the page did not visibly change; check whether that finished the subgoal before asking again"
+                        )),
                         &record,
                         &steps,
                         model_ms,
@@ -619,6 +822,42 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
                     .unwrap_or(Value::Null);
                 if let Err(fail) = &applied {
                     entry["error"] = json!(fail.message);
+                    // Covered by another offered control (the "+" of a
+                    // closed pie menu): press that one, once, and go on.
+                    let cover = fail.message.split_once(" is covered by ").map(|(_, rest)| {
+                        rest.split("; dismiss").next().unwrap_or(rest).to_string()
+                    });
+                    let opener = cover.as_deref().and_then(|cover| {
+                        attempt_candidates
+                            .iter()
+                            .find(|c| c["op"] == "click" && c["target"].as_str() == Some(cover))
+                            .and_then(|c| c["id"].as_str().map(str::to_string))
+                    });
+                    if let Some(opener) =
+                        opener.filter(|id| !steps.iter().any(|s| s["choice"] == id.as_str()))
+                    {
+                        let opened = call(
+                            caller,
+                            "decision.apply",
+                            json!({"tabId": tab, "choose": opener}),
+                        )
+                        .await;
+                        steps.push(entry);
+                        steps.push(json!({"choice": opener, "ok": opened.is_ok()}));
+                        if opened.is_ok() {
+                            steps_ran += 1;
+                            recent.push(json!({"choice": opener, "ok": true}));
+                            let _ = call(caller, "wait.settle", json!({"tabId": tab})).await;
+                            continue;
+                        }
+                        return Ok(finish(
+                            "needs_help",
+                            Some(fail.message.clone()),
+                            &record,
+                            &steps,
+                            model_ms,
+                        ));
+                    }
                     // The browser's own gates (approval, sign-in, a human
                     // check) are the planner's to handle, not GoMini's.
                     if matches!(
@@ -648,15 +887,7 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
                             .and_then(|c| c["ref"].as_u64()),
                     ) {
                         let expected = params["values"][name].as_str().unwrap_or_default();
-                        let read = call(
-                            caller,
-                            "runtime.get_value",
-                            json!({"tabId": tab, "ref": reference}),
-                        )
-                        .await
-                        .map(|v| v["value"].clone())
-                        .unwrap_or(Value::Null);
-                        ok = read.as_str() == Some(expected)
+                        ok = holds(&tab, reference, expected).await == Ok(true)
                             || attempt_candidates
                                 .iter()
                                 .any(|c| c["id"] == action.choose.as_str() && c["op"] == "select");
@@ -666,6 +897,9 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
                     }
                 }
                 entry["ok"] = json!(ok);
+                if ok {
+                    steps_ran += 1;
+                }
                 if stale {
                     entry["retried"] = json!(true);
                     steps.push(entry);
@@ -675,6 +909,9 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
                 recent.push(json!({"choice": choice.choice, "ok": ok}));
                 if !ok && steps.iter().rev().take(1).any(|s| s["ok"] == false) {
                     steps.push(entry);
+                    record = call(caller, "decision.record", record_params.clone())
+                        .await
+                        .unwrap_or(record);
                     return Ok(finish(
                         "needs_help",
                         Some("two steps in a row failed".into()),
@@ -687,6 +924,10 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
         }
         steps.push(entry);
     }
+    // The evidence shows the page as the last step left it.
+    record = call(caller, "decision.record", record_params.clone())
+        .await
+        .unwrap_or(record);
     Ok(finish(
         "needs_help",
         Some(format!("the step budget ({max_steps}) is used")),
@@ -696,34 +937,117 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
     ))
 }
 
+/// The checkboxes a subgoal names in quotes, as (candidate id, label,
+/// checked), when every quoted name is a checkbox on the page and the
+/// subgoal ticks rather than clears. Empty otherwise.
+fn named_boxes(subgoal: &str, record: &Value) -> Vec<(String, String, bool)> {
+    if decision::clears(subgoal) {
+        return Vec::new();
+    }
+    let quoted: Vec<String> = subgoal
+        .split('"')
+        .skip(1)
+        .step_by(2)
+        .map(|name| name.trim().to_lowercase())
+        .filter(|name| !name.is_empty())
+        .collect();
+    let boxes: Vec<(String, String, bool)> = record["candidates"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|c| {
+            let rest = c["target"].as_str()?.strip_prefix("checkbox \"")?;
+            let (label, after) = rest.split_once('"')?;
+            let state = after.split(" in \"").next().unwrap_or(after);
+            Some((
+                c["id"].as_str()?.to_string(),
+                label.trim().to_lowercase(),
+                state.contains(" checked"),
+            ))
+        })
+        .collect();
+    let named: Vec<(String, String, bool)> = boxes
+        .into_iter()
+        .filter(|(_, label, _)| quoted.contains(label))
+        .collect();
+    if quoted.is_empty()
+        || !quoted
+            .iter()
+            .all(|q| named.iter().any(|(_, label, _)| label == q))
+    {
+        return Vec::new();
+    }
+    named
+}
+
+/// Final steps a subgoal may end with that GoMini leaves to the planner.
+const FINAL_WORDS: [&str; 12] = [
+    "send", "submit", "search", "save", "post", "confirm", "apply", "book", "forward", "reply",
+    "log in", "sign in",
+];
+
+/// The control for the final step a subgoal names ("... and send it") when
+/// no step pressed it: `[106] clickable "(icon: send reply)"`.
+fn final_step(subgoal: &str, record: &Value, steps: &[Value]) -> Option<String> {
+    let lower = subgoal.to_lowercase();
+    // Only a last clause that starts with the step: "... and send it",
+    // "..., then click Submit".
+    let (_, tail) = lower
+        .rsplit_once(" and ")
+        .or_else(|| lower.rsplit_once(", then "))?;
+    let tail = ["then ", "click ", "press ", "the "]
+        .iter()
+        .fold(tail.trim(), |t, lead| t.strip_prefix(lead).unwrap_or(t));
+    let word = FINAL_WORDS.iter().find(|word| tail.starts_with(*word))?;
+    let candidate = record["candidates"].as_array()?.iter().find(|c| {
+        c["ref"].is_u64()
+            && c["op"] == "click"
+            && c["target"].as_str().is_some_and(|t| {
+                let t = t.to_lowercase();
+                t.contains(word)
+                    && !["close", "cancel", "discard"]
+                        .iter()
+                        .any(|no| t.contains(no))
+            })
+    })?;
+    let id = candidate["id"].as_str()?;
+    if steps.iter().any(|s| s["choice"] == id && s["held"] != true) {
+        return None;
+    }
+    Some(format!(
+        "[{}] {}",
+        candidate["ref"],
+        candidate["target"].as_str()?
+    ))
+}
+
+/// Whether the field `reference` holds `expected` (in a picker's own format
+/// too). `Err(true)` when the field is gone from the page.
+async fn holds(tab: &str, reference: u64, expected: &str) -> Result<bool, bool> {
+    match page::agent(tab, "holds", json!([reference, expected]), 4_000).await {
+        Ok(out) => match out["holds"].as_bool() {
+            Some(held) => Ok(held),
+            None => Err(out["error"] == "stale"),
+        },
+        Err(_) => Err(false),
+    }
+}
+
 /// The supplied values that are not (or no longer) in the field GoMini typed
 /// them into, by name.
-async fn unfilled(
-    caller: &Caller,
-    tab: &str,
-    params: &Value,
-    bound: &[(String, u64)],
-) -> Vec<String> {
+async fn unfilled(tab: &str, params: &Value, bound: &[(String, u64)]) -> Vec<String> {
     let mut missing = Vec::new();
     for (name, expected) in params["values"].as_object().into_iter().flatten() {
         let Some(expected) = expected.as_str() else {
             continue;
         };
         let filled = match bound.iter().find(|(n, _)| n == name) {
-            Some((_, reference)) => {
-                match call(
-                    caller,
-                    "runtime.get_value",
-                    json!({"tabId": tab, "ref": reference}),
-                )
-                .await
-                {
-                    Ok(v) => v["value"].as_str() == Some(expected),
-                    // The field is gone because the page moved on (the
-                    // search ran, the form was sent): the value was used.
-                    Err(fail) => fail.code == ErrorCode::TargetStale,
-                }
-            }
+            Some((_, reference)) => match holds(tab, *reference, expected).await {
+                Ok(held) => held,
+                // The field is gone because the page moved on (the search
+                // ran, the form was sent): the value was used.
+                Err(stale) => stale,
+            },
             None => false,
         };
         if !filled {
@@ -767,6 +1091,52 @@ pub async fn command(caller: &Caller, method: &str, params: &Value) -> Reply {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_final_step_left_undone_is_named_with_its_reference() {
+        let record = json!({"candidates": [
+            {"id": "r105", "op": "click", "ref": 105, "target": "clickable \"(icon: close reply)\""},
+            {"id": "r106", "op": "click", "ref": 106, "target": "clickable \"(icon: send reply)\""},
+            {"id": "done", "op": "done", "target": "the completion condition holds"},
+        ]});
+        assert_eq!(
+            final_step("Open the email, type the reply and send it", &record, &[]).as_deref(),
+            Some("[106] clickable \"(icon: send reply)\"")
+        );
+        assert_eq!(final_step("Type the reply", &record, &[]), None);
+        assert_eq!(
+            final_step(
+                "Type the reply and send it",
+                &record,
+                &[json!({"choice": "r106"})]
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn named_boxes_are_the_quoted_checkboxes() {
+        let record = json!({"candidates": [
+            {"id": "r1", "target": "checkbox \"JjH\""},
+            {"id": "r3", "target": "checkbox \"Hhc\" checked"},
+            {"id": "r4", "target": "checkbox \"4jUYvW\""},
+            {"id": "r7", "target": "button \"Submit\""},
+        ]});
+        let named = named_boxes(
+            "Check the boxes \"Hhc\" and \"4jUYvW\" and nothing else",
+            &record,
+        );
+        assert_eq!(
+            named,
+            vec![
+                ("r3".to_string(), "hhc".to_string(), true),
+                ("r4".to_string(), "4juyvw".to_string(), false)
+            ]
+        );
+        // A quoted name that is not a box, or a subgoal that clears: no rule.
+        assert!(named_boxes("Check \"Hhc\" and press \"Go\"", &record).is_empty());
+        assert!(named_boxes("Uncheck \"Hhc\"", &record).is_empty());
+    }
 
     #[test]
     fn origins_compare_scheme_and_host() {

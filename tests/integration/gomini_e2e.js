@@ -21,7 +21,7 @@ const { launch, attach, serve, rejects, refOf, reservePort, operator } = require
   try {
     const status = await browser.call("gomini.status");
     const installed = status.installed === true;
-    assert.equal(status.model, "GoMini-v4-Q8_0");
+    assert.equal(status.model, "GoMini-v5-Q8_0");
     assert.equal(status.enabled, false, "GoMini starts switched off");
     assert(status.downloadBytes > 380_000_000 && status.downloadBytes < 400_000_000, `download size ${status.downloadBytes}`);
     const decision = await browser.call("decision.status");

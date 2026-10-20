@@ -54,13 +54,14 @@ pub fn tools() -> Value {
         },
         {
             "name": "browser_act",
-            "description": "Act on an element by ref with real input, wait for the page to settle, and get back only what changed. action: click, fill (text), press (key), check, uncheck, select (value), hover, scroll (to: top|bottom, or ref), type (text at focus), upload (paths). Add submit:true to fill to press Enter. If the reply is approval.required or handoff.required, call browser_wait_human.",
+            "description": "Act on an element by ref with real input, wait for the page to settle, and get back only what changed. action: click, fill (text), press (key), check, uncheck, select (value, or values for a multiple list), hover, scroll (to: top|bottom, or ref), type (text at focus), upload (paths). Add submit:true to fill to press Enter. If the reply is approval.required or handoff.required, call browser_wait_human.",
             "inputSchema": object(json!({
                 "action": {"type": "string", "enum": ["click", "fill", "press", "check", "uncheck", "select", "hover", "scroll", "type", "upload", "double_click", "right_click"]},
                 "ref": {"type": "integer"},
                 "text": {"type": "string"},
                 "key": {"type": "string", "description": "e.g. Enter, Tab, Escape, ArrowDown, a"},
                 "value": {"type": "string"},
+                "values": {"type": "array", "items": {"type": "string"}, "description": "select: several options of a multiple list"},
                 "to": {"type": "string"},
                 "paths": {"type": "array", "items": {"type": "string"}},
                 "submit": {"type": "boolean"},
@@ -102,10 +103,11 @@ pub fn tools() -> Value {
         },
         {
             "name": "browser_guide",
-            "description": "How to use this browser, written for you. Call it once before your first browser action. topic=start: the working loop, rules that save turns, errors, accounts (short; read this first). topic=commands: every command with what it does (pass group to get one section: open, read, act, batch, accounts, person, browser). topic=gomini: GoMini, the optional local model that takes routine steps, and how to phrase subgoals for it.",
+            "description": "How to use this browser, written for you. Call it once before your first browser action. topic=start: the working loop, rules that save turns, errors, accounts (short; read this first). topic=commands: find commands: pass query (words, e.g. \"selector click\") for the matching ones, or group for one section (open, read, act, batch, accounts, person, browser; all = every command, about 25,000 tokens). topic=gomini: GoMini, the optional local model that takes routine steps, and how to phrase subgoals for it.",
             "inputSchema": object(json!({
                 "topic": {"type": "string", "enum": ["start", "commands", "gomini"]},
-                "group": {"type": "string", "enum": ["open", "read", "act", "batch", "accounts", "person", "browser"]}
+                "group": {"type": "string", "enum": ["open", "read", "act", "batch", "accounts", "person", "browser", "all"]},
+                "query": {"type": "string"}
             }), &[]),
         },
         {
@@ -132,14 +134,27 @@ const GUIDE_COMMANDS: &str = include_str!("../../../skills/agentgo/references/co
 const GUIDE_GOMINI: &str = include_str!("../../../skills/agentgo/references/gomini.md");
 
 /// The text `browser_guide` answers with.
-pub fn guide(topic: Option<&str>, group: Option<&str>) -> Result<String, String> {
-    match topic.unwrap_or("start") {
+pub fn guide(
+    topic: Option<&str>,
+    group: Option<&str>,
+    query: Option<&str>,
+) -> Result<String, String> {
+    // A query alone is a search of the commands.
+    let query = query.filter(|q| !q.trim().is_empty());
+    let topic = topic.unwrap_or(if query.is_some() { "commands" } else { "start" });
+    match topic {
         "start" => Ok(GUIDE_START.to_string()),
         "gomini" | "laya" => Ok(GUIDE_GOMINI.to_string()),
         "commands" => {
+            if let Some(query) = query {
+                return Ok(command_search(query));
+            }
             let Some(group) = group else {
-                return Ok(GUIDE_COMMANDS.to_string());
+                return Ok(command_index());
             };
+            if group == "all" {
+                return Ok(GUIDE_COMMANDS.to_string());
+            }
             let heading = match group {
                 "open" => "## Open and move",
                 "read" => "## Read the page",
@@ -163,6 +178,112 @@ pub fn guide(topic: Option<&str>, group: Option<&str>) -> Result<String, String>
             "unknown topic {other}; use start, commands or gomini"
         )),
     }
+}
+
+/// The commands list is about 25,000 tokens: by default an agent gets its
+/// sections and how to find one command, not the whole list.
+fn command_index() -> String {
+    let intro = GUIDE_COMMANDS
+        .split(
+            "
+## ",
+        )
+        .next()
+        .unwrap_or_default()
+        .trim_end();
+    let mut out = format!(
+        "{intro}
+
+Sections (pass group to read one, or query to find commands by words):
+"
+    );
+    for section in GUIDE_COMMANDS
+        .split(
+            "
+## ",
+        )
+        .skip(1)
+    {
+        let title = section.lines().next().unwrap_or_default();
+        let count = section.lines().filter(|l| l.starts_with("| `")).count();
+        out.push_str(&format!(
+            "- {title} ({count} commands)
+"
+        ));
+    }
+    out.push_str("
+Example: browser_guide {topic: \"commands\", query: \"selector\"}. group: \"all\" returns every command.");
+    out
+}
+
+/// The command rows that best match `query`: rows with more of its words
+/// first, and among them a word in the command's name or a whole word in its
+/// description before one inside a longer word ("select" in "selector").
+fn command_search(query: &str) -> String {
+    let words: Vec<String> = query
+        .split(|c: char| c.is_whitespace() || c == ',')
+        .filter(|w| !w.is_empty())
+        .map(str::to_lowercase)
+        .collect();
+    let mut rows: Vec<(usize, usize, &str)> = GUIDE_COMMANDS
+        .lines()
+        .filter(|l| l.starts_with("| `"))
+        .filter_map(|l| {
+            let lower = l.to_lowercase();
+            let name = lower.split('`').nth(1).unwrap_or("");
+            let text: Vec<&str> = lower
+                .split(|c: char| !c.is_alphanumeric() && c != '_')
+                .collect();
+            let (mut hits, mut score) = (0, 0);
+            for word in &words {
+                let stem = word.trim_end_matches('s');
+                let points = if name
+                    .split(['.', '_'])
+                    .any(|part| part == word || part == stem)
+                {
+                    4
+                } else if name.contains(word.as_str()) {
+                    3
+                } else if text
+                    .iter()
+                    .any(|t| *t == word || *t == stem || t.trim_end_matches('s') == stem)
+                {
+                    2
+                } else if lower.contains(word.as_str()) {
+                    1
+                } else {
+                    0
+                };
+                if points > 0 {
+                    hits += 1;
+                    score += points;
+                }
+            }
+            (hits > 0).then_some((hits, score, l))
+        })
+        .collect();
+    if rows.is_empty() {
+        return format!(
+            "No command matches {query:?}. Try other words, or pass group to read a section."
+        );
+    }
+    rows.sort_by_key(|a| std::cmp::Reverse((a.0, a.1)));
+    let shown = rows.len().min(12);
+    let mut out = String::from("| Command | What it does |\n|---|---|\n");
+    out.push_str(
+        &rows[..shown]
+            .iter()
+            .map(|(_, _, l)| *l)
+            .collect::<Vec<_>>()
+            .join("\n"),
+    );
+    if rows.len() > shown {
+        out.push_str(&format!(
+            "\n({} weaker matches not shown; add words to narrow)",
+            rows.len() - shown
+        ));
+    }
+    out
 }
 
 fn act_method(action: &str) -> Option<&'static str> {
@@ -359,7 +480,11 @@ fn error_text(error: &ClientError) -> String {
 
 fn call_tool(client: &mut Client, name: &str, args: &Value) -> Value {
     if name == "browser_guide" {
-        let text = guide(args["topic"].as_str(), args["group"].as_str());
+        let text = guide(
+            args["topic"].as_str(),
+            args["group"].as_str(),
+            args["query"].as_str(),
+        );
         return json!({"content": [{"type": "text", "text": text.clone().unwrap_or_else(|error| error)}], "isError": text.is_err()});
     }
     let (method, params) = match command_for(name, args) {
@@ -569,18 +694,40 @@ mod tests {
                 method.name
             );
         }
-        assert!(guide(None, None).unwrap().contains("# AgentGo"));
-        assert!(guide(Some("gomini"), None)
+        assert!(guide(None, None, None).unwrap().contains("# AgentGo"));
+        assert!(guide(Some("gomini"), None, None)
             .unwrap()
             .contains("agentgo.gomini.decision/1"));
         // The old topic name still answers.
-        assert_eq!(guide(Some("laya"), None), guide(Some("gomini"), None));
+        assert_eq!(
+            guide(Some("laya"), None, None),
+            guide(Some("gomini"), None, None)
+        );
         // The delegate tool is described compactly too.
         assert!(delegate_tool().to_string().len() < 1_500);
-        let act = guide(Some("commands"), Some("act")).unwrap();
+        let act = guide(Some("commands"), Some("act"), None).unwrap();
         assert!(act.contains("| `act.click` |") && !act.contains("| `navigate.url` |"));
-        assert!(guide(Some("nope"), None).is_err());
-        assert!(guide(Some("commands"), Some("nope")).is_err());
+        assert!(guide(Some("nope"), None, None).is_err());
+        assert!(guide(Some("commands"), Some("nope"), None).is_err());
+        let index = guide(Some("commands"), None, None).unwrap();
+        assert!(
+            index.len() < 4_000 && index.contains("Read the page"),
+            "{index}"
+        );
+        let found = guide(Some("commands"), None, Some("dom ref")).unwrap();
+        assert!(
+            found.contains("locate.dom_ref") && found.len() < 3_000,
+            "{found}"
+        );
+        assert!(guide(Some("commands"), Some("all"), None).unwrap().len() > 50_000);
+        // A query alone searches; the best rows come first, and few of them.
+        let select = guide(None, None, Some("select option multiple")).unwrap();
+        let first = select.lines().nth(2).unwrap_or_default();
+        assert!(
+            first.contains("act.select_option") || first.contains("form.multi_select"),
+            "{select}"
+        );
+        assert!(select.lines().filter(|l| l.starts_with("| `")).count() <= 12);
         // Every command the guide's first page tells an agent to call exists.
         for word in
             GUIDE_START.split(|c: char| !(c.is_ascii_alphanumeric() || c == '.' || c == '_'))

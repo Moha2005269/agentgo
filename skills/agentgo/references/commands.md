@@ -408,7 +408,7 @@ actions, `ref` from the outline.
 | `act.scroll` | Scroll the page or to a reference. |
 | `act.scroll_page` | Alias of act.scroll. |
 | `act.seek` | Jump to a time in seconds. |
-| `act.select_option` | Choose an option of a native select. |
+| `act.select_option` | Choose an option of a native select (value), or several of a multiple list (values). |
 | `act.set_value` | Set a field's value. Same as `act.fill`. |
 | `act.submit` | Submit a form by clicking its submit button. Same as `form.submit`. |
 | `act.toggle` | Toggle a checkbox. |

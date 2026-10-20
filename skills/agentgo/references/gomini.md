@@ -37,12 +37,30 @@ The answer:
 
 | `status` | Means | You do |
 |---|---|---|
-| `done` | GoMini says the completion holds (`verified: false`) | Glance at `evidence.status` (the page's status lines); usually enough. |
-| `needs_help` | `reason` says why: nothing fits, a step for you, no progress, too big | Read the page yourself and give a narrower subgoal, or do the step. |
+| `done` | GoMini says the completion holds (`verified: false`). It is only reported after at least one step ran, or when every supplied value is in its field | Glance at `evidence.status` (the page's status lines); usually enough. |
+| `needs_help` | `reason` says why: nothing fits, a step for you, no progress, too big, or "the step ran but the page did not visibly change" (check whether that already did the job) | Read the page yourself and give a narrower subgoal, or do the step. |
 | `stopped` | The person pressed Stop, or the budget ran out | Ask the person, or start over. |
 
-`steps` lists every choice GoMini made, in order (a failed step says why), so
-you can see what happened without reading the page again. `evidence.status`
+When the values are in place and what is left is yours (send, submit, sign
+in), `done` says which control with its reference: `reason: "... [106]
+clickable "(icon: send reply)" ... is yours"`. Press it with `browser_act`; no
+read needed. A subgoal that ends with such a step ("... and send it") gets
+the same answer.
+
+While a supplied value is not in its field yet, the browser takes GoMini's
+best step that fills it before any click (Search, Submit) or "done". Name the
+field for each value (`Primary City=city`, or "fill the City field with
+city=city"): a value is then only offered for the field you named.
+
+Boxes are ticked, never cleared by choosing them again; say "uncheck" or
+"clear" when a box should go off. Name boxes in quotes ("Check "Hhc" and
+"4jU"") and only those are ticked, and the delegation is done once they all
+are. A target hidden under the control that opens it (the "+" of a closed
+menu) is reached by pressing that control first.
+
+`steps` lists every choice GoMini made, in order (a failed step says why; a
+step left to you is `{"choice": ..., "held": true}`), so you can see what
+happened without reading the page again. `evidence.status`
 holds the page's visible status lines; on `needs_help` there is also
 `evidence.outline`, the start of the page as it is now.
 
@@ -101,6 +119,6 @@ actions, reveal-without-click and navigation; general browsing on arbitrary
 sites is not proven, and its probabilities are not calibrated. That is why
 every choice is checked independently and `done` is a claim, not a proof.
 Element-geometry questions are a known weak spot: ask the browser directly
-(`runtime.get_rect`). Model and runtime: `GoMini-v4-Q8_0` on llama.cpp
+(`runtime.get_rect`). Model and runtime: `GoMini-v5-Q8_0` on llama.cpp
 (`b11559`), on the graphics card through Vulkan when it can, else the
 processor; nothing leaves the computer.
