@@ -5,7 +5,7 @@
 //! the profile):
 //!
 //! ```text
-//! model\GoMini-v5-Q8_0.gguf, LICENSE, NOTICE, THIRD_PARTY_DATA.md
+//! model\GoMini-v6-Q8_0.gguf, LICENSE, NOTICE, THIRD_PARTY_DATA.md
 //! runtime\vulkan\llama-server.exe ...   (any GPU)
 //! runtime\cpu\llama-server.exe ...      (no usable GPU)
 //! installed.json                        what was chosen and checked

@@ -216,6 +216,8 @@ def run(a):
     tasks = build_tasks(a.suites.split(","), a.seed, PORT_BASE + 1)
     if a.tasks:
         tasks = [t for t in tasks if t["task"] in a.tasks.split(",")]
+    if a.goal_suffix:  # a side check (form-sequence-2 with its Submit said), never an official run
+        tasks = [dict(t, goal=t["goal"].rstrip() + " " + a.goal_suffix) for t in tasks]
     done = set()
     if (out / "runs.jsonl").exists():
         done = {json.loads(l)["run"] for l in (out / "runs.jsonl").open(encoding="utf-8")}
@@ -289,7 +291,8 @@ if __name__ == "__main__":
     p.add_argument("--tasks")
     p.add_argument("--workers", type=int, default=4)
     p.add_argument("--trace-dir")
-    p.add_argument("--pool", default="gw", choices=["gw", "gs", "bw", "bs"])
+    p.add_argument("--goal-suffix")
+    p.add_argument("--pool", default="gw", choices=["gw", "gs", "bw", "bs", "pw", "bu", "rw", "rs"])
     a = p.parse_args()
-    POOL, PORT_BASE = a.pool, {"gw": 9120, "gs": 9130, "bw": 9170, "bs": 9180}[a.pool]
+    POOL, PORT_BASE = a.pool, {"gw": 9120, "gs": 9130, "bw": 9170, "bs": 9180, "pw": 9101, "bu": 9100, "rw": 9190, "rs": 9191}[a.pool]
     run(a) if a.cmd == "run" else summary(a)

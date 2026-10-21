@@ -44,7 +44,7 @@ pub fn tools() -> Value {
         },
         {
             "name": "browser_read",
-            "description": "Read the current page. view: page (outline with refs, default), text (readable content), links, forms, tables, meta. Use filter to narrow, offset to page.",
+            "description": "Read the current page. view: page (outline with refs, default), text (readable content, text boxes and code included), links, forms, tables, meta. filter keeps matching lines; offset and max count lines.",
             "inputSchema": object(json!({
                 "view": {"type": "string", "enum": ["page", "text", "links", "forms", "tables", "meta", "changes"]},
                 "filter": {"type": "string"},

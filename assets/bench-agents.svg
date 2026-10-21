@@ -1,95 +1,93 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" width="1200" height="640" role="img" aria-label="AgentGo agent benchmark: same model, same 24 tasks, four browsers">
-<title>AgentGo agent benchmark: same model, same 24 tasks, four browsers</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" width="1200" height="640" role="img" aria-label="AgentGo agent benchmark: same model, same 37 tasks, four browsers">
+<title>AgentGo agent benchmark: same model, same 37 tasks, four browsers</title>
 <defs>
 <radialGradient id="glow" cx="12%" cy="0%" r="70%"><stop offset="0" stop-color="#ff6a2b" stop-opacity=".22"/><stop offset="1" stop-color="#ff6a2b" stop-opacity="0"/></radialGradient>
 <pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse"><path d="M36 0H0V36" fill="none" stroke="#fff" stroke-opacity=".035"/></pattern>
-<filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
 </defs>
 <style>
 text{font-family:'Segoe UI',Inter,system-ui,-apple-system,Helvetica,Arial,sans-serif}
-.mono{font-family:'Cascadia Code',Consolas,'SF Mono',Menlo,monospace}
 .grow{transform-box:fill-box;transform-origin:left center;animation:grow 1.4s cubic-bezier(.22,.8,.2,1) both}
 .fade{animation:fade .8s ease both}
 @keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
 @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-@media (prefers-reduced-motion:reduce){.grow,.fade,.pulse,.sweep{animation:none}}
+@media (prefers-reduced-motion:reduce){.grow,.fade{animation:none}}
 </style>
 <rect width="1200" height="640" rx="24" fill="#0e0d0c"/>
 <rect width="1200" height="640" rx="24" fill="url(#glow)"/>
 <rect width="1200" height="640" rx="24" fill="url(#grid)"/>
 <rect x=".5" y=".5" width="1199" height="639" rx="23.5" fill="none" stroke="#fff" stroke-opacity=".08"/>
-<text x="56" y="62" fill="#ff6a2b" font-size="13" font-weight="700" letter-spacing="2.4">AGENT BENCHMARK · BROWSERGYM MINIWOB++</text><text x="56" y="104" fill="#f4f0e8" font-size="32" font-weight="600" letter-spacing="-.5">Same model, same 24 tasks, four browsers</text><text x="56" y="134" fill="#a39a8e" font-size="15">gpt-6-luna drives each browser through its own MCP tools · one fresh session per task · the page's own reward decides</text>
+<text x="56" y="62" fill="#ff6a2b" font-size="13" font-weight="700" letter-spacing="2.4">AGENT BENCHMARK · MINIWOB++ AND SINGLE-PAGE APPS</text><text x="56" y="104" fill="#f4f0e8" font-size="32" font-weight="600" letter-spacing="-.5">Same model, same 37 tasks, four browsers</text><text x="56" y="134" fill="#a39a8e" font-size="15">gpt-6-luna drives each browser through its own MCP tools · one fresh session per task · all four at the same time · the page decides</text>
 <text x="56" y="200" fill="#f4f0e8" font-size="17" font-weight="600">Tasks solved</text>
 <text x="576" y="200" fill="#6f675e" font-size="12" text-anchor="end">higher is better</text>
-<text x="56" y="237" fill="#f4f0e8" font-size="14" font-weight="700">AgentGo 0.1.5</text>
+<text x="56" y="237" fill="#f4f0e8" font-size="14" font-weight="700">AgentGo + GoMini</text>
 <rect x="206" y="225" width="300" height="16" rx="5" fill="#fff" fill-opacity=".04"/>
-<rect class="grow" style="animation-delay:0.00s" x="206" y="225" width="300.0" height="16" rx="5" fill="#ff6a2b"/>
-<text class="fade" style="animation-delay:0.60s" x="576" y="238" fill="#f4f0e8" font-size="14" font-weight="700" text-anchor="end">91.7%</text>
-<text x="56" y="271" fill="#f4f0e8" font-size="14" font-weight="700">AgentGo + GoMini</text>
+<rect class="grow" style="animation-delay:0.00s" x="206" y="225" width="300.0" height="16" rx="5" fill="#ffb36b"/>
+<text class="fade" style="animation-delay:0.60s" x="576" y="238" fill="#f4f0e8" font-size="14" font-weight="700" text-anchor="end">37/37</text>
+<text x="56" y="271" fill="#f4f0e8" font-size="14" font-weight="700">AgentGo 0.1.6</text>
 <rect x="206" y="259" width="300" height="16" rx="5" fill="#fff" fill-opacity=".04"/>
-<rect class="grow" style="animation-delay:0.12s" x="206" y="259" width="300.0" height="16" rx="5" fill="#ffb36b"/>
-<text class="fade" style="animation-delay:0.72s" x="576" y="272" fill="#f4f0e8" font-size="14" font-weight="700" text-anchor="end">91.7%</text>
-<text x="56" y="305" fill="#a39a8e" font-size="14" font-weight="400">Playwright MCP</text>
+<rect class="grow" style="animation-delay:0.12s" x="206" y="259" width="300.0" height="16" rx="5" fill="#ff6a2b"/>
+<text class="fade" style="animation-delay:0.72s" x="576" y="272" fill="#f4f0e8" font-size="14" font-weight="700" text-anchor="end">37/37</text>
+<text x="56" y="305" fill="#a39a8e" font-size="14" font-weight="400">browser-use</text>
 <rect x="206" y="293" width="300" height="16" rx="5" fill="#fff" fill-opacity=".04"/>
-<rect class="grow" style="animation-delay:0.24s" x="206" y="293" width="245.5" height="16" rx="5" fill="#8d877f"/>
-<text class="fade" style="animation-delay:0.84s" x="576" y="306" fill="#f4f0e8" font-size="14" font-weight="400" text-anchor="end">75%</text>
-<text x="56" y="339" fill="#a39a8e" font-size="14" font-weight="400">browser-use</text>
+<rect class="grow" style="animation-delay:0.24s" x="206" y="293" width="283.8" height="16" rx="5" fill="#5e5852"/>
+<text class="fade" style="animation-delay:0.84s" x="576" y="306" fill="#f4f0e8" font-size="14" font-weight="400" text-anchor="end">35/37</text>
+<text x="56" y="339" fill="#a39a8e" font-size="14" font-weight="400">Playwright MCP</text>
 <rect x="206" y="327" width="300" height="16" rx="5" fill="#fff" fill-opacity=".04"/>
-<rect class="grow" style="animation-delay:0.36s" x="206" y="327" width="259.1" height="16" rx="5" fill="#5e5852"/>
-<text class="fade" style="animation-delay:0.96s" x="576" y="340" fill="#f4f0e8" font-size="14" font-weight="400" text-anchor="end">79.2%</text>
+<rect class="grow" style="animation-delay:0.36s" x="206" y="327" width="251.4" height="16" rx="5" fill="#8d877f"/>
+<text class="fade" style="animation-delay:0.96s" x="576" y="340" fill="#f4f0e8" font-size="14" font-weight="400" text-anchor="end">31/37</text>
 <text x="616" y="200" fill="#f4f0e8" font-size="17" font-weight="600">Median time per task</text>
 <text x="1136" y="200" fill="#6f675e" font-size="12" text-anchor="end">lower is better</text>
-<text x="616" y="237" fill="#f4f0e8" font-size="14" font-weight="400">AgentGo 0.1.5</text>
+<text x="616" y="237" fill="#f4f0e8" font-size="14" font-weight="700">AgentGo + GoMini</text>
 <rect x="766" y="225" width="300" height="16" rx="5" fill="#fff" fill-opacity=".04"/>
-<rect class="grow" style="animation-delay:0.15s" x="766" y="225" width="104.6" height="16" rx="5" fill="#ff6a2b"/>
-<text class="fade" style="animation-delay:0.75s" x="1136" y="238" fill="#f4f0e8" font-size="14" font-weight="400" text-anchor="end">32 s</text>
-<text x="616" y="271" fill="#f4f0e8" font-size="14" font-weight="700">AgentGo + GoMini</text>
+<rect class="grow" style="animation-delay:0.48s" x="766" y="225" width="201.0" height="16" rx="5" fill="#ffb36b"/>
+<text class="fade" style="animation-delay:1.08s" x="1136" y="238" fill="#f4f0e8" font-size="14" font-weight="700" text-anchor="end">40 s</text>
+<text x="616" y="271" fill="#f4f0e8" font-size="14" font-weight="700">AgentGo 0.1.6</text>
 <rect x="766" y="259" width="300" height="16" rx="5" fill="#fff" fill-opacity=".04"/>
-<rect class="grow" style="animation-delay:0.27s" x="766" y="259" width="103.3" height="16" rx="5" fill="#ffb36b"/>
-<text class="fade" style="animation-delay:0.87s" x="1136" y="272" fill="#f4f0e8" font-size="14" font-weight="700" text-anchor="end">32 s</text>
-<text x="616" y="305" fill="#a39a8e" font-size="14" font-weight="400">Playwright MCP</text>
+<rect class="grow" style="animation-delay:0.60s" x="766" y="259" width="209.1" height="16" rx="5" fill="#ff6a2b"/>
+<text class="fade" style="animation-delay:1.20s" x="1136" y="272" fill="#f4f0e8" font-size="14" font-weight="700" text-anchor="end">41 s</text>
+<text x="616" y="305" fill="#a39a8e" font-size="14" font-weight="400">browser-use</text>
 <rect x="766" y="293" width="300" height="16" rx="5" fill="#fff" fill-opacity=".04"/>
-<rect class="grow" style="animation-delay:0.39s" x="766" y="293" width="136.9" height="16" rx="5" fill="#8d877f"/>
-<text class="fade" style="animation-delay:0.99s" x="1136" y="306" fill="#f4f0e8" font-size="14" font-weight="400" text-anchor="end">42 s</text>
-<text x="616" y="339" fill="#a39a8e" font-size="14" font-weight="400">browser-use</text>
+<rect class="grow" style="animation-delay:0.72s" x="766" y="293" width="297.5" height="16" rx="5" fill="#5e5852"/>
+<text class="fade" style="animation-delay:1.32s" x="1136" y="306" fill="#f4f0e8" font-size="14" font-weight="400" text-anchor="end">59 s</text>
+<text x="616" y="339" fill="#a39a8e" font-size="14" font-weight="400">Playwright MCP</text>
 <rect x="766" y="327" width="300" height="16" rx="5" fill="#fff" fill-opacity=".04"/>
-<rect class="grow" style="animation-delay:0.51s" x="766" y="327" width="300.0" height="16" rx="5" fill="#5e5852"/>
-<text class="fade" style="animation-delay:1.11s" x="1136" y="340" fill="#f4f0e8" font-size="14" font-weight="400" text-anchor="end">92 s</text>
+<rect class="grow" style="animation-delay:0.84s" x="766" y="327" width="300.0" height="16" rx="5" fill="#8d877f"/>
+<text class="fade" style="animation-delay:1.44s" x="1136" y="340" fill="#f4f0e8" font-size="14" font-weight="400" text-anchor="end">59 s</text>
 <text x="56" y="400" fill="#f4f0e8" font-size="17" font-weight="600">Input tokens per task</text>
 <text x="576" y="400" fill="#6f675e" font-size="12" text-anchor="end">lower is better</text>
-<text x="56" y="437" fill="#f4f0e8" font-size="14" font-weight="700">AgentGo 0.1.5</text>
+<text x="56" y="437" fill="#f4f0e8" font-size="14" font-weight="700">AgentGo + GoMini</text>
 <rect x="206" y="425" width="300" height="16" rx="5" fill="#fff" fill-opacity=".04"/>
-<rect class="grow" style="animation-delay:0.30s" x="206" y="425" width="135.4" height="16" rx="5" fill="#ff6a2b"/>
-<text class="fade" style="animation-delay:0.90s" x="576" y="438" fill="#f4f0e8" font-size="14" font-weight="700" text-anchor="end">95k</text>
-<text x="56" y="471" fill="#f4f0e8" font-size="14" font-weight="400">AgentGo + GoMini</text>
+<rect class="grow" style="animation-delay:0.96s" x="206" y="425" width="93.4" height="16" rx="5" fill="#ffb36b"/>
+<text class="fade" style="animation-delay:1.56s" x="576" y="438" fill="#f4f0e8" font-size="14" font-weight="700" text-anchor="end">95k</text>
+<text x="56" y="471" fill="#f4f0e8" font-size="14" font-weight="700">AgentGo 0.1.6</text>
 <rect x="206" y="459" width="300" height="16" rx="5" fill="#fff" fill-opacity=".04"/>
-<rect class="grow" style="animation-delay:0.42s" x="206" y="459" width="154.7" height="16" rx="5" fill="#ffb36b"/>
-<text class="fade" style="animation-delay:1.02s" x="576" y="472" fill="#f4f0e8" font-size="14" font-weight="400" text-anchor="end">108k</text>
-<text x="56" y="505" fill="#a39a8e" font-size="14" font-weight="400">Playwright MCP</text>
+<rect class="grow" style="animation-delay:1.08s" x="206" y="459" width="111.6" height="16" rx="5" fill="#ff6a2b"/>
+<text class="fade" style="animation-delay:1.68s" x="576" y="472" fill="#f4f0e8" font-size="14" font-weight="700" text-anchor="end">114k</text>
+<text x="56" y="505" fill="#a39a8e" font-size="14" font-weight="400">browser-use</text>
 <rect x="206" y="493" width="300" height="16" rx="5" fill="#fff" fill-opacity=".04"/>
-<rect class="grow" style="animation-delay:0.54s" x="206" y="493" width="255.0" height="16" rx="5" fill="#8d877f"/>
-<text class="fade" style="animation-delay:1.14s" x="576" y="506" fill="#f4f0e8" font-size="14" font-weight="400" text-anchor="end">178k</text>
-<text x="56" y="539" fill="#a39a8e" font-size="14" font-weight="400">browser-use</text>
+<rect class="grow" style="animation-delay:1.20s" x="206" y="493" width="300.0" height="16" rx="5" fill="#5e5852"/>
+<text class="fade" style="animation-delay:1.80s" x="576" y="506" fill="#f4f0e8" font-size="14" font-weight="400" text-anchor="end">306k</text>
+<text x="56" y="539" fill="#a39a8e" font-size="14" font-weight="400">Playwright MCP</text>
 <rect x="206" y="527" width="300" height="16" rx="5" fill="#fff" fill-opacity=".04"/>
-<rect class="grow" style="animation-delay:0.66s" x="206" y="527" width="300.0" height="16" rx="5" fill="#5e5852"/>
-<text class="fade" style="animation-delay:1.26s" x="576" y="540" fill="#f4f0e8" font-size="14" font-weight="400" text-anchor="end">210k</text>
+<rect class="grow" style="animation-delay:1.32s" x="206" y="527" width="222.4" height="16" rx="5" fill="#8d877f"/>
+<text class="fade" style="animation-delay:1.92s" x="576" y="540" fill="#f4f0e8" font-size="14" font-weight="400" text-anchor="end">227k</text>
 <text x="616" y="400" fill="#f4f0e8" font-size="17" font-weight="600">Agent turns per task</text>
 <text x="1136" y="400" fill="#6f675e" font-size="12" text-anchor="end">lower is better</text>
-<text x="616" y="437" fill="#f4f0e8" font-size="14" font-weight="700">AgentGo 0.1.5</text>
+<text x="616" y="437" fill="#f4f0e8" font-size="14" font-weight="700">AgentGo + GoMini</text>
 <rect x="766" y="425" width="300" height="16" rx="5" fill="#fff" fill-opacity=".04"/>
-<rect class="grow" style="animation-delay:0.45s" x="766" y="425" width="175.0" height="16" rx="5" fill="#ff6a2b"/>
-<text class="fade" style="animation-delay:1.05s" x="1136" y="438" fill="#f4f0e8" font-size="14" font-weight="700" text-anchor="end">7.7</text>
-<text x="616" y="471" fill="#f4f0e8" font-size="14" font-weight="400">AgentGo + GoMini</text>
+<rect class="grow" style="animation-delay:1.44s" x="766" y="425" width="133.7" height="16" rx="5" fill="#ffb36b"/>
+<text class="fade" style="animation-delay:2.04s" x="1136" y="438" fill="#f4f0e8" font-size="14" font-weight="700" text-anchor="end">7.8</text>
+<text x="616" y="471" fill="#f4f0e8" font-size="14" font-weight="700">AgentGo 0.1.6</text>
 <rect x="766" y="459" width="300" height="16" rx="5" fill="#fff" fill-opacity=".04"/>
-<rect class="grow" style="animation-delay:0.57s" x="766" y="459" width="184.1" height="16" rx="5" fill="#ffb36b"/>
-<text class="fade" style="animation-delay:1.17s" x="1136" y="472" fill="#f4f0e8" font-size="14" font-weight="400" text-anchor="end">8.1</text>
-<text x="616" y="505" fill="#a39a8e" font-size="14" font-weight="400">Playwright MCP</text>
+<rect class="grow" style="animation-delay:1.56s" x="766" y="459" width="154.3" height="16" rx="5" fill="#ff6a2b"/>
+<text class="fade" style="animation-delay:2.16s" x="1136" y="472" fill="#f4f0e8" font-size="14" font-weight="700" text-anchor="end">9.0</text>
+<text x="616" y="505" fill="#a39a8e" font-size="14" font-weight="400">browser-use</text>
 <rect x="766" y="493" width="300" height="16" rx="5" fill="#fff" fill-opacity=".04"/>
-<rect class="grow" style="animation-delay:0.69s" x="766" y="493" width="295.5" height="16" rx="5" fill="#8d877f"/>
-<text class="fade" style="animation-delay:1.29s" x="1136" y="506" fill="#f4f0e8" font-size="14" font-weight="400" text-anchor="end">13.0</text>
-<text x="616" y="539" fill="#a39a8e" font-size="14" font-weight="400">browser-use</text>
+<rect class="grow" style="animation-delay:1.68s" x="766" y="493" width="300.0" height="16" rx="5" fill="#5e5852"/>
+<text class="fade" style="animation-delay:2.28s" x="1136" y="506" fill="#f4f0e8" font-size="14" font-weight="400" text-anchor="end">17.5</text>
+<text x="616" y="539" fill="#a39a8e" font-size="14" font-weight="400">Playwright MCP</text>
 <rect x="766" y="527" width="300" height="16" rx="5" fill="#fff" fill-opacity=".04"/>
-<rect class="grow" style="animation-delay:0.81s" x="766" y="527" width="300.0" height="16" rx="5" fill="#5e5852"/>
-<text class="fade" style="animation-delay:1.41s" x="1136" y="540" fill="#f4f0e8" font-size="14" font-weight="400" text-anchor="end">13.2</text>
-<text x="56" y="612" fill="#6f675e" font-size="12">AgentGo 0.1.5 · Playwright MCP 0.0.83 · browser-use 0.13.11 · 12 tasks from the 0.1.4 run + 12 never-seen tasks, seeds 41/51 · Windows 11, October 2026 · docs/benchmarks/agentgo-0.1.5.md</text>
+<rect class="grow" style="animation-delay:1.80s" x="766" y="527" width="248.6" height="16" rx="5" fill="#8d877f"/>
+<text class="fade" style="animation-delay:2.40s" x="1136" y="540" fill="#f4f0e8" font-size="14" font-weight="400" text-anchor="end">14.5</text>
+<text x="56" y="612" fill="#6f675e" font-size="12">AgentGo 0.1.6 (GoMini v6) · Playwright MCP 0.0.83 · browser-use 0.13.11 · 23 MiniWoB++ tasks (seeds 41/51) + 14 single-page-app tasks · Windows 11, October 2026 · docs/benchmarks/agentgo-0.1.6.md</text>
 </svg>

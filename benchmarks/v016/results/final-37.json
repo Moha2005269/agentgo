@@ -1,0 +1,56 @@
+{
+ "AgentGo 0.1.6 + GoMini v6": {
+  "solved": 37,
+  "mw": "23/23",
+  "spa": "14/14",
+  "wrong": 0,
+  "median": 39.8,
+  "mean": 45.7,
+  "tokens": 95260,
+  "turns": 7.8,
+  "fails": []
+ },
+ "AgentGo 0.1.6": {
+  "solved": 37,
+  "mw": "23/23",
+  "spa": "14/14",
+  "wrong": 0,
+  "median": 41.4,
+  "mean": 50.1,
+  "tokens": 113884,
+  "turns": 9.0,
+  "fails": []
+ },
+ "browser-use 0.13.11": {
+  "solved": 35,
+  "mw": "21/23",
+  "spa": "14/14",
+  "wrong": 2,
+  "median": 58.9,
+  "mean": 84.2,
+  "tokens": 306051,
+  "turns": 17.5,
+  "fails": [
+   "enter-date",
+   "email-inbox"
+  ]
+ },
+ "Playwright MCP 0.0.83": {
+  "solved": 31,
+  "mw": "19/23",
+  "spa": "12/14",
+  "wrong": 4,
+  "median": 59.4,
+  "mean": 77.6,
+  "tokens": 226900,
+  "turns": 14.5,
+  "fails": [
+   "social-media",
+   "navigate-tree",
+   "copy-paste-2",
+   "social-media-some",
+   "unkeyed-inbox",
+   "build-poll"
+  ]
+ }
+}

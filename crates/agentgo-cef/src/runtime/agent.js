@@ -1140,14 +1140,24 @@
       // A line break has no box of its own, so it is handled before the visibility test.
       if (tag === 'BR') { out.push('\n'); return; }
       if (/^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE|SVG|NAV|FOOTER|ASIDE|IFRAME|BUTTON|SELECT|FORM)$/.test(tag) && !opts.all) return;
-      if (node.getAttribute('aria-hidden') === 'true' || !visible(node)) return;
+      if (node.getAttribute('aria-hidden') === 'true') return;
+      if (!visible(node)) {
+        // A box of no size of its own (display: contents, the zero-size
+        // wrapper of GitHub's code view) can still show its children.
+        const style = getComputedStyle(node);
+        if (style.display !== 'none' && style.visibility !== 'hidden') for (const child of node.children) emit(child, pre);
+        return;
+      }
       const row = tag === 'LI' || tag === 'TR';
       if (/^H[1-6]$/.test(tag)) out.push(`\n\n${'#'.repeat(+tag[1])} `);
       else if (tag === 'LI') out.push('\n- ');
       else if (tag === 'TR') out.push('\n');
       else if (tag === 'TD' || tag === 'TH') out.push(' | ');
       else if (block.test(tag)) out.push('\n');
-      pre = pre || tag === 'PRE' || tag === 'TEXTAREA';
+      // A text box's content is its value, which code viewers (GitHub's
+      // read-only file view) fill by script: read that, as written.
+      if (tag === 'TEXTAREA') { out.push('\n' + node.value + '\n'); return; }
+      pre = pre || tag === 'PRE';
       if (tag === 'A' && opts.links && node.href && !node.href.startsWith('javascript:')) {
         out.push(`[${clean(node.innerText, 120)}](${node.href})`);
         return;
@@ -1158,9 +1168,26 @@
     };
     emit(root);
     const full = out.join('').replace(/[ \t]+/g, ' ').replace(/ ?\n ?/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    // Paged by lines, like the outline (`max` lines from line `offset`), and
+    // at most 12,000 characters a reply; `filter` keeps the lines that hold
+    // it, each with its line number.
+    let lines = full.split('\n').map((line, i) => [i + 1, line]);
+    if (opts.filter) {
+      const needle = String(opts.filter).toLowerCase();
+      lines = lines.filter(([, line]) => line.toLowerCase().includes(needle));
+    }
     const start = opts.offset || 0;
-    const max = opts.max || 6000;
-    return { url: location.href, title: clean(document.title, 120), text: full.slice(start, start + max), total: full.length, next: start + max < full.length ? start + max : null };
+    const max = opts.max || 200;
+    const page = [];
+    let size = 0, i = start;
+    for (; i < Math.min(lines.length, start + max); i++) {
+      const [n, line] = lines[i];
+      const shown = opts.filter ? `${n}: ${line}` : line;
+      if (page.length && size + shown.length > 12000) break;
+      page.push(shown);
+      size += shown.length + 1;
+    }
+    return { url: location.href, title: clean(document.title, 120), text: page.join('\n'), total: lines.length, next: i < lines.length ? i : null };
   };
 
   const links = (opts = {}) => {

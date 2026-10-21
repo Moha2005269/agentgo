@@ -119,6 +119,6 @@ actions, reveal-without-click and navigation; general browsing on arbitrary
 sites is not proven, and its probabilities are not calibrated. That is why
 every choice is checked independently and `done` is a claim, not a proof.
 Element-geometry questions are a known weak spot: ask the browser directly
-(`runtime.get_rect`). Model and runtime: `GoMini-v5-Q8_0` on llama.cpp
+(`runtime.get_rect`). Model and runtime: `GoMini-v6-Q8_0` on llama.cpp
 (`b11559`), on the graphics card through Vulkan when it can, else the
 processor; nothing leaves the computer.

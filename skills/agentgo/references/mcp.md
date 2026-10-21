@@ -12,7 +12,8 @@ what changed.
    `~` changed, `-` removed), not the page again. Work from it.
 3. `browser_read` only when you need the whole outline again (after a big
    change, or when the reply says a reference is stale). `view: "text"` for
-   prose, `filter` to narrow.
+   prose and code; `filter` keeps the lines that contain it (with their line
+   numbers); `offset` and `max` count lines in every view.
 
 ## Rules that save turns
 

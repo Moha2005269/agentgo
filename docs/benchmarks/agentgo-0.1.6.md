@@ -9,6 +9,26 @@ delegated a step to GoMini. Every fix below is checked by a test that drives
 the browser with no model (`benchmarks/v016/smoke.py`, `stress.py`), and the
 whole is measured by an agent.
 
+## Next to Playwright MCP and browser-use
+
+The same model on the same 37 tasks (23 MiniWoB++ and 14 SPA), the four
+browsers running at the same time, one fresh session per task:
+
+| | Solved | Wrong actions | Median time | Input tokens per task | Agent turns per task |
+|---|---:|---:|---:|---:|---:|
+| **AgentGo 0.1.6 + GoMini v6** | **37/37** | **0** | **40 s** | **95k** | **7.8** |
+| **AgentGo 0.1.6** | **37/37** | **0** | 41 s | 114k | 9.0 |
+| browser-use 0.13.11 | 35/37 | 2 | 59 s | 306k | 17.5 |
+| Playwright MCP 0.0.83 | 31/37 | 4 | 59 s | 227k | 14.5 |
+
+form-sequence-2 is scored with "Then press Submit." added to its instruction,
+for every browser; AgentGo's results are from the 0.1.6 release build. The
+task set leaves out click-pie (a pie menu whose items sit under the button
+that opens them) for every browser. Failed tasks: browser-use enter-date and
+email-inbox; Playwright MCP social-media, social-media-some, navigate-tree,
+copy-paste-2, unkeyed-inbox and build-poll. Records:
+`benchmarks/v016/results/final-37.json`.
+
 ## Method
 
 - **Agent:** gpt-6-luna (medium reasoning) through Factory's `droid exec`, a
