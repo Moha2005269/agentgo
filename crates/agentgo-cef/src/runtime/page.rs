@@ -1144,14 +1144,14 @@ async fn type_text(tab: &str, text: &str) -> Result<(), Fail> {
     }
     show(tab, "typing", json!([])).await;
     let chars: Vec<char> = text.chars().collect();
-    // At most about 40 steps, so a long text still takes well under a second.
+    // At most about 40 steps of 7 ms, so a long text takes under 0.3 s.
     let step = chars.len().div_ceil(40).max(1);
     for burst in chars.chunks(step) {
         let part: String = burst.iter().collect();
         cdp::input(tab, "Input.insertText", json!({"text": part}))
             .await
             .map_err(Fail::internal)?;
-        exec::sleep(14).await;
+        exec::sleep(7).await;
     }
     Ok(())
 }
@@ -1850,7 +1850,10 @@ pub async fn wait(caller: &Caller, method: &str, params: &Value) -> Reply {
     // of a batch, where it keeps its timing.
     if let Some(ms) = u64_of(params, "ms") {
         let ms = ms.min(10_000);
-        exec::sleep(ms).await;
+        // Counted from the last input (the click before it), not from the
+        // end of that click's settling: "wait 1 second" between two clicks.
+        let since = cdp::input_age_ms(&tab).filter(|age| *age < 10_000).unwrap_or(0);
+        exec::sleep(ms.saturating_sub(since)).await;
         return Ok(json!({"paused": ms}));
     }
     if !state::tab_is_loading(&tab) {

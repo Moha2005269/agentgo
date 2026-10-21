@@ -1515,7 +1515,8 @@
     const ui = ensureStage();
     const from = at || { x: Math.min(innerWidth - 40, Math.max(40, x + 160)), y: Math.max(30, y - 120) };
     const distance = Math.hypot(x - from.x, y - from.y);
-    const duration = reduced() ? 0 : Math.min(420, Math.max(140, 110 + distance * 0.42));
+    // Visible but quick: every action waits for it (0.1.5: 140-420 ms).
+    const duration = reduced() ? 0 : Math.min(220, Math.max(70, 55 + distance * 0.21));
     at = { x, y };
     const move = ui.pointer.animate(
       [{ transform: place(ui.pointer, from.x, from.y), opacity: 1 }, { transform: place(ui.pointer, x, y), opacity: 1 }],
