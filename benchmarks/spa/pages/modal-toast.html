@@ -1,0 +1,57 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Projects</title><link rel="stylesheet" href="/app.css"></head>
+<body>
+<header class="top"><b>Deployly</b><span>Projects</span></header>
+<main>
+<div class="card"><label>Confirmation code <input id="code" placeholder="e.g. ABC-123"></label> <button id="sendCode">Submit code</button> <span id="codeMsg" class="muted"></span></div>
+<div class="card"><h2 style="margin-top:0">Projects</h2><table><tbody id="rows"></tbody></table></div>
+</main>
+<div id="layer"></div><div class="toasts" id="toasts"></div>
+<script>
+// Modals and toasts: a "What's new" dialog pops up over the page 2 s after load
+// (its backdrop catches clicks until it is closed). Deleting a project opens a
+// confirm dialog (typed name, 250 ms animation); after the server answers
+// (0.9 s) a toast shows a confirmation code for 6 s.
+var projects = ['atlas', 'atlas-staging', 'atlas-staging-eu', 'borealis', 'cinder'], deleted = [], code = 'K7Q-' + (200 + Math.floor(BENCH.rand() * 700));
+var layer = document.getElementById('layer');
+function rows() {
+  document.getElementById('rows').innerHTML = projects.map(function (p) {
+    return '<tr><td><b>' + p + '</b></td><td class="muted">Updated 2 days ago</td><td><button class="danger" data-p="' + p + '">Delete</button></td></tr>';
+  }).join('');
+}
+document.getElementById('rows').addEventListener('click', function (e) { var b = e.target.closest('button[data-p]'); if (b) confirmDelete(b.dataset.p); });
+function modal(html) { layer.innerHTML = '<div class="backdrop" id="bd"><div class="modal" role="dialog" aria-modal="true">' + html + '</div></div>'; }
+function confirmDelete(p) {
+  modal('<h3>Delete project</h3><p>This deletes <b>' + p + '</b> and all its deployments. Type <b>' + p + '</b> to confirm.</p>' +
+    '<p><input id="typed" aria-label="Project name" style="width:100%"></p><button id="cancel">Cancel</button> <button class="danger" id="really" disabled>Delete this project</button>');
+  var typed = document.getElementById('typed'), really = document.getElementById('really');
+  setTimeout(function () { typed.focus(); }, 260);
+  typed.addEventListener('input', function () { really.disabled = typed.value !== p; });
+  document.getElementById('cancel').onclick = function () { layer.innerHTML = ''; };
+  really.onclick = function () {
+    really.disabled = true; really.textContent = 'Deleting…';
+    BENCH.api(900, {p: p}).then(function () {
+      layer.innerHTML = ''; projects = projects.filter(function (x) { return x !== p; }); deleted.push(p); rows();
+      BENCH.event('deleted', p);
+      var t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status');
+      t.textContent = 'Project ' + p + ' deleted. Confirmation code: ' + code;
+      document.getElementById('toasts').appendChild(t); setTimeout(function () { t.remove(); }, 6000);
+    });
+  };
+}
+document.getElementById('sendCode').onclick = function () {
+  var v = document.getElementById('code').value.trim().toUpperCase();
+  if (!deleted.length) { document.getElementById('codeMsg').textContent = 'No deletion to confirm yet.'; return; }
+  document.getElementById('codeMsg').textContent = 'Thanks.';
+  var ok = v === code && deleted.length === 1 && deleted[0] === BENCH.target.project;
+  BENCH.end(ok ? 1 : -1, 'code ' + v + ' deleted ' + deleted.join(','));
+};
+rows();
+setTimeout(function whatsNew() {
+  if (layer.innerHTML) return setTimeout(whatsNew, 500); // after the open dialog closes
+  BENCH.event('whats_new_opened', '');
+  modal('<h3>What\'s new in Deployly 2.0</h3><p>Preview deployments, faster builds and a new dashboard.</p><button class="primary" id="gotit">Got it</button>');
+  document.getElementById('gotit').onclick = function () { layer.innerHTML = ''; };
+  document.getElementById('bd').addEventListener('click', function (e) { if (e.target.id === 'bd') BENCH.event('backdrop_click', ''); });
+}, 2000);
+</script></body></html>

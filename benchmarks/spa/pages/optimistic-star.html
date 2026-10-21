@@ -1,0 +1,42 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Explore repositories</title><link rel="stylesheet" href="/app.css"></head>
+<body>
+<header class="top"><b>CodeHub</b><span>Explore</span></header>
+<main><div class="card"><h2 style="margin-top:0">Trending repositories</h2><div id="list"></div></div></main>
+<div class="toasts" id="toasts"></div>
+<script>
+// Optimistic UI: Star flips at once, then the server answers after 1.2 s. The
+// first star request for any repository fails (503), the button rolls back to
+// "Star" and an error toast asks to try again; the second one is saved.
+var REPOS = ['quantum-lattice', 'quantum-lattice-docs', 'tiny-raft', 'pixel-forge', 'fastqueue', 'lattice-ui'];
+var stars = {}, tries = {}, list = document.getElementById('list');
+function toast(msg, err) {
+  var t = document.createElement('div'); t.className = 'toast' + (err ? ' err' : ''); t.setAttribute('role', err ? 'alert' : 'status'); t.textContent = msg;
+  document.getElementById('toasts').appendChild(t); setTimeout(function () { t.remove(); }, 5000);
+}
+function render() {
+  list.innerHTML = '';
+  REPOS.forEach(function (r) {
+    var row = document.createElement('div'); row.className = 'row';
+    row.innerHTML = '<b class="grow">acme/' + r + '</b><span class="muted">' + (120 + r.length * 37 + (stars[r] === true ? 1 : 0)) + ' stars</span>';
+    var b = document.createElement('button'); b.setAttribute('aria-pressed', stars[r] ? 'true' : 'false');
+    b.textContent = stars[r] ? '★ Starred' : '☆ Star';
+    b.onclick = function () { toggle(r); };
+    row.appendChild(b); list.appendChild(row);
+  });
+}
+function toggle(r) {
+  var want = !stars[r]; stars[r] = want; render();
+  tries[r] = (tries[r] || 0) + 1;
+  var fail = want && tries[r] === 1;
+  BENCH.api(1200, {r: r, star: want}, fail ? 503 : 200).then(function () {
+    BENCH.event('saved', r + '=' + want);
+    if (want) { toast('Starred acme/' + r); BENCH.end(r === BENCH.target.repo ? 1 : -1, 'saved star on ' + r); }
+  }, function () {
+    stars[r] = !want; render();
+    BENCH.event('rollback', r);
+    toast('Couldn’t star acme/' + r + ' — server busy. Try again.', true);
+  });
+}
+render();
+</script></body></html>

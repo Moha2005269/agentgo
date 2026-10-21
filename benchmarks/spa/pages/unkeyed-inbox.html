@@ -1,0 +1,44 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Notifications</title><link rel="stylesheet" href="/app.css">
+<script src="/vendor/react.production.min.js"></script><script src="/vendor/react-dom.production.min.js"></script></head>
+<body><div id="root"></div>
+<script>
+// React with key={index} (the classic mistake): a new notification is put on
+// top every 2 s, 8 times. React reuses each row's DOM node for whatever item is
+// now at that index, so a node (and its Dismiss button) that showed one
+// notification shows another after the next insert.
+var h = React.createElement;
+var START = ['Invoice #4471 is overdue', 'Invoice #4417 was paid', 'New comment on "Q3 roadmap"', 'Your export is ready',
+             'Invoice #4471 reminder scheduled', 'Weekly report available'];
+var INCOMING = ['Deploy finished on staging', 'Ada mentioned you in #design', 'Password changed', 'Invoice #4478 is overdue',
+                'Disk usage at 81%', 'New sign-in from Firefox', 'Backup completed', 'Invoice #4470 is overdue'];
+var uid = 0;
+function mk(t) { return {id: ++uid, text: t, time: new Date(Date.UTC(2026, 9, 20, 9, uid * 3)).toISOString().slice(11, 16)}; }
+function App() {
+  var s = React.useState(START.map(mk)), items = s[0], set = s[1];
+  var c = React.useState(0), n = c[0], setN = c[1];
+  React.useEffect(function () {
+    var k = 0, t = setInterval(function () {
+      var next = mk(INCOMING[k++]);
+      set(function (xs) { return [next].concat(xs); }); setN(k);
+      if (k >= INCOMING.length) clearInterval(t);
+    }, 2000);
+    return function () { clearInterval(t); };
+  }, []);
+  function dismiss(item) {
+    set(function (xs) { return xs.filter(function (x) { return x.id !== item.id; }); });
+    BENCH.event('dismiss', item.text);
+    BENCH.end(item.text === BENCH.target.text ? 1 : -1, 'dismissed ' + item.text);
+  }
+  return h('div', null,
+    h('header', {className: 'top'}, h('b', null, 'Ops Center'), h('span', null, 'Notifications'),
+      h('span', {className: 'muted'}, n < INCOMING.length ? '● receiving…' : items.length + ' notifications')),
+    h('main', null, h('div', {className: 'card'},
+      items.map(function (it, i) {
+        return h('div', {className: 'row', key: i},
+          h('span', {className: 'muted'}, it.time), h('span', {className: 'grow'}, it.text),
+          h('button', {onClick: function () { dismiss(it); }}, 'Dismiss'));
+      }))));
+}
+ReactDOM.createRoot(document.getElementById('root')).render(h(App));
+</script></body></html>

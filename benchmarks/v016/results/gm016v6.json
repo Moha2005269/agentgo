@@ -1,0 +1,53 @@
+{
+ "mw-eval": {
+  "runs": 24,
+  "solved": 22,
+  "wrong_action": 0,
+  "timeouts": 1,
+  "stale": 0,
+  "turns": 6.7,
+  "calls": 5.2,
+  "delegations": 0,
+  "median_s": 39.3,
+  "mean_s": 55.0,
+  "input": 78910,
+  "output": 302,
+  "credits": 802,
+  "input_per_solved": 86083,
+  "credits_per_solved": 875
+ },
+ "spa": {
+  "runs": 14,
+  "solved": 13,
+  "wrong_action": 0,
+  "timeouts": 0,
+  "stale": 0,
+  "turns": 12.8,
+  "calls": 10.8,
+  "delegations": 0,
+  "median_s": 47.9,
+  "mean_s": 67.1,
+  "input": 184985,
+  "output": 668,
+  "credits": 1401,
+  "input_per_solved": 199215,
+  "credits_per_solved": 1509
+ },
+ "all": {
+  "runs": 38,
+  "solved": 35,
+  "wrong_action": 0,
+  "timeouts": 1,
+  "stale": 0,
+  "turns": 8.9,
+  "calls": 7.3,
+  "delegations": 0,
+  "median_s": 41.2,
+  "mean_s": 59.5,
+  "input": 117990,
+  "output": 437,
+  "credits": 1023,
+  "input_per_solved": 128104,
+  "credits_per_solved": 1110
+ }
+}

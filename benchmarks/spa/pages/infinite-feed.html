@@ -1,0 +1,40 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Feed</title><link rel="stylesheet" href="/app.css"></head>
+<body>
+<header class="top"><b>Crumb</b><span>Home feed</span></header>
+<main><div id="feed"></div><div id="more" class="card muted"><span class="spinner"></span> Loading more posts…</div></main>
+<script>
+// Infinite scroll: 8 posts at first; when the bottom comes into view the next
+// 8 load (1 s latency), up to 48. There is no "next page" button.
+var AUTH = ['@nadia_r', '@bakewell', '@sam_o', '@nadia_rr', '@lin.k', '@marco', '@oatmeal', '@priya'];
+var TOPICS = ['my sourdough starter finally doubled', 'new pasta machine', 'weekend hike photos', 'rye bread attempt #3', 'sourdough discard crackers',
+  'coffee setup', 'garden tomatoes', 'brioche failure', 'sourdough starter feeding schedule', 'kitchen renovation'];
+var POSTS = [];
+for (var i = 0; i < 48; i++) POSTS.push({id: i, who: AUTH[(i * 3) % 8], text: TOPICS[(i * 7) % 10], likes: (i * 13) % 40});
+POSTS[34] = {id: 34, who: '@nadia_r', text: 'my sourdough starter finally doubled', likes: 12};
+POSTS[5] = {id: 5, who: '@nadia_rr', text: 'my sourdough starter finally doubled', likes: 3};
+POSTS.forEach(function (p, i) { if (i !== 34 && p.who === '@nadia_r' && /starter/.test(p.text)) p.text = 'weekend hike photos'; });
+var shown = 0, loading = false, feed = document.getElementById('feed'), more = document.getElementById('more');
+function add(n) {
+  POSTS.slice(shown, shown + n).forEach(function (p) {
+    var c = document.createElement('div'); c.className = 'card';
+    c.innerHTML = '<b>' + p.who + '</b> <span class="muted">· post ' + (p.id + 1) + '</span><p>' + p.text + '</p>';
+    var b = document.createElement('button'); b.textContent = '♡ Like (' + p.likes + ')';
+    b.onclick = function () { b.textContent = '♥ Liked (' + (p.likes + 1) + ')'; b.disabled = true; BENCH.event('like', p.who + ' ' + p.id);
+      BENCH.end(p.id === BENCH.target.post ? 1 : -1, 'liked ' + p.who + ' post ' + p.id); };
+    c.appendChild(b); feed.appendChild(c);
+  });
+  shown += n;
+  if (shown >= POSTS.length) more.textContent = 'You’re all caught up.';
+}
+add(8);
+var io = new IntersectionObserver(function (es) {
+  if (!es[0].isIntersecting || loading || shown >= POSTS.length) return;
+  loading = true;
+  BENCH.api(1000, {}).then(function () {
+    add(8); loading = false; BENCH.event('loaded_page', String(shown));
+    io.unobserve(more); io.observe(more); // still in view: load again
+  });
+});
+io.observe(more);
+</script></body></html>

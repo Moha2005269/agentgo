@@ -52,6 +52,29 @@ What 0.1.5 fixed, measured on the same pages before and after:
 Methods, every table and the tasks that failed:
 [docs/benchmarks/agentgo-0.1.5.md](docs/benchmarks/agentgo-0.1.5.md).
 
+### 0.1.6: single-page apps
+
+0.1.6 was built from a benchmark of client-side-rendered apps (late content,
+hydration, re-sorting and `key={index}` lists, virtual and endless lists,
+client-side routing, optimistic rollbacks): references remember the row they
+were shown in, repeated buttons say which row they belong to, long lists
+scroll in one call, waits take named conditions, and actions can say what
+must happen (`expect`). The same model on 38 tasks (24 MiniWoB++, 14 SPA),
+the setups measured at the same time, 76 runs each:
+
+| | Solved | Wrong actions | Input tokens per solved task | Turns | Median time |
+|---|---:|---:|---:|---:|---:|
+| AgentGo 0.1.5 | 92.1% | 2 | 162k | 10.9 | 41 s |
+| **AgentGo 0.1.6** | 92.1% | **1** | **135k** | **9.4** | **37 s** |
+| AgentGo 0.1.5 + GoMini v5 | 86.8% | 6 | 154k | 10.2 | 39 s |
+| **AgentGo 0.1.6 + GoMini v6** | **94.7%** | **0** | 152k | 10.0 | 38 s |
+
+On a 300-row virtual list 0.1.6 uses 59-78k input tokens instead of
+249-400k; on a `key={index}` inbox it dismisses the right notification 4 of
+4 times (0.1.5: 0 of 4). Details, and where 0.1.6 is not better yet:
+[docs/benchmarks/agentgo-0.1.6.md](docs/benchmarks/agentgo-0.1.6.md) and
+[docs/benchmarks/agentgo-spa.md](docs/benchmarks/agentgo-spa.md).
+
 ## A browser for you, and for the agent next to you
 
 AgentGo is a real Chromium browser for Windows with no ads, no tracking and no accounts to create. It is also built so an AI agent (Claude Code, Codex, any MCP host or your own program) can use it the way a person would, while you watch and stay in charge.
@@ -93,7 +116,7 @@ Create accounts just for your agent, or let it use yours. Saved sign-ins are enc
 ### GoMini, a model that knows the browser
 > **GoMini is still in development.** v5 is a development release, not a finished model: use it for routine steps and let your agent check its work.
 
-GoMini is a small model (322M parameters) trained on how this browser works. It runs on your computer (your graphics card through Vulkan when it can, else the processor) and takes the routine steps of a task, filling the values your agent supplies, clicking through, scrolling, so your agent hands over one subgoal instead of reading every page. It only picks between steps the browser offers; payments, sign-ins and final submissions always go back to your agent. Setup offers it (on by default, about 390 MB), or get it later in Settings > GoMini. GoMini v5 finishes 39 of 65 held-out MiniWoB++ subgoals on its own (v4: 15) and says "done" falsely 3 times (v4: 26). Model: [huggingface.co/Mhmadhassnz/GoMini](https://huggingface.co/Mhmadhassnz/GoMini).
+GoMini is a small model (322M parameters) trained on how this browser works. It runs on your computer (your graphics card through Vulkan when it can, else the processor) and takes the routine steps of a task, filling the values your agent supplies, clicking through, scrolling, so your agent hands over one subgoal instead of reading every page. It only picks between steps the browser offers; payments, sign-ins and final submissions always go back to your agent. Setup offers it (on by default, about 390 MB), or get it later in Settings > GoMini. GoMini v5 finishes 39 of 65 held-out MiniWoB++ subgoals on its own (v4: 15) and says "done" falsely 3 times (v4: 26); GoMini v6, in testing with 0.1.6, finishes 53 of 65 (4 false "done"). Model: [huggingface.co/Mhmadhassnz/GoMini](https://huggingface.co/Mhmadhassnz/GoMini).
 
 </td>
 </tr>

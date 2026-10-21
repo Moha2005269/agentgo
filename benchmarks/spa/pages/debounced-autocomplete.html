@@ -1,0 +1,57 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Find a trip</title><link rel="stylesheet" href="/app.css">
+<style>.ac{position:relative;width:340px}.ac input{width:100%}#lb{position:absolute;left:0;right:0;top:36px;background:#fff;border:1px solid #b9c0cc;border-radius:6px;margin:0;padding:4px 0;list-style:none;z-index:5}#lb li{padding:6px 10px;cursor:pointer}#lb li:hover{background:#eef3ff}</style></head>
+<body>
+<header class="top"><b>RailGo</b><span>Find a trip</span></header>
+<main><div class="card" style="min-height:360px"><h2 style="margin-top:0">Where to?</h2>
+<p class="muted">Start typing a city and choose it from the list.</p>
+<div style="display:flex;gap:10px;align-items:flex-start">
+<div class="ac"><input id="q" role="combobox" aria-label="Destination" aria-autocomplete="list" aria-expanded="false" aria-controls="lb" placeholder="Destination" autocomplete="off">
+<ul id="lb" role="listbox" hidden></ul></div>
+<button class="primary" id="go">Search trains</button><span id="busy"></span></div>
+<p id="msg" class="muted"></p></div></main>
+<script>
+// Debounced autocomplete: 350 ms after the last key, the app asks the server;
+// answers take 1.5 s for 1-2 letters, down to 0.3 s for longer queries, so the
+// list is replaced several times while you type. Old answers are dropped.
+// Suggestions are picked on mousedown (so the input keeps focus), as most
+// comboboxes do. Search needs a city picked from the list.
+var CITIES = ['Springfield, IL', 'Springfield, MA', 'Springfield, MO', 'Springfield, OR', 'Springdale, AR', 'Spring Hill, TN',
+              'Springville, UT', 'Sprague, WA', 'Spokane, WA', 'Salem, MA', 'Boston, MA', 'Worcester, MA'];
+var q = document.getElementById('q'), lb = document.getElementById('lb'), busy = document.getElementById('busy');
+var timer = null, seq = 0, picked = null;
+q.addEventListener('input', function () {
+  picked = null; clearTimeout(timer);
+  timer = setTimeout(ask, 350);
+});
+function ask() {
+  var text = q.value.trim().toLowerCase(), my = ++seq;
+  if (!text) { lb.hidden = true; q.setAttribute('aria-expanded', 'false'); return; }
+  busy.innerHTML = '<span class="spinner"></span>';
+  var ms = Math.max(300, 1500 - (text.length - 1) * 300);
+  BENCH.api(ms, CITIES.filter(function (c) { return c.toLowerCase().indexOf(text) === 0 || c.toLowerCase().indexOf(' ' + text) >= 0; }).slice(0, 6))
+    .then(function (list) {
+      if (my !== seq) { BENCH.event('dropped_stale_answer', text); return; }
+      busy.innerHTML = '';
+      lb.innerHTML = '';
+      if (!list.length) lb.innerHTML = '<li class="muted">No matches</li>';
+      list.forEach(function (c) {
+        var li = document.createElement('li'); li.setAttribute('role', 'option'); li.textContent = c;
+        li.addEventListener('mousedown', function (e) {
+          e.preventDefault();
+          if (!document.body.contains(li)) BENCH.event('detached_option', c);
+          picked = c; q.value = c; lb.hidden = true; q.setAttribute('aria-expanded', 'false');
+          BENCH.event('picked', c);
+        });
+        lb.appendChild(li);
+      });
+      lb.hidden = false; q.setAttribute('aria-expanded', 'true');
+    });
+}
+document.getElementById('go').onclick = function () {
+  var msg = document.getElementById('msg');
+  if (!picked) { msg.textContent = 'Choose a destination from the suggestions.'; BENCH.event('search_without_pick', q.value); return; }
+  msg.textContent = 'Searching trains to ' + picked + '…';
+  BENCH.end(picked === BENCH.target.city ? 1 : -1, 'searched ' + picked);
+};
+</script></body></html>

@@ -1,0 +1,72 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Acme Cloud</title><link rel="stylesheet" href="/app.css">
+<style>.tabs a{margin-right:14px;color:#2f6fed;text-decoration:none}.tabs a.active{font-weight:600;color:#1d2330;border-bottom:2px solid #2f6fed}#view.leaving{opacity:.35}</style></head>
+<body>
+<header class="top" id="nav"></header>
+<main><div id="view"></div></main>
+<div class="toasts" id="toasts"></div>
+<script>
+// Client-side routing with history.pushState: links never load a page. Each
+// route shows a spinner while its data loads (0.7-1.2 s); the old view stays
+// on screen, faded, for 400 ms before the new one replaces it.
+var B = BENCH.base, view = document.getElementById('view'), token = 0;
+var prefs = {digest: true, product: true, mentions: true, security: true};
+var NAV = [['/', 'Dashboard'], ['/projects', 'Projects'], ['/settings/profile', 'Settings']];
+function link(path, text, active) { return '<a href="' + B + path + BENCH.qs + '" data-to="' + path + '"' + (active ? ' class="active"' : '') + '>' + text + '</a>'; }
+function route() { return location.pathname.slice(B.length) || '/'; }
+function go(path) { history.pushState({}, '', B + path + BENCH.qs); show(); }
+document.addEventListener('click', function (e) {
+  var a = e.target.closest('a[data-to]'); if (!a) return;
+  e.preventDefault(); go(a.dataset.to);
+});
+window.addEventListener('popstate', show);
+function nav(r) {
+  document.getElementById('nav').innerHTML = '<b>Acme Cloud</b>' + NAV.map(function (n) {
+    var sec = '/' + n[0].split('/')[1];
+    return link(n[0], n[1], sec === '/' ? r === '/' : r.indexOf(sec) === 0);
+  }).join('');
+}
+function toast(msg) {
+  var t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status'); t.textContent = msg;
+  document.getElementById('toasts').appendChild(t); setTimeout(function () { t.remove(); }, 4000);
+}
+function show() {
+  var r = route(), my = ++token; nav(r);
+  view.classList.add('leaving');
+  setTimeout(function () {
+    if (my !== token) return;
+    view.classList.remove('leaving');
+    view.innerHTML = '<div class="card"><span class="spinner"></span> <span class="muted">Loading…</span></div>';
+    BENCH.api(700 + BENCH.rand() * 500, {}).then(function () { if (my === token) render(r); });
+  }, 400);
+}
+function settingsTabs(r) {
+  return '<div class="tabs" style="margin-bottom:12px">' + link('/settings/profile', 'Profile', r === '/settings/profile') +
+    link('/settings/notifications', 'Notifications', r === '/settings/notifications') + link('/settings/billing', 'Billing', r === '/settings/billing') + '</div>';
+}
+function render(r) {
+  if (r === '/') view.innerHTML = '<div class="card"><h2>Dashboard</h2><p>3 projects · 2 alerts</p><p>' + link('/projects', 'View projects') + '</p></div>' +
+    '<div class="card"><h3>Email digest</h3><p class="muted">Manage what we email you in Settings.</p></div>';
+  else if (r === '/projects') view.innerHTML = '<div class="card"><h2>Projects</h2><ul><li>atlas</li><li>borealis</li><li>cinder</li></ul></div>';
+  else if (r === '/settings/profile') view.innerHTML = '<div class="card"><h2>Settings</h2>' + settingsTabs(r) + '<label>Display name <input value="Sam Rivera"></label></div>';
+  else if (r === '/settings/billing') view.innerHTML = '<div class="card"><h2>Settings</h2>' + settingsTabs(r) + '<p>Plan: Team (monthly)</p></div>';
+  else if (r === '/settings/notifications') {
+    var rows = [['digest', 'Weekly digest'], ['product', 'Product updates'], ['mentions', 'Mentions'], ['security', 'Security alerts']];
+    view.innerHTML = '<div class="card"><h2>Settings</h2>' + settingsTabs(r) + '<h3>Email notifications</h3>' +
+      rows.map(function (x) { return '<p><label><input type="checkbox" data-k="' + x[0] + '"' + (prefs[x[0]] ? ' checked' : '') + '> ' + x[1] + '</label></p>'; }).join('') +
+      '<button class="primary" id="save">Save changes</button></div>';
+    var save = document.getElementById('save');
+    save.onclick = function () {
+      var next = {};
+      view.querySelectorAll('input[data-k]').forEach(function (c) { next[c.dataset.k] = c.checked; });
+      save.disabled = true; save.textContent = 'Saving…';
+      BENCH.api(800, next).then(function () {
+        prefs = next; save.disabled = false; save.textContent = 'Save changes'; toast('Notification settings saved');
+        var ok = !next.digest && next.product && next.mentions && next.security;
+        BENCH.end(ok ? 1 : -1, 'saved ' + JSON.stringify(next));
+      });
+    };
+  } else view.innerHTML = '<div class="card"><h2>Not found</h2></div>';
+}
+show();
+</script></body></html>

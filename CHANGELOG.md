@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.1.6 (2026-10-22)
+
+Single-page apps: references that survive re-renders, one-call scrolling
+and waiting, and actions that say what must happen. The fixes come from a
+new benchmark of client-side-rendered pages (`docs/benchmarks/agentgo-spa.md`)
+and from benchmarking AgentGo with and without GoMini on MiniWoB++, the SPA
+set and 232 more MiniWoB++ runs; the numbers are in
+`docs/benchmarks/agentgo-0.1.6.md`. Measured with one model on 38 tasks, all
+four setups at the same time (76 runs each): wrong actions 6 -> 0 with GoMini
+and 2 -> 1 without, success with GoMini 86.8% -> 94.7%, and without GoMini
+16% fewer input tokens per solved task, 14% fewer turns and a 10% lower
+median time. The harness is in `benchmarks/`.
+
+- **A reference no longer clicks the wrong row after a re-render.** A list that re-renders by position (React's `key={index}`, a recycled virtual row) puts another item into the same DOM node; 0.1.5 clicked whatever the node showed. A reference to a repeated control now remembers its row: if the node shows another row, the action goes to the element that shows the original one, or fails with `target.stale` saying what the node shows now. A click also re-aims right before pressing, so a row inserted during the pointer animation does not take the click (a stress test clicking across inserts: 10/10).
+- **Repeated controls say which row they are in.** Buttons that read the same, numbers aside ("Dismiss", "Like (12)", "Select"), carry their row in the outline, change sets, GoMini's choices and action replies: `button "Dismiss" in "Invoice #4471 is overdue"`. The agent no longer counts buttons to match them to rows. A box with more than three controls (a tree, a menu, a form) is not a row; a menu item's wrapper is no longer listed next to it.
+- **Long lists in one call.** `browser_act {action: "scroll", until: "<text>"}` scrolls the page, or the list `ref` is in, until the text shows, waiting for lazy and infinite lists to load (a 300-row virtual list: 249-400k input tokens and 86-126 s per task before, 59-78k and 35-40 s now). Plain scrolling moves the main list when the page itself cannot scroll; with `ref` and `to: top|bottom` it scrolls inside that box (a textarea).
+- **Waiting on what matters.** `browser_wait {enabled: <ref>}` waits for a control to become usable, `{ms}` pauses (also as a `browser_batch` step, counted from the last input, so "click, wait one second, click" keeps its timing), `gone` takes a text as well as a selector, texts are matched as the outline writes them, and a met wait returns its change set, so no read is needed after it.
+- **`expect` on actions.** An action can say what must hold once it ran: `expect: {gone, shows, enabled, url, changes}`. The reply says `expect: met`, or the action fails saying what was expected and what did change, so a click on a page that has not hydrated yet cannot pass as "no visible change".
+- **Replies show the next view, not its spinner.** After an action AgentGo waits for the fetch/XHR requests it started, then for the page to draw them; settling on pages that never go still is capped at 1.5 s (was 2.5 s). The drawn pointer and typing take half as long.
+- **A short guide in tool names.** Over MCP, `browser_guide` answers with 3k characters about `browser_open`, `browser_act` and the rest (the 8.8k-character shell guide named protocol methods, which sent agents into `browser_call` loops: 44 calls and 1.5M tokens on one task); the full guide is `topic: "skill"`. The server instructions carry the rules that save turns and no longer ask agents to read the guide first.
+- **Element fingerprints ignore state** (disabled, checked, expanded), so a button found again after a re-render is the same button.
+- **GoMini v6** (local file in this build; the default download stays v5 until v6 is published): trained further from v5 on 29,000 decisions, among them 12,000 new ones on AgentGo 0.1.6's practice pages (rows of identical buttons, scroll until found, retry after an error, dialogs that cover the page, wait until enabled, "the 3rd option", focus a box, collapsed sections) and 577 steps of gpt-6-luna on MiniWoB++ pages it solved. Held-out practice pages: 96.6% (v5: 76.6%; retry 33% -> 100%, rows 59% -> 100%, wait 59% -> 100%).
+- **GoMini's supervisor**: "done" before any step ran is replaced by GoMini's most likely step when it is a real contender (focus-text 0/5 -> 5/5); a subgoal with nothing to type whose next step is the planner's ends `done`, naming that step; a finished delegation returns the page changes since the planner last looked; "focus the text box" offers boxes as clicks. GoMini is described for runs of steps, not single clicks.
+
 ## 0.1.5 (2026-10-21)
 
 Agents see more of the page, act on it correctly, and spend fewer turns and

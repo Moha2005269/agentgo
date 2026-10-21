@@ -1,0 +1,60 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Kiln &amp; Co.</title><link rel="stylesheet" href="/app.css">
+<style>.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.grid .card{margin:0}.drawer{position:fixed;top:0;right:0;bottom:0;width:340px;background:#fff;box-shadow:-4px 0 18px rgba(0,0,0,.2);padding:18px;z-index:30}</style>
+</head>
+<body>
+<!-- Server-rendered markup: visible and clickable at once, but nothing happens
+     until the app hydrates (2.5 s after load), like a slow SSR bundle. -->
+<header class="top"><b>Kiln &amp; Co.</b><span class="grow"></span><button id="cartBtn">Cart (0)</button></header>
+<main>
+  <h2>Mugs &amp; cups</h2>
+  <div class="grid" id="grid">
+    <div class="card"><h3>White Ceramic Mug</h3><p>$14</p><button data-sku="white">Add to cart</button></div>
+    <div class="card"><h3>Blue Ceramic Mug</h3><p>$16</p><button data-sku="blue">Add to cart</button></div>
+    <div class="card"><h3>Blue Glass Tumbler</h3><p>$12</p><button data-sku="tumbler">Add to cart</button></div>
+    <div class="card"><h3>Speckled Espresso Cup</h3><p>$11</p><button data-sku="espresso">Add to cart</button></div>
+    <div class="card"><h3>Travel Mug</h3><p>$24</p><button data-sku="travel">Add to cart</button></div>
+    <div class="card"><h3>Blue Ceramic Bowl</h3><p>$18</p><button data-sku="bowl">Add to cart</button></div>
+  </div>
+</main>
+<div id="drawer"></div>
+<script>
+var hydrated = false, cart = {};
+document.addEventListener('click', function (e) {
+  if (!hydrated && e.target.closest('button')) BENCH.event('pre_hydration_click', e.target.closest('button').textContent);
+}, true);
+window.addEventListener('load', function () {
+  setTimeout(function () {
+    hydrated = true;
+    BENCH.event('hydrated', '');
+    var names = {};
+    document.querySelectorAll('#grid button').forEach(function (b) {
+      names[b.dataset.sku] = b.parentNode.querySelector('h3').textContent;
+      b.addEventListener('click', function () {
+        cart[b.dataset.sku] = (cart[b.dataset.sku] || 0) + 1;
+        b.textContent = 'Added ✓'; setTimeout(function () { b.textContent = 'Add to cart'; }, 900);
+        count();
+      });
+    });
+    function count() {
+      var n = 0; for (var k in cart) n += cart[k];
+      document.getElementById('cartBtn').textContent = 'Cart (' + n + ')';
+    }
+    document.getElementById('cartBtn').addEventListener('click', function () {
+      var d = document.getElementById('drawer'), h = '<div class="drawer" role="dialog" aria-label="Cart"><h3>Your cart</h3>';
+      var keys = Object.keys(cart);
+      if (!keys.length) h += '<p class="muted">Your cart is empty.</p>';
+      keys.forEach(function (k) { h += '<p>' + names[k] + ' × ' + cart[k] + '</p>'; });
+      h += '<button id="close">Close</button> <button class="primary" id="savecart"' + (keys.length ? '' : ' disabled') + '>Save cart</button></div>';
+      d.innerHTML = h;
+      document.getElementById('close').onclick = function () { d.innerHTML = ''; };
+      document.getElementById("savecart").onclick = function () {
+        var want = BENCH.target.sku, ok = Object.keys(cart).length === 1 && cart[want] === 1;
+        d.innerHTML = '<div class="drawer"><h3>Cart saved</h3></div>';
+        BENCH.end(ok ? 1 : -1, 'cart ' + JSON.stringify(cart));
+      };
+    });
+  }, 2500);
+});
+</script>
+</body></html>

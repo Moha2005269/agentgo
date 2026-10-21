@@ -1,0 +1,43 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Live leaderboard</title><link rel="stylesheet" href="/app.css">
+<script src="/vendor/react.production.min.js"></script><script src="/vendor/react-dom.production.min.js"></script></head>
+<body><div id="root"></div>
+<script>
+// React, keyed by player id: every 1.2 s the scores change and the list is
+// re-sorted, so the same DOM rows move to new positions. Runs for 30 s.
+var h = React.createElement;
+var NAMES = ['Marta Kowalska', 'Martin Kovac', 'Yuki Tanaka', 'Amara Okonkwo', 'Lucas Moreau', 'Sofia Rossi',
+             'Marta Kowalczyk', 'Ibrahim Saleh', 'Nina Petrova', 'Tom Becker', 'Aisha Rahman', 'Leo Lindqvist'];
+var init = NAMES.map(function (n, i) { return {id: 'p' + i, name: n, score: 1000 + Math.round(BENCH.rand() * 400)}; });
+function App() {
+  var s = React.useState(init), players = s[0], set = s[1];
+  var f = React.useState({}), follows = f[0], setF = f[1];
+  var l = React.useState(true), live = l[0], setLive = l[1];
+  React.useEffect(function () {
+    var n = 0, t = setInterval(function () {
+      n++;
+      set(function (ps) { return ps.map(function (p) { return Object.assign({}, p, {score: p.score + Math.round((BENCH.rand() - .4) * 120)}); }); });
+      if (n >= 25) { clearInterval(t); setLive(false); }
+    }, 1200);
+    return function () { clearInterval(t); };
+  }, []);
+  var sorted = players.slice().sort(function (a, b) { return b.score - a.score; });
+  function follow(p) {
+    setF(function (x) { var y = Object.assign({}, x); y[p.id] = true; return y; });
+    BENCH.event('follow', p.name);
+    BENCH.end(p.name === BENCH.target.name ? 1 : -1, 'followed ' + p.name);
+  }
+  return h('div', null,
+    h('header', {className: 'top'}, h('b', null, 'Arena'), h('span', null, 'Leaderboard'),
+      h('span', {className: 'muted'}, live ? '● Live — updating' : 'Final standings')),
+    h('main', null, h('div', {className: 'card'},
+      h('table', null,
+        h('thead', null, h('tr', null, h('th', null, '#'), h('th', null, 'Player'), h('th', null, 'Score'), h('th', null, ''))),
+        h('tbody', null, sorted.map(function (p, i) {
+          return h('tr', {key: p.id},
+            h('td', null, i + 1), h('td', null, p.name), h('td', null, p.score),
+            h('td', null, h('button', {onClick: function () { follow(p); }, disabled: !!follows[p.id]}, follows[p.id] ? 'Following' : 'Follow')));
+        }))))));
+}
+ReactDOM.createRoot(document.getElementById('root')).render(h(App));
+</script></body></html>

@@ -1,0 +1,27 @@
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.4 system-ui, -apple-system, Segoe UI, sans-serif; color: #1d2330; background: #f5f6f8; }
+header.top { background: #1d2330; color: #fff; padding: 10px 20px; display: flex; gap: 18px; align-items: center; }
+header.top a { color: #cfd6e4; text-decoration: none; }
+header.top a.active { color: #fff; font-weight: 600; }
+main { max-width: 860px; margin: 20px auto; padding: 0 16px; }
+.card { background: #fff; border: 1px solid #dde1e8; border-radius: 8px; padding: 16px; margin-bottom: 14px; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 8px; border-bottom: 1px solid #eceff3; }
+button { font: inherit; padding: 5px 12px; border-radius: 6px; border: 1px solid #b9c0cc; background: #fff; cursor: pointer; }
+button.primary { background: #2f6fed; color: #fff; border-color: #2f6fed; }
+button.danger { background: #d93a3a; color: #fff; border-color: #d93a3a; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+input[type=text], input:not([type]) { font: inherit; padding: 6px 8px; border: 1px solid #b9c0cc; border-radius: 6px; }
+.skel { height: 14px; background: linear-gradient(90deg, #e6e9ee, #f2f4f7, #e6e9ee); background-size: 200% 100%; animation: sh 1.2s infinite; border-radius: 4px; }
+@keyframes sh { from { background-position: 200% 0 } to { background-position: -200% 0 } }
+.spinner { width: 18px; height: 18px; border: 3px solid #cfd6e4; border-top-color: #2f6fed; border-radius: 50%; animation: sp .8s linear infinite; display: inline-block; vertical-align: middle; }
+@keyframes sp { to { transform: rotate(360deg) } }
+.muted { color: #6b7385; }
+.toasts { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 50; }
+.toast { background: #1d2330; color: #fff; padding: 10px 14px; border-radius: 8px; min-width: 260px; box-shadow: 0 4px 14px rgba(0,0,0,.2); }
+.toast.err { background: #a42828; }
+.backdrop { position: fixed; inset: 0; background: rgba(20,24,33,.55); display: flex; align-items: center; justify-content: center; z-index: 40; }
+.modal { background: #fff; border-radius: 10px; padding: 20px; width: 420px; max-width: 92vw; animation: pop .25s ease-out; }
+@keyframes pop { from { transform: scale(.92); opacity: 0 } to { transform: none; opacity: 1 } }
+.row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-bottom: 1px solid #eceff3; background: #fff; }
+.grow { flex: 1; }

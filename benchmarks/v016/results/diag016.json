@@ -1,0 +1,36 @@
+{
+ "mw-diag": {
+  "runs": 116,
+  "solved": 106,
+  "wrong_action": 7,
+  "timeouts": 0,
+  "stale": 3,
+  "turns": 10.0,
+  "calls": 7.8,
+  "delegations": 0.01,
+  "median_s": 46.1,
+  "mean_s": 66.0,
+  "input": 159258,
+  "output": 932,
+  "credits": 1359,
+  "input_per_solved": 174282,
+  "credits_per_solved": 1487
+ },
+ "all": {
+  "runs": 116,
+  "solved": 106,
+  "wrong_action": 7,
+  "timeouts": 0,
+  "stale": 3,
+  "turns": 10.0,
+  "calls": 7.8,
+  "delegations": 0.01,
+  "median_s": 46.1,
+  "mean_s": 66.0,
+  "input": 159258,
+  "output": 932,
+  "credits": 1359,
+  "input_per_solved": 174282,
+  "credits_per_solved": 1487
+ }
+}

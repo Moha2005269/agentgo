@@ -1,0 +1,49 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Pipelines</title><link rel="stylesheet" href="/app.css">
+<style>.bar{height:8px;background:#e6e9ee;border-radius:4px;overflow:hidden}.bar i{display:block;height:100%;background:#2f6fed;transition:width .4s}#log{font:12px/1.5 ui-monospace,monospace;background:#11151c;color:#c8d0dc;padding:10px;border-radius:6px;height:150px;overflow:auto}</style></head>
+<body>
+<header class="top"><b>Pipelines</b><span>web-frontend</span><span class="muted" id="poll"></span></header>
+<main><div class="card"><table><thead><tr><th>Build</th><th>Branch</th><th>Status</th><th>Progress</th><th></th></tr></thead><tbody id="rows"></tbody></table></div>
+<div class="card"><h3 style="margin-top:0">Log for #418</h3><div id="log"></div></div></main>
+<div id="layer"></div>
+<script>
+// A page that never goes still: the status is polled every second, the log
+// streams every 0.5 s and the progress bar moves. Build #418 passes about 14 s
+// after load; until then its Deploy button is disabled. #417 passed earlier and
+// can be deployed at any time.
+var builds = [{n: 418, branch: 'main', status: 'Running', p: 5}, {n: 417, branch: 'main', status: 'Passed', p: 100}, {n: 416, branch: 'fix/nav', status: 'Failed', p: 100}];
+var t0 = Date.now(), DUR = 14000, logEl = document.getElementById('log'), steps = 0;
+var LINES = ['Installing dependencies', 'Restoring cache', 'Linting 412 files', 'Type-checking', 'Running unit tests (1/4)', 'Running unit tests (2/4)',
+  'Running unit tests (3/4)', 'Running unit tests (4/4)', 'Building bundle', 'Minifying', 'Uploading artifacts', 'Running smoke tests'];
+function rows() {
+  document.getElementById('rows').innerHTML = builds.map(function (b) {
+    return '<tr><td>#' + b.n + '</td><td>' + b.branch + '</td><td>' + (b.status === 'Running' ? '<span class="spinner"></span> ' : '') + b.status + '</td>' +
+      '<td style="width:160px"><div class="bar"><i style="width:' + b.p + '%"></i></div></td>' +
+      '<td>' + (b.status === 'Failed' ? '' : '<button class="primary" data-n="' + b.n + '"' + (b.status === 'Passed' ? '' : ' disabled') + '>Deploy #' + b.n + '</button>') + '</td></tr>';
+  }).join('');
+}
+document.getElementById('rows').addEventListener('click', function (e) {
+  var b = e.target.closest('button[data-n]'); if (!b || b.disabled) return;
+  var n = +b.dataset.n;
+  BENCH.event('deploy', n + ' at ' + (Date.now() - t0) + 'ms');
+  document.getElementById('layer').innerHTML = '<div class="backdrop"><div class="modal" role="dialog"><h3>Deploying #' + n + '</h3><p>Rolling out to production…</p></div></div>';
+  BENCH.end(n === BENCH.target.build ? 1 : -1, 'deployed #' + n);
+});
+setInterval(function () {
+  if (steps < LINES.length && builds[0].status === 'Running') {
+    var d = document.createElement('div'); d.textContent = '[' + (Date.now() - t0) + 'ms] ' + LINES[Math.min(steps++, LINES.length - 1)]; logEl.appendChild(d); logEl.scrollTop = 1e6;
+  }
+}, 500);
+setInterval(function () {
+  document.getElementById('poll').textContent = 'Last checked ' + new Date().toLocaleTimeString();
+  BENCH.api(150, {}).then(function () {
+    var b = builds[0];
+    if (b.status === 'Running') {
+      b.p = Math.min(99, Math.round((Date.now() - t0) / DUR * 100));
+      if (Date.now() - t0 >= DUR) { b.status = 'Passed'; b.p = 100; BENCH.event('build_passed', ''); var d = document.createElement('div'); d.textContent = 'Build passed ✓'; logEl.appendChild(d); }
+    }
+    rows();
+  });
+}, 1000);
+rows();
+</script></body></html>

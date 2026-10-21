@@ -1,0 +1,68 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Orders</title><link rel="stylesheet" href="/app.css"></head>
+<body>
+<header class="top"><b>ShopAdmin</b><span>Orders</span><span id="sync" class="muted"></span></header>
+<main><div class="card"><h2 style="margin-top:0">Open orders</h2><div id="list"></div></div></main>
+<script>
+// Async content: skeleton rows, then the orders arrive (1.8 s). A background
+// sync then re-fetches (1 s) and re-renders the whole table with new nodes in a
+// new order, with one new order on top. Rows are plain DOM, rebuilt each render.
+var ORDERS = [
+  {id: 'A-1031', customer: 'Lena Fischer', total: '$84.20', status: 'Paid', t: 5},
+  {id: 'A-1032', customer: 'Omar Haddad', total: '$19.99', status: 'Paid', t: 2},
+  {id: 'A-1033', customer: 'Priya Natarajan', total: '$212.00', status: 'Paid', t: 7},
+  {id: 'A-1034', customer: 'Diego Alvarez', total: '$46.50', status: 'Paid', t: 1},
+  {id: 'A-1035', customer: 'Priya Nair', total: '$58.75', status: 'Paid', t: 4},
+  {id: 'A-1036', customer: 'Sam Okafor', total: '$130.10', status: 'Paid', t: 3}
+];
+var T = BENCH.target, list = document.getElementById('list'), sync = document.getElementById('sync');
+var state = null;
+function skeleton() {
+  var h = '<p class="muted">Loading orders…</p>';
+  for (var i = 0; i < 6; i++) h += '<div class="row"><div class="skel" style="width:70px"></div><div class="skel grow"></div><div class="skel" style="width:90px"></div></div>';
+  list.innerHTML = h;
+}
+function render() {
+  list.innerHTML = '';
+  var tb = document.createElement('table');
+  tb.innerHTML = '<thead><tr><th>Order</th><th>Customer</th><th>Total</th><th>Status</th><th></th></tr></thead>';
+  var body = document.createElement('tbody');
+  state.forEach(function (o) {
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + o.id + '</td><td>' + o.customer + '</td><td>' + o.total + '</td><td>' + o.status + '</td><td></td>';
+    var b = document.createElement('button');
+    b.textContent = o.status === 'Shipped' ? 'Shipped ✓' : 'Mark shipped';
+    b.disabled = o.status === 'Shipped';
+    b.onclick = function () {
+      if (!document.body.contains(b)) { BENCH.event('detached_click', o.id); return; }
+      b.disabled = true; b.textContent = 'Saving…';
+      BENCH.api(600, {id: o.id}).then(function () {
+        o.status = 'Shipped'; render();
+        BENCH.event('shipped', o.id);
+        if (o.id === T.id) BENCH.end(1, 'shipped target'); else BENCH.end(-1, 'shipped ' + o.id);
+      });
+    };
+    tr.lastChild.appendChild(b);
+    body.appendChild(tr);
+  });
+  tb.appendChild(body);
+  list.appendChild(tb);
+}
+skeleton();
+BENCH.api(1800, ORDERS).then(function (data) {
+  state = data; render();
+  setTimeout(function () {
+    sync.textContent = 'Syncing…';
+    BENCH.api(1000, {}).then(function () {
+      var shipped = {};
+      state.forEach(function (o) { shipped[o.id] = o.status; });
+      state = ORDERS.map(function (o) { return Object.assign({}, o, {status: shipped[o.id] || o.status}); })
+        .sort(function (a, b) { return a.t - b.t; });
+      state.unshift({id: 'A-1037', customer: 'Grace Lin', total: '$9.00', status: 'Paid', t: 0});
+      render(); sync.textContent = 'Up to date';
+      BENCH.event('resynced', '');
+    });
+  }, 1200);
+});
+</script>
+</body></html>

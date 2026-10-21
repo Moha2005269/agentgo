@@ -1,0 +1,43 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Inventory</title><link rel="stylesheet" href="/app.css">
+<style>#vp{height:420px;overflow-y:auto;position:relative;border:1px solid #dde1e8;border-radius:8px;background:#fff}#vp .row{position:absolute;left:0;right:0;height:36px;padding:0 10px}</style></head>
+<body>
+<header class="top"><b>Warehouse</b><span>Inventory</span></header>
+<main><div class="card"><h2 style="margin-top:0">All items <span class="muted">(300)</span></h2>
+<p class="muted">Sorted by SKU. Scroll the list to see more.</p>
+<div id="vp" tabindex="0"><div id="spacer"></div></div></div></main>
+<script>
+// Virtualized list (react-window style): 300 rows, only the visible ones plus
+// 4 of overscan exist, and their DOM nodes are recycled as you scroll: the
+// node that showed one item shows another after a scroll.
+var ADJ = ['Walnut', 'Oak', 'Steel', 'Bamboo', 'Matte', 'Glass', 'Linen', 'Cork', 'Brass', 'Slate'];
+var NOUN = ['desk organizer', 'shelf bracket', 'lamp base', 'drawer pull', 'coaster set', 'monitor riser', 'cable tray', 'pen cup'];
+var ITEMS = [];
+for (var i = 0; i < 300; i++) ITEMS.push({sku: 'SKU-' + String(1000 + i * 3).padStart(5, '0'), name: ADJ[(i * 7) % 10] + ' ' + NOUN[(i * 5 + (i >> 3)) % 8]});
+ITEMS[187].name = 'Walnut desk organizer';
+ITEMS[61].name = 'Walnut desk organizer'; // same name, other SKU
+var RH = 36, vp = document.getElementById('vp'), spacer = document.getElementById('spacer'), pool = [];
+spacer.style.height = ITEMS.length * RH + 'px';
+function draw() {
+  var first = Math.max(0, Math.floor(vp.scrollTop / RH) - 4), last = Math.min(ITEMS.length, Math.ceil((vp.scrollTop + vp.clientHeight) / RH) + 4);
+  for (var k = 0; k < last - first; k++) {
+    if (!pool[k]) {
+      var r = document.createElement('div'); r.className = 'row';
+      r.innerHTML = '<code style="width:90px"></code><span class="grow"></span><button>Select</button>';
+      r.querySelector('button').onclick = function () { pick(this.parentNode._i); };
+      vp.appendChild(r); pool[k] = r;
+    }
+    var row = pool[k], idx = first + k;
+    row.style.display = ''; row.style.top = idx * RH + 'px'; row._i = idx;
+    row.firstChild.textContent = ITEMS[idx].sku; row.children[1].textContent = ITEMS[idx].name;
+  }
+  for (; k < pool.length; k++) pool[k].style.display = 'none';
+}
+function pick(i) {
+  var it = ITEMS[i];
+  BENCH.event('select', it.sku);
+  BENCH.end(it.sku === BENCH.target.sku ? 1 : -1, 'selected ' + it.sku + ' ' + it.name);
+}
+vp.addEventListener('scroll', draw);
+draw();
+</script></body></html>
