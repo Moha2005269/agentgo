@@ -37,6 +37,8 @@ pub struct Client {
     writer: Box<dyn Write + Send>,
     child: Option<Child>,
     next_id: u64,
+    /// Set for a client with no browser behind it; every call fails with it.
+    offline: Option<String>,
 }
 
 /// AgentGo's local data root (`AGENTGO_DATA_ROOT` or `%LOCALAPPDATA%\AgentGo`).
@@ -101,6 +103,7 @@ impl Client {
                 writer: Box::new(writer),
                 child: None,
                 next_id: 1,
+                offline: None,
             };
             client.call(
                 "session.hello",
@@ -143,11 +146,27 @@ impl Client {
             writer: Box::new(stdin),
             child: Some(child),
             next_id: 1,
+            offline: None,
         })
+    }
+
+    /// A client with no browser behind it: MCP introspection still works,
+    /// and every command fails with `reason`.
+    pub fn offline(reason: &str) -> Self {
+        Self {
+            reader: Box::new(BufReader::new(std::io::empty())),
+            writer: Box::new(std::io::sink()),
+            child: None,
+            next_id: 1,
+            offline: Some(reason.to_string()),
+        }
     }
 
     /// Sends one request and waits for its response, skipping events.
     pub fn call(&mut self, method: &str, params: Value) -> Result<Value, ClientError> {
+        if let Some(reason) = &self.offline {
+            return Err(ClientError::Unavailable(reason.clone()));
+        }
         let id = self.next_id;
         self.next_id += 1;
         let line = json!({"v": 1, "id": id, "method": method, "params": params}).to_string();
@@ -230,5 +249,14 @@ mod tests {
             ]
         );
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn offline_client_fails_every_call_with_its_reason() {
+        let mut client = Client::offline("no browser here");
+        match client.call("tabs.list", json!({})) {
+            Err(ClientError::Unavailable(reason)) => assert_eq!(reason, "no browser here"),
+            other => panic!("expected Unavailable, got {other:?}"),
+        }
     }
 }
