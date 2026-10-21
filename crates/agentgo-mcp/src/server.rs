@@ -79,7 +79,7 @@ pub fn tools() -> Value {
         },
         {
             "name": "browser_wait",
-            "description": "Wait until text appears, a selector is visible or gone, the URL contains a string, or ref `enabled` is usable; returns what changed. ms: just pause. No condition: waits for load.",
+            "description": "Wait until text appears, a selector is visible, a selector or text is gone, the URL contains a string, or ref `enabled` is usable; returns what changed. ms: just pause. No condition: waits for load.",
             "inputSchema": object(json!({
                 "text": {"type": "string"}, "selector": {"type": "string"}, "gone": {"type": "string"},
                 "urlContains": {"type": "string"}, "enabled": {"type": "integer"}, "ms": {"type": "integer"},

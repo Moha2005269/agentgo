@@ -608,6 +608,22 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
                 overridden.get_or_insert(first);
             }
         }
+        // "Done" before any step ran is never true for a subgoal with nothing
+        // to type (it is something to do): GoMini's most likely step on the
+        // page is taken instead, when it is a real contender (20% or more).
+        let nothing_to_type = params["values"].as_object().is_none_or(|v| v.is_empty());
+        if choice.choice == "done" && steps_ran == 0 && nothing_to_type {
+            let best = choice
+                .probabilities
+                .iter()
+                .filter(|(key, p)| key.starts_with('r') && *p >= 0.2 && attempt_actions.iter().any(|(k, _)| k == key))
+                .max_by(|a, b| a.1.total_cmp(&b.1))
+                .map(|(key, _)| key.clone());
+            if let Some(best) = best {
+                let first = std::mem::replace(&mut choice.choice, best);
+                overridden.get_or_insert(first);
+            }
+        }
         let verdict = gate::gate(
             &choice.choice,
             &attempt_actions,
@@ -650,9 +666,15 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
                 steps.push(entry);
                 // Every supplied value is in place and what is left (submit,
                 // pay, sign in) is the planner's: the subgoal is done.
-                let filled = params["values"].as_object().is_some_and(|v| !v.is_empty())
-                    && reason.ends_with("is a step for the planner, not GoMini")
-                    && unfilled(&tab, params, &bound).await.is_empty();
+                // ...and with nothing to type, once a step ran (a section was
+                // opened and Submit is next).
+                let has_values = params["values"].as_object().is_some_and(|v| !v.is_empty());
+                let filled = reason.ends_with("is a step for the planner, not GoMini")
+                    && if has_values {
+                        unfilled(&tab, params, &bound).await.is_empty()
+                    } else {
+                        steps_ran > 0
+                    };
                 if filled {
                     // The planner gets the step with its reference, so it can
                     // press it without reading the page again.
@@ -674,7 +696,8 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
                     return Ok(finish(
                         "done",
                         Some(format!(
-                            "every value is filled in; the next step ({next}) is yours"
+                            "{} the next step ({next}) is yours",
+                            if has_values { "every value is filled in;" } else { "the steps ran;" }
                         )),
                         &record,
                         &steps,

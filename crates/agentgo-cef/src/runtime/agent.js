@@ -1331,12 +1331,19 @@
   const waitFor = (opts = {}) => new Promise(resolve => {
     const started = performance.now();
     const timeout = opts.timeout || 8000;
-    const needle = opts.text ? String(opts.text).toLowerCase() : null;
+    // Text is compared as the outline writes it: spaces, tabs and line
+    // breaks alike, symbols aside ("#418 main Passed" matches a table row).
+    const loose = text => plain(String(text || '').toLowerCase());
+    const needle = opts.text ? loose(opts.text) : null;
+    // `gone` is a selector, or a text when it is not one ("Deploying #418").
+    let goneText = null;
+    if (opts.gone) { try { document.querySelector(opts.gone); } catch (_) { goneText = loose(opts.gone); } }
     const check = () => {
       let ok = true;
-      if (needle) ok = (document.body?.innerText || '').toLowerCase().includes(needle);
+      const page = needle || goneText ? loose(document.body?.innerText) : '';
+      if (needle) ok = page.includes(needle);
       if (ok && opts.selector) ok = [...document.querySelectorAll(opts.selector)].some(visible);
-      if (ok && opts.gone) ok = ![...document.querySelectorAll(opts.gone)].some(visible);
+      if (ok && opts.gone) ok = goneText ? !page.includes(goneText) : ![...document.querySelectorAll(opts.gone)].some(visible);
       if (ok && opts.urlContains) ok = location.href.includes(opts.urlContains);
       // An element that must be gone (expect after an action): its node, not
       // another element with the same name.
@@ -1344,7 +1351,7 @@
         const el = els.get(opts.missing)?.deref();
         ok = !el || !el.isConnected || !visible(el);
       }
-      if (ok && opts.absentText) ok = !(document.body?.innerText || '').toLowerCase().includes(String(opts.absentText).toLowerCase());
+      if (ok && opts.absentText) ok = !loose(document.body?.innerText).includes(loose(opts.absentText));
       // A control that becomes usable later (Deploy once the build passed).
       if (ok && opts.enabled != null) {
         const found = lookup(opts.enabled);
