@@ -9,6 +9,7 @@
 
 <p align="center">
   <a href="#install">Install options</a>
+  &nbsp;·&nbsp; <a href="#benchmarks">Benchmarks</a>
   &nbsp;·&nbsp; <a href="#watch-an-agent-work">Watch it work</a>
   &nbsp;·&nbsp; <a href="#connect-your-agent">Connect your agent</a>
   &nbsp;·&nbsp; <a href="#security-and-privacy">Security</a>
@@ -24,6 +25,32 @@
 </p>
 
 ---
+
+## Benchmarks
+
+One model, the same 24 BrowserGym MiniWoB++ tasks, four browsers. Each task is
+a fresh agent session (gpt-6-luna through Factory's droid) that gets only that
+browser's MCP tools; the page's own reward decides.
+
+<p align="center">
+  <img src="assets/bench-agents.svg" alt="Agent benchmark: AgentGo solves 22 of 24 tasks against 19 for browser-use and 18 for Playwright MCP, in 32 s median, with about half the tokens and turns" width="100%">
+</p>
+
+| | Solved | Median time | Input tokens per task | Agent turns per task |
+|---|---:|---:|---:|---:|
+| **AgentGo 0.1.5** | **22/24** | **32 s** | **95k** | **7.7** |
+| **AgentGo 0.1.5 + GoMini** | **22/24** | **32 s** | 108k | 8.1 |
+| Playwright MCP 0.0.83 | 18/24 | 42 s | 178k | 13.0 |
+| browser-use 0.13.11 | 19/24 | 92 s | 210k | 13.2 |
+
+What 0.1.5 fixed, measured on the same pages before and after:
+
+<p align="center">
+  <img src="assets/bench-release.svg" alt="AgentGo 0.1.4 to 0.1.5: empty first outlines 130 to 0, pages with no controls 13 to 0, field kinds filled 15 to 25 of 25, real sites answered empty 4 to 0, GoMini subgoals 15 to 39 of 65, GoMini false done 26 to 3" width="100%">
+</p>
+
+Methods, every table and the tasks that failed:
+[docs/benchmarks/agentgo-0.1.5.md](docs/benchmarks/agentgo-0.1.5.md).
 
 ## A browser for you, and for the agent next to you
 
@@ -64,7 +91,7 @@ Create accounts just for your agent, or let it use yours. Saved sign-ins are enc
 <td colspan="2" valign="top">
 
 ### GoMini, a model that knows the browser
-GoMini is a small model (322M parameters) trained on how this browser works. It runs on your computer (your graphics card through Vulkan when it can, else the processor) and takes the routine steps of a task, filling the values your agent supplies, clicking through, scrolling, so your agent hands over one subgoal instead of reading every page. It only picks between steps the browser offers; payments, sign-ins and final submissions always go back to your agent. Setup offers it (on by default, about 390 MB), or get it later in Settings > GoMini. Model: [huggingface.co/Mhmadhassnz/GoMini](https://huggingface.co/Mhmadhassnz/GoMini).
+GoMini is a small model (322M parameters) trained on how this browser works. It runs on your computer (your graphics card through Vulkan when it can, else the processor) and takes the routine steps of a task, filling the values your agent supplies, clicking through, scrolling, so your agent hands over one subgoal instead of reading every page. It only picks between steps the browser offers; payments, sign-ins and final submissions always go back to your agent. Setup offers it (on by default, about 390 MB), or get it later in Settings > GoMini. GoMini v5 finishes 39 of 65 held-out MiniWoB++ subgoals on its own (v4: 15) and says "done" falsely 3 times (v4: 26). Model: [huggingface.co/Mhmadhassnz/GoMini](https://huggingface.co/Mhmadhassnz/GoMini).
 
 </td>
 </tr>
@@ -145,6 +172,7 @@ Agents should read `skills/agentgo/SKILL.md` first (over MCP: `browser_guide`). 
 
 - Windows 11 x64 only.
 - The ad blocker and security claims above come from our own testing. Independent benchmarks against other browsers are not published yet.
+- The agent benchmark above is our own run: one model, one run per task and browser, on MiniWoB++ pages served locally. The method and every result are in the benchmark notes, so you can repeat it.
 - Chrome seals its newest passwords (app-bound encryption) so only Chrome can read them. The import says how many, opens Chrome's export page for you and takes the CSV it saves. Firefox passwords import only when no primary password is set.
 - Translation uses Google's translation service. Notifications are refused for every site. There is no VPN in this release.
 - Extensions run in Chromium's own extension engine, but its tab APIs see only one tab per window while AgentGo shows many: calls that address a tab by id from an extension's background (`tabs.sendMessage`, `scripting.executeScript`) do not reach AgentGo's tabs yet, so extensions built on them (Dark Reader) apply partly. An extension installed or turned on while AgentGo runs is fully on after a restart.

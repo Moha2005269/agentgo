@@ -115,64 +115,94 @@ radio button" to `radio "3 of 3"`; on click-tab-2 it clicked a wrong link in
 mouse click on this page. The third false "done" is click-button seed 201: it
 pressed a "No" button and the page scored -1.
 
-## 5. An agent using AgentGo (Claude Opus 5.5)
+## 5. An agent using each browser (four setups, one model)
 
-One agent (Claude Opus 5.5 in Claude Code) solved MiniWoB++ tasks through
-AgentGo, alone and with GoMini, and its tokens were taken from Claude Code's
-own usage records. 12 tasks from the 0.1.4 benchmark with new seeds, and 12
-tasks it had never opened.
+One model drives every browser: **gpt-6-luna** (medium reasoning) through
+Factory's `droid exec`, a fresh session for every task, so nothing is
+remembered between tasks or setups. Each session gets only that browser's MCP
+tools (text tools: no screenshots, no page script) and the server's own
+instructions, and the same prompt: the task's URL and its BrowserGym
+instruction. The page's own reward decides; tokens, turns and time are
+droid's own usage numbers, measured per task. 24 MiniWoB++ tasks: the 12 of
+the 0.1.4 run (seed 41) and 12 others (seed 51), the same seeds for every
+setup.
 
-Measured on the 0.1.5 build before the last round of fixes (see "Limits").
-Tokens are what the tool calls and replies added to the agent's context per
-task (Claude Code's usage records); browser output is the characters the
-browser tools returned.
+<p align="center"><img src="../../assets/bench-agents.svg" alt="Agent benchmark: tasks solved, time, tokens and turns for the four setups" width="100%"></p>
 
-| | AgentGo 0.1.4 | AgentGo 0.1.5 | AgentGo 0.1.4 + GoMini v4 | AgentGo 0.1.5 + GoMini v5 |
+All 24 tasks:
+
+| Setup | Solved | Mean reward | Agent turns | Median s | Mean s | Input tokens | Output tokens | Factory credits |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| AgentGo 0.1.5 | 22/24 | 0.92 | 7.7 | 32 | 37 | 94,703 | 431 | 918 |
+| AgentGo 0.1.5 + GoMini v5 | 22/24 | 0.92 | 8.1 | 32 | 40 | 108,195 | 531 | 1,021 |
+| Playwright MCP 0.0.83 | 18/24 | 0.75 | 13.0 | 42 | 61 | 178,387 | 1,203 | 1,485 |
+| browser-use 0.13.11 | 19/24 | 0.79 | 13.2 | 92 | 129 | 209,858 | 983 | 1,654 |
+
+The 12 tasks of the 0.1.4 run:
+
+| Setup | Solved | Mean reward | Agent turns | Median s | Mean s | Input tokens | Output tokens | Factory credits |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| AgentGo 0.1.5 | 11/12 | 0.92 | 6.9 | 33 | 35 | 81,508 | 349 | 842 |
+| AgentGo 0.1.5 + GoMini v5 | 11/12 | 0.92 | 7.4 | 34 | 36 | 88,371 | 369 | 880 |
+| Playwright MCP 0.0.83 | 9/12 | 0.75 | 15.4 | 50 | 72 | 216,242 | 1,579 | 1,749 |
+| browser-use 0.13.11 | 9/12 | 0.75 | 14.7 | 98 | 136 | 256,212 | 1,188 | 1,975 |
+
+The 12 other tasks:
+
+| Setup | Solved | Mean reward | Agent turns | Median s | Mean s | Input tokens | Output tokens | Factory credits |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| AgentGo 0.1.5 | 11/12 | 0.92 | 8.4 | 31 | 39 | 107,898 | 514 | 994 |
+| AgentGo 0.1.5 + GoMini v5 | 11/12 | 0.92 | 8.8 | 30 | 44 | 128,019 | 693 | 1,162 |
+| Playwright MCP 0.0.83 | 9/12 | 0.75 | 10.6 | 34 | 50 | 140,532 | 827 | 1,221 |
+| browser-use 0.13.11 | 10/12 | 0.83 | 11.8 | 83 | 123 | 163,503 | 779 | 1,334 |
+
+Input tokens are everything the model read across its turns (most of it
+served from the prompt cache); the browser's share is what differs between
+setups.
+
+Task by task (✓ with the time it took, ✗ with the page's reward):
+
+| Task | AgentGo | AgentGo + GoMini | Playwright MCP | browser-use |
 |---|---|---|---|---|
-| **12 tasks from the 0.1.4 run (new seeds)** | | | | |
-| Solved | 10/12 | 11/12 | 10/12 | 10/12 |
-| Mean reward | 0.83 | 0.92 | 0.83 | 0.90 |
-| Agent turns per task | 5.4 | 4.8 | 6.9 | 3.7 |
-| Seconds per task (median) | 23.9 | 23.2 | 31.0 | 25.8 |
-| Tokens added per task | 4,914 | 3,607 | 3,375 | 2,409 |
-| Browser output per task (characters) | 10,021 | 3,625 | 2,630 | 1,673 |
-| **12 tasks never opened before** | | | | |
-| Solved | — | 12/12 | — | 11/12 |
-| Agent turns per task | — | 1.7 | — | 2.1 |
-| Seconds per task (median) | — | 10.1 | — | 11.0 |
-| Tokens added per task | — | 1,218 | — | 1,455 |
+| login-user | ✓ 33 s | ✓ 28 s | ✓ 28 s | ✓ 41 s |
+| click-checkboxes-large | ✓ 34 s | ✓ 37 s | ✓ 50 s | ✓ 144 s |
+| click-tab-2-hard | ✓ 42 s | ✓ 24 s | ✓ 67 s | ✓ 87 s |
+| enter-date | ✓ 30 s | ✓ 34 s | ✓ 30 s | ✗ (-1) |
+| login-user-popup | ✓ 39 s | ✓ 26 s | ✓ 35 s | ✓ 71 s |
+| search-engine | ✓ 33 s | ✓ 32 s | ✓ 43 s | ✓ 99 s |
+| social-media | ✓ 42 s | ✓ 43 s | ✓ 200 s | ✓ 227 s |
+| email-inbox | ✓ 27 s | ✓ 28 s | ✓ 102 s | ✗ (-1) |
+| book-flight | ✓ 53 s | ✓ 58 s | ✓ 109 s | ✓ 344 s |
+| use-autocomplete | ✓ 33 s | ✓ 39 s | ✓ 37 s | ✓ 114 s |
+| navigate-tree | ✓ 28 s | ✓ 34 s | ✗ (-1) | ✓ 98 s |
+| form-sequence-2 | ✗ (not ended) | ✗ (not ended) | ✗ (not ended) | ✗ (not ended) |
+| terminal | ✓ 33 s | ✓ 49 s | ✗ (not ended) | ✓ 209 s |
+| email-inbox-forward-nl | ✓ 52 s | ✓ 38 s | ✓ 83 s | ✓ 197 s |
+| click-scroll-list | ✓ 31 s | ✓ 28 s | ✓ 33 s | ✓ 83 s |
+| copy-paste-2 | ✓ 32 s | ✓ 67 s | ✗ (-1) | ✗ (not ended) |
+| guess-number | ✓ 29 s | ✓ 29 s | ✓ 44 s | ✓ 84 s |
+| simple-arithmetic | ✓ 24 s | ✓ 29 s | ✓ 24 s | ✓ 44 s |
+| click-pie | ✗ (not ended) | ✗ (not ended) | ✗ (not ended) | ✗ (not ended) |
+| enter-text-dynamic | ✓ 27 s | ✓ 36 s | ✗ (-1) | ✓ 60 s |
+| social-media-some | ✓ 26 s | ✓ 30 s | ✓ 184 s | ✓ 96 s |
+| enter-password | ✓ 26 s | ✓ 27 s | ✓ 27 s | ✓ 63 s |
+| click-checkboxes-transfer | ✓ 30 s | ✓ 31 s | ✓ 41 s | ✓ 116 s |
+| simple-algebra | ✓ 32 s | ✓ 30 s | ✓ 26 s | ✓ 72 s |
 
-The tasks that failed:
-
-- AgentGo, email-inbox (delete the email from Donelle): the trash icon in
-  Donelle's row was clicked and the page scored it -1 (being checked).
-- AgentGo + GoMini, click-checkboxes-large (reward 0.75): GoMini chose a
-  ticked box again, which cleared it (fixed: boxes are ticked, never cleared
-  by choosing them again, and a ticked box is not offered).
-- AgentGo + GoMini, social-media: the reply icon ignores a real mouse click
-  on this page; the same happened with 0.1.4.
-- AgentGo + GoMini, copy-paste-2: the outline trimmed the trailing space of
-  the text to copy, so the pasted text differed (fixed: values are shown
-  exactly).
-
-On the never-seen tasks the agent mostly acted without GoMini (one call
-fills a form); where it delegated, GoMini looped on two check boxes (fixed:
-boxes are ticked, never cleared by choosing them again) and skipped the "+"
-of a closed pie menu (fixed: a covering control that opens the target is
-pressed first).
-
+Every setup failed form-sequence-2 (the instruction never says to press
+Submit, and no agent did) and click-pie (each agent opened the menu and
+clicked the item, and the page did not count the click). Playwright and browser-use runs ran on
+an unchanged install; the AgentGo rows are the 0.1.5 build that was
+released. A first pass on the build before its last three fixes (exact form
+values, `collapsed`/`expanded` tree items, pie slices clicked by their shape)
+solved 20/24 with both AgentGo setups.
 
 ## Limits
 
 - One machine, one connection, one run per seed. Differences of one task
   move a rate by 8 points (12 tasks) or 1.5 points (65 delegations).
-- The agent-driven runs are a single agent session; the agent learns as it
-  goes, so the 12 never-seen tasks are the cleaner measure. They ran on the
-  0.1.5 build before its last fixes (found by those runs); sections 1 to 4
-  were measured on the final build.
-- In the agent-driven runs, one AgentGo task (email-inbox) had the session's
-  context compaction and a usage-limit pause inside it; its time and tokens
-  are left out of the means.
+- Section 5 is one model, one run per task and setup: a different model, or
+  another run of the same one, will move single tasks.
 - MiniWoB++ pages are small; real sites are larger and slower. Section 3 is
   the real-web check.
 

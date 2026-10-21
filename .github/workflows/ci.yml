@@ -38,11 +38,14 @@ jobs:
       # zip 2.x advisories RUSTSEC-2026-0367/0368/0369 concern ZipArchive::extract,
       # which AgentGo never calls (entries are unpacked one by one through
       # enclosed_name, links skipped). Remove the ignores once zip is upgraded.
+      # The installer's ureq 2 pulls webpki-roots 0.26.11, a shim that only
+      # re-exports webpki-roots 1.0.10 (which has the fix for RUSTSEC-2026-0381);
+      # the advisory matches its version number. Remove with ureq 3.
       - name: Dependency audit
         run: |
           cargo install cargo-audit --locked --version 0.22.2
           cargo audit --ignore RUSTSEC-2026-0367 --ignore RUSTSEC-2026-0368 --ignore RUSTSEC-2026-0369
-          cd installer && cargo audit --ignore RUSTSEC-2026-0367 --ignore RUSTSEC-2026-0368 --ignore RUSTSEC-2026-0369
+          cd installer && cargo audit --ignore RUSTSEC-2026-0367 --ignore RUSTSEC-2026-0368 --ignore RUSTSEC-2026-0369 --ignore RUSTSEC-2026-0381
 
   windows:
     runs-on: windows-latest

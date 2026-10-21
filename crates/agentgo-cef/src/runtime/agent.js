@@ -265,6 +265,14 @@
     }
     if (el.checked || el.getAttribute('aria-checked') === 'true') line += ' checked';
     if (el.getAttribute('aria-selected') === 'true') line += ' selected';
+    // A tree item that holds a nested list (or the label of one) says
+    // whether it is open: a folder is opened, a file is the answer.
+    const nestedList = node => [...(node?.children || [])].find(child => /^(UL|OL)$/.test(child.tagName) || child.getAttribute('role') === 'group');
+    const holder = nestedList(el) ? el : (el.parentElement?.firstElementChild === el && nestedList(el.parentElement) ? el.parentElement : null);
+    if (!el.getAttribute('aria-expanded') && holder && !/^(INPUT|SELECT|TEXTAREA|BUTTON|A)$/.test(el.tagName)) {
+      const list = nestedList(holder);
+      line += visible(list) ? ' expanded' : ' collapsed';
+    }
     if (el.getAttribute('aria-expanded')) line += el.getAttribute('aria-expanded') === 'true' ? ' expanded' : ' collapsed';
     // A menu item with a submenu opens it on hover; clicking may choose it.
     else if (/^(true|menu)$/.test(el.getAttribute('aria-haspopup') || '')) line += ' haspopup';
@@ -353,11 +361,18 @@
       const name = nameOf(item.el);
       // A drawn shape named only by its classes and the text label drawn on
       // it (a pie menu's slice and its letter) are one target: keep the label.
-      const next = items[i + 1]?.el;
-      if (name.startsWith('(icon:') && next && !item.el.contains(next) && !next.contains(item.el) && !nameOf(next).startsWith('(icon:')) {
-        const box = item.el.getBoundingClientRect(), label = next.getBoundingClientRect();
+      // Keep the shape (the larger target, still hit while the menu moves)
+      // under the label's name, and drop the label's own line.
+      if (item.merged) return false;
+      const next = items[i + 1];
+      if (name.startsWith('(icon:') && next?.el && !item.el.contains(next.el) && !next.el.contains(item.el) && !nameOf(next.el).startsWith('(icon:')) {
+        const box = item.el.getBoundingClientRect(), label = next.el.getBoundingClientRect();
         const cx = label.left + label.width / 2, cy = label.top + label.height / 2;
-        if (cx >= box.left && cx <= box.right && cy >= box.top && cy <= box.bottom && label.width * label.height < box.width * box.height) return false;
+        if (cx >= box.left && cx <= box.right && cy >= box.top && cy <= box.bottom && label.width * label.height < box.width * box.height) {
+          item.line = item.line.replace(/^(\S+) "[^"]*"/, `$1 ${quote(nameOf(next.el))}`);
+          prints.set(item.id, printOf(item.line));
+          next.merged = true;
+        }
       }
       for (let j = i + 1; j < Math.min(items.length, i + 4); j++) {
         const inner = items[j].el;
@@ -1104,7 +1119,7 @@
       if (el.required) field.required = true;
       if (el.tagName === 'SELECT') field.options = [...el.options].slice(0, 40).map(o => clean(o.textContent, 40));
       if (el.type === 'checkbox' || el.type === 'radio') field.checked = el.checked;
-      else if (el.type !== 'password' && el.type !== 'file') field.value = clean(el.value ?? el.innerText, 80);
+      else if (el.type !== 'password' && el.type !== 'file') field.value = exact(el.value ?? el.innerText, 2000);
       if (el.validationMessage) field.invalid = clean(el.validationMessage, 100);
       groups.get(form).push(field);
     }
