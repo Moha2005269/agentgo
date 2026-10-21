@@ -98,9 +98,9 @@ Create accounts just for your agent, or let it use yours. Saved sign-ins are enc
 <td colspan="2" valign="top">
 
 ### GoMini, a model that knows the browser
-> **GoMini is still in development.** v5 is a development release, not a finished model: use it for routine steps and let your agent check its work.
+> **GoMini is still in development.** v6 is a development release, not a finished model: use it for routine steps and let your agent check its work.
 
-GoMini is a small model (322M parameters) trained on how this browser works. It runs on your computer (your graphics card through Vulkan when it can, else the processor) and takes the routine steps of a task, filling the values your agent supplies, clicking through, scrolling, so your agent hands over one subgoal instead of reading every page. It only picks between steps the browser offers; payments, sign-ins and final submissions always go back to your agent. Setup offers it (on by default, about 390 MB), or get it later in Settings > GoMini. GoMini v5 finishes 39 of 65 held-out MiniWoB++ subgoals on its own (v4: 15) and says "done" falsely 3 times (v4: 26); GoMini v6, which 0.1.6 installs, finishes 53 of 65 (4 false "done"). Model: [huggingface.co/Mhmadhassnz/GoMini](https://huggingface.co/Mhmadhassnz/GoMini).
+GoMini is a small model (322M parameters) trained on how this browser works. It runs on your computer (your graphics card through Vulkan when it can, else the processor) and takes the routine steps of a task, filling the values your agent supplies, clicking through, scrolling, so your agent hands over one subgoal instead of reading every page. It only picks between steps the browser offers; payments, sign-ins and final submissions always go back to your agent. Setup offers it (on by default, about 390 MB), or get it later in Settings > GoMini. GoMini v6, which 0.1.6 installs, finishes 53 of 65 held-out MiniWoB++ subgoals on its own (v5: 39, v4: 15) and picks the right step on 96.6% of held-out pages (v5: 76.6%); it says "done" falsely 4 times (v5: 3, v4: 26). Model: [huggingface.co/Mhmadhassnz/GoMini](https://huggingface.co/Mhmadhassnz/GoMini).
 
 </td>
 </tr>
@@ -186,7 +186,7 @@ Agents should read `skills/agentgo/SKILL.md` first (over MCP: `browser_guide`). 
 - Translation uses Google's translation service. Notifications are refused for every site. There is no VPN in this release.
 - Extensions run in Chromium's own extension engine, but its tab APIs see only one tab per window while AgentGo shows many: calls that address a tab by id from an extension's background (`tabs.sendMessage`, `scripting.executeScript`) do not reach AgentGo's tabs yet, so extensions built on them (Dark Reader) apply partly. An extension installed or turned on while AgentGo runs is fully on after a restart.
 - Cross-origin iframes are not observed or acted in.
-- GoMini is still in development (v5 is a development release). It is trained and checked on AgentGo's own forms, single actions and navigation; on arbitrary sites it is not proven yet, and its confidence is not calibrated. That is why every step it picks is checked by the browser, sensitive steps go back to your agent, and "done" is a claim your agent can verify.
+- GoMini is still in development (v6 is a development release). It is trained and checked on AgentGo's own forms, single actions and navigation; on arbitrary sites it is not proven yet, and its confidence is not calibrated. That is why every step it picks is checked by the browser, sensitive steps go back to your agent, and "done" is a claim your agent can verify.
 - Real Google, GitHub and Yandex API sign-in has not been tried live; the OAuth flow is tested against a mock provider.
 
 ## Build from source
