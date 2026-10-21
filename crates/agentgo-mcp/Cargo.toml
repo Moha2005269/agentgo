@@ -4,7 +4,7 @@ description = "Thin MCP adapter mapping: one MCP tool per protocol command, no p
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
+license = "MIT"
 repository.workspace = true
 publish.workspace = true
 

@@ -212,3 +212,5 @@ Thank you to:
 ## License
 
 AgentGo is released under the **Business Source License 1.1** (see [`LICENSE`](LICENSE)). You may use, copy, modify and redistribute it for non-commercial, evaluation, development, research and personal purposes. Production use by a commercial entity or for commercial purposes needs a commercial license from the author. On **2030-01-01** (or four years after the first public release of a version, whichever comes first) each version converts to the **Apache License 2.0**. Third-party components keep their own licenses.
+
+The MCP server and the protocol it speaks are **MIT** licensed: `crates/agentgo-mcp`, `crates/agentgo-protocol`, `crates/agentgo-policy`, `crates/agentgo-shell-bridge` and the agent guide in `skills/agentgo` (each has its own `LICENSE`). They are also published on their own as [agentgo-mcp](https://github.com/Moha2005269/agentgo-mcp).
