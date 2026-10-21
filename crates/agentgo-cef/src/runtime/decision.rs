@@ -125,7 +125,16 @@ pub fn record(
     };
     let outline = view["page"].as_str().unwrap_or("");
     let clearing = clears(subgoal);
-    let offered = candidates(outline);
+    let mut offered = candidates(outline);
+    // "Focus the text box" with nothing to type: a box is clicked, not filled.
+    let lower = subgoal.to_lowercase();
+    if values.as_object().is_some_and(|v| v.is_empty())
+        && (lower.contains("focus") || lower.contains("click in") || lower.contains("click on the text"))
+    {
+        for candidate in offered.iter_mut().filter(|c| c["op"] == "fill") {
+            candidate["op"] = json!("click");
+        }
+    }
     OFFERED.with(|all| {
         all.borrow_mut().insert(
             (session.to_string(), tab.to_string()),

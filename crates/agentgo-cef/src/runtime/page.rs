@@ -613,7 +613,24 @@ async fn settle(tab: &str) {
         }
     }
     if cdp::dialog(tab).is_none() {
-        let _ = cdp::agent_eval(tab, "__ag.settle(200,2500,120)", 6_000).await;
+        // A page that never goes still (a live list, a streaming log) gets
+        // 1.5 s, not 2.5 s: the agent can wait for what it needs.
+        let _ = cdp::agent_eval(tab, "__ag.settle(200,1500,120)", 6_000).await;
+        // A single-page app's next view: wait for the data the action asked
+        // for, then for the page to draw it, so the reply shows the view and
+        // not its spinner (one read fewer).
+        let since = started
+            .checked_sub(std::time::Duration::from_millis(1_500))
+            .unwrap_or(started);
+        if cdp::open_fetches(tab, since) > 0 {
+            let waiting = std::time::Instant::now();
+            while cdp::open_fetches(tab, since) > 0
+                && waiting.elapsed() < std::time::Duration::from_millis(2_500)
+            {
+                exec::sleep(50).await;
+            }
+            let _ = cdp::agent_eval(tab, "__ag.settle(150,1200,80)", 4_000).await;
+        }
     }
 }
 
@@ -1690,7 +1707,37 @@ pub async fn act_scroll(caller: &Caller, params: &Value) -> Reply {
     show(&tab, "banner", json!(["Agent is scrolling"])).await;
     let before_url = state::tab_url(&tab);
     let generation = cdp::generation(&tab);
-    let position = if params.get("ref").is_some() {
+    let position = if let Some(until) = params.get("until").filter(|v| v.is_string()) {
+        // Scroll (the page, or the list `ref` is in) until a text shows: one
+        // call for a long or virtual list instead of a scroll and a read per
+        // screen.
+        let found = agent(
+            &tab,
+            "scrollUntil",
+            json!({"until": until, "ref": params.get("ref"), "from": params.get("to"), "max": params.get("max")}),
+            60_000,
+        )
+        .await?;
+        if let Some(fail) = agent_error(&found) {
+            return Err(fail);
+        }
+        found
+    } else if params.get("ref").is_some()
+        && matches!(params.get("to").and_then(Value::as_str), Some("top" | "bottom"))
+    {
+        // To the top or bottom of the box ref is (in): a textarea, a list.
+        let moved = agent(
+            &tab,
+            "scrollIn",
+            json!({"ref": reference(params)?, "to": params.get("to")}),
+            8_000,
+        )
+        .await?;
+        if let Some(fail) = agent_error(&moved) {
+            return Err(fail);
+        }
+        moved
+    } else if params.get("ref").is_some() {
         let target = agent(
             &tab,
             "target",
@@ -1799,6 +1846,13 @@ pub async fn observe_view(caller: &Caller, method: &str, params: &Value) -> Repl
 /// `wait.*`: bounded waits evaluated inside the page.
 pub async fn wait(caller: &Caller, method: &str, params: &Value) -> Reply {
     let tab = tab_of(caller, params)?;
+    // A plain pause ("click ONE, wait 1 second, click TWO"), also as a step
+    // of a batch, where it keeps its timing.
+    if let Some(ms) = u64_of(params, "ms") {
+        let ms = ms.min(10_000);
+        exec::sleep(ms).await;
+        return Ok(json!({"paused": ms}));
+    }
     if !state::tab_is_loading(&tab) {
         show(&tab, "banner", json!(["Agent is waiting for the page"])).await;
     }
@@ -1845,15 +1899,23 @@ pub async fn wait(caller: &Caller, method: &str, params: &Value) -> Reply {
         "wait.hidden" => json!({"gone": params.get("selector"), "timeout": timeout}),
         _ => json!({
             "text": params.get("text"), "selector": params.get("selector"), "gone": params.get("gone"),
-            "urlContains": params.get("urlContains"), "timeout": timeout,
+            "urlContains": params.get("urlContains"), "enabled": params.get("enabled"), "timeout": timeout,
         }),
     };
     let started = std::time::Instant::now();
+    let before_url = state::tab_url(&tab);
+    let generation = cdp::generation(&tab);
     // The condition survives navigations: a destroyed context is retried.
     loop {
         match cdp::agent_eval(&tab, &format!("__ag.waitFor({condition})"), timeout + 3_000).await {
             Ok(result) if result["met"] == true => {
-                return Ok(json!({"met": true, "ms": started.elapsed().as_millis() as u64}))
+                // What changed while waiting, so the next step needs no read.
+                let mut out = delta(caller, &tab, &before_url, generation)
+                    .await
+                    .unwrap_or_else(|_| json!({}));
+                out["met"] = json!(true);
+                out["ms"] = json!(started.elapsed().as_millis() as u64);
+                return Ok(out);
             }
             _ if (started.elapsed().as_millis() as u64) < timeout => exec::sleep(120).await,
             _ => {

@@ -18,7 +18,7 @@ const PROTOCOL_VERSION: &str = "2024-11-05";
 pub fn delegate_tool() -> Value {
     json!({
         "name": "browser_delegate",
-        "description": "GoMini, the local model, is on: hand it one small subgoal and it takes the routine steps itself (fill the values you supply, click, check, select, scroll, wait) without you reading every page. Give subgoal (one step, named as the page names things), values (every text to type, by name), completion (how to tell it is done), constraints. Returns status done (GoMini's claim: glance at evidence), needs_help (read the page and give a narrower subgoal, or do the step yourself) or stopped. Payments, sign-ins, final submissions and deletes always come back to you.",
+        "description": "GoMini, the local model, is on: hand it a routine run of steps and it takes them itself (fill the values you supply, click, check, select, scroll, wait, retry) without you reading every page: opening tabs, folders or sections until something shows, a set of boxes, a long form. Not worth it for one click. Give subgoal (one goal, named as the page names things), values (every text to type, by name), completion (how to tell it is done), constraints. Returns status done (GoMini's claim: glance at evidence), needs_help (read the page and give a narrower subgoal, or do the step yourself) or stopped. Payments, sign-ins, final submissions and deletes always come back to you.",
         "inputSchema": {"type": "object", "properties": {
             "subgoal": {"type": "string"},
             "values": {"type": "object", "additionalProperties": {"type": "string"}},
@@ -54,7 +54,7 @@ pub fn tools() -> Value {
         },
         {
             "name": "browser_act",
-            "description": "Act on an element by ref with real input, wait for the page to settle, and get back only what changed. action: click, fill (text), press (key), check, uncheck, select (value, or values for a multiple list), hover, scroll (to: top|bottom, or ref), type (text at focus), upload (paths). Add submit:true to fill to press Enter. If the reply is approval.required or handoff.required, call browser_wait_human.",
+            "description": "Act on an element by ref with real input, wait for the page to settle, and get back only what changed. action: click, fill (text), press (key), check, uncheck, select (value, or values for a multiple list), hover, scroll (to: top|bottom, or ref; until: a text to scroll to, in the page or ref's list), type (text at focus), upload (paths). Add submit:true to fill to press Enter. If the reply is approval.required or handoff.required, call browser_wait_human.",
             "inputSchema": object(json!({
                 "action": {"type": "string", "enum": ["click", "fill", "press", "check", "uncheck", "select", "hover", "scroll", "type", "upload", "double_click", "right_click"]},
                 "ref": {"type": "integer"},
@@ -63,6 +63,7 @@ pub fn tools() -> Value {
                 "value": {"type": "string"},
                 "values": {"type": "array", "items": {"type": "string"}, "description": "select: several options of a multiple list"},
                 "to": {"type": "string"},
+                "until": {"type": "string"},
                 "paths": {"type": "array", "items": {"type": "string"}},
                 "submit": {"type": "boolean"},
                 "approvalId": {"type": "string"}
@@ -70,17 +71,18 @@ pub fn tools() -> Value {
         },
         {
             "name": "browser_batch",
-            "description": "Run several browser_act steps in order in one call (e.g. fill a whole form and click Save). Stops at the first failure. Returns the final change set.",
+            "description": "Run several browser_act steps in order in one call (e.g. fill a whole form and click Save; {action:\"wait\", ms} pauses). Stops at the first failure. Returns the final change set.",
             "inputSchema": object(json!({
                 "steps": {"type": "array", "items": {"type": "object"}, "description": "Each item has the same fields as browser_act"}
             }), &["steps"]),
         },
         {
             "name": "browser_wait",
-            "description": "Wait until text appears, a CSS selector is visible, a selector is gone, or the URL contains a string. With no condition, waits for the page to finish loading and settle.",
+            "description": "Wait until text appears, a selector is visible or gone, the URL contains a string, or ref `enabled` is usable; returns what changed. ms: just pause. No condition: waits for load.",
             "inputSchema": object(json!({
                 "text": {"type": "string"}, "selector": {"type": "string"}, "gone": {"type": "string"},
-                "urlContains": {"type": "string"}, "timeout": {"type": "integer", "description": "milliseconds"}
+                "urlContains": {"type": "string"}, "enabled": {"type": "integer"}, "ms": {"type": "integer"},
+                "timeout": {"type": "integer", "description": "ms"}
             }), &[]),
         },
         {
@@ -103,7 +105,7 @@ pub fn tools() -> Value {
         },
         {
             "name": "browser_guide",
-            "description": "How to use this browser, written for you. Call it once before your first browser action. topic=start: the working loop, rules that save turns, errors, accounts (short; read this first). topic=commands: find commands: pass query (words, e.g. \"selector click\") for the matching ones, or group for one section (open, read, act, batch, accounts, person, browser; all = every command, about 25,000 tokens). topic=gomini: GoMini, the optional local model that takes routine steps, and how to phrase subgoals for it.",
+            "description": "How to use this browser, when you are unsure. topic=start: the loop, rules that save turns, errors (short). topic=skill: the full guide. topic=commands: find commands: pass query (words, e.g. \"selector click\") for the matching ones, or group for one section (open, read, act, batch, accounts, person, browser; all = every command, about 25,000 tokens). topic=gomini: GoMini, the optional local model that takes routine steps, and how to phrase subgoals for it.",
             "inputSchema": object(json!({
                 "topic": {"type": "string", "enum": ["start", "commands", "gomini"]},
                 "group": {"type": "string", "enum": ["open", "read", "act", "batch", "accounts", "person", "browser", "all"]},
@@ -132,6 +134,9 @@ pub fn tools() -> Value {
 const GUIDE_START: &str = include_str!("../../../skills/agentgo/SKILL.md");
 const GUIDE_COMMANDS: &str = include_str!("../../../skills/agentgo/references/commands.md");
 const GUIDE_GOMINI: &str = include_str!("../../../skills/agentgo/references/gomini.md");
+/// Over MCP the start is written in tool names (`browser_act`), not protocol
+/// names: the shell guide sent agents to `browser_call` for every step.
+const GUIDE_MCP: &str = include_str!("../../../skills/agentgo/references/mcp.md");
 
 /// The text `browser_guide` answers with.
 pub fn guide(
@@ -143,7 +148,8 @@ pub fn guide(
     let query = query.filter(|q| !q.trim().is_empty());
     let topic = topic.unwrap_or(if query.is_some() { "commands" } else { "start" });
     match topic {
-        "start" => Ok(GUIDE_START.to_string()),
+        "start" => Ok(GUIDE_MCP.to_string()),
+        "skill" | "shell" => Ok(GUIDE_START.to_string()),
         "gomini" | "laya" => Ok(GUIDE_GOMINI.to_string()),
         "commands" => {
             if let Some(query) = query {
@@ -175,7 +181,7 @@ pub fn guide(
             Ok(rest[..to].trim_end().to_string())
         }
         other => Err(format!(
-            "unknown topic {other}; use start, commands or gomini"
+            "unknown topic {other}; use start, commands, gomini or skill"
         )),
     }
 }
@@ -300,6 +306,8 @@ fn act_method(action: &str) -> Option<&'static str> {
         "scroll" => "act.scroll",
         "type" => "act.type",
         "upload" => "act.upload",
+        // A timed pause between steps of a batch.
+        "wait" => "wait.load",
         _ => return None,
     })
 }
@@ -350,7 +358,7 @@ pub fn command_for(tool: &str, args: &Value) -> Result<(String, Value), String> 
             ("workflow.batch".into(), json!({"steps": mapped}))
         }
         "browser_wait" => {
-            let conditional = ["text", "selector", "gone", "urlContains"]
+            let conditional = ["text", "selector", "gone", "urlContains", "enabled", "ms"]
                 .iter()
                 .any(|key| args.get(*key).is_some());
             (
@@ -521,8 +529,8 @@ fn gomini_active(client: &mut Client) -> bool {
         .is_ok_and(|status| status["active"] == true)
 }
 
-const INSTRUCTIONS: &str = "Call browser_guide once before your first browser action: it explains the working loop and every tool. AgentGo is a real browser. Read pages with browser_open/browser_read (compact outlines with [ref] numbers), act with browser_act or browser_batch (replies contain only what changed). Payments and final submissions may need the human: on approval.required or handoff.required call browser_wait_human. Never attempt CAPTCHAs.";
-const INSTRUCTIONS_GOMINI: &str = " GoMini, the local model, is on: for routine steps (filling supplied values, clicking through, scrolling) call browser_delegate with one small subgoal instead of reading and acting yourself; it saves you tokens and turns.";
+const INSTRUCTIONS: &str = "AgentGo is a real browser. browser_open returns a compact outline ([n] references); act with browser_act, or browser_batch for several steps you are sure of. Replies contain only what changed: read the page again only when you need it. Repeated buttons show their row (in \"...\"): pick by the row. A long or endless list: browser_act action scroll with until (a text) scrolls until it shows, in one call. Something that happens later: browser_wait (text, gone, or enabled: a ref) returns what changed. On approval.required or handoff.required call browser_wait_human; never attempt CAPTCHAs. browser_guide has the details when you need them.";
+const INSTRUCTIONS_GOMINI: &str = " GoMini, a small model on this computer, is on: browser_delegate takes a routine run of steps (opening tabs, folders or sections until something shows, ticking a set of boxes, filling a long form with values you supply, retrying a step the page rejected) so you need not read and act through each one. A single click is faster done yourself.";
 
 /// Serves MCP on the given streams until the host disconnects.
 pub fn serve(mut client: Client, input: impl BufRead, mut output: impl Write) -> Client {
@@ -695,6 +703,11 @@ mod tests {
             );
         }
         assert!(guide(None, None, None).unwrap().contains("# AgentGo"));
+        // The MCP start is short and in tool names: it stays in an agent's
+        // context for every later turn.
+        let start = guide(None, None, None).unwrap();
+        assert!(start.len() < 4_000 && start.contains("browser_act") && start.contains("until"), "{}", start.len());
+        assert!(guide(Some("skill"), None, None).unwrap().contains("## The loop"));
         assert!(guide(Some("gomini"), None, None)
             .unwrap()
             .contains("agentgo.gomini.decision/1"));

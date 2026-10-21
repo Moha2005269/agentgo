@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "source": "docs/capability-inventory.md",
   "sourceSha256": "e1b9c7a6b30f39af7064669243e3d8482c9b5721c42346bdab61c4488052c8d1",
-  "agentgoVersion": "0.1.5",
+  "agentgoVersion": "0.1.6",
   "protocolVersion": "0.1.0",
   "skillVersion": "0.1.0",
   "counts": {

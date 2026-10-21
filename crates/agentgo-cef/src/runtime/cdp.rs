@@ -45,6 +45,9 @@ struct TabCdp {
     /// Highest element reference handed out, so refs never repeat across
     /// documents in one tab.
     pub ref_base: u64,
+    /// Fetch/XHR requests still open, with when they started: an action's
+    /// reply waits for the data it asked for (a single-page app's next view).
+    fetches: HashMap<String, std::time::Instant>,
 }
 
 #[derive(Default)]
@@ -219,14 +222,26 @@ wrap_dev_tools_message_observer! {
                     "Input.dragIntercepted" => tab.drag = Some(params["data"].clone()),
                     "Page.javascriptDialogOpening" => tab.dialog = Some(params),
                     "Page.javascriptDialogClosed" => tab.dialog = None,
-                    "Network.requestWillBeSent" => push_event(tab, json!({
-                        "kind": "request",
-                        "id": params["requestId"],
-                        "method": params["request"]["method"],
-                        "url": params["request"]["url"],
-                        "type": params["type"],
-                        "headers": safe_headers(&params["request"]["headers"]),
-                    })),
+                    "Network.requestWillBeSent" => {
+                        if matches!(params["type"].as_str(), Some("Fetch" | "XHR")) {
+                            if let Some(id) = params["requestId"].as_str() {
+                                tab.fetches.insert(id.to_string(), std::time::Instant::now());
+                            }
+                        }
+                        push_event(tab, json!({
+                            "kind": "request",
+                            "id": params["requestId"],
+                            "method": params["request"]["method"],
+                            "url": params["request"]["url"],
+                            "type": params["type"],
+                            "headers": safe_headers(&params["request"]["headers"]),
+                        }))
+                    }
+                    "Network.loadingFinished" => {
+                        if let Some(id) = params["requestId"].as_str() {
+                            tab.fetches.remove(id);
+                        }
+                    }
                     "Network.responseReceived" => push_event(tab, json!({
                         "kind": "response",
                         "id": params["requestId"],
@@ -245,11 +260,16 @@ wrap_dev_tools_message_observer! {
                         "kind": "sse", "id": params["requestId"], "event": params["eventName"],
                         "data": params["data"].as_str().map(|data| data.chars().take(2000).collect::<String>()),
                     })),
-                    "Network.loadingFailed" => push_event(tab, json!({
-                        "kind": "failed",
-                        "id": params["requestId"],
-                        "error": params["errorText"],
-                    })),
+                    "Network.loadingFailed" => {
+                        if let Some(id) = params["requestId"].as_str() {
+                            tab.fetches.remove(id);
+                        }
+                        push_event(tab, json!({
+                            "kind": "failed",
+                            "id": params["requestId"],
+                            "error": params["errorText"],
+                        }))
+                    }
                     "Runtime.consoleAPICalled" => {
                         let text = params["args"]
                             .as_array()
@@ -771,6 +791,19 @@ pub fn take_drag(tab_id: &str) -> Option<Value> {
 }
 
 /// Pending JavaScript dialog, if one is blocking the tab.
+/// Fetch/XHR requests of the tab that started after `since` and are still
+/// open (younger than 5 s: a long poll or a stream is not waited for).
+pub fn open_fetches(tab_id: &str, since: std::time::Instant) -> usize {
+    CDP.with(|cdp| {
+        cdp.borrow().tabs.get(tab_id).map_or(0, |tab| {
+            tab.fetches
+                .values()
+                .filter(|at| **at >= since && at.elapsed() < std::time::Duration::from_secs(5))
+                .count()
+        })
+    })
+}
+
 pub fn dialog(tab_id: &str) -> Option<Value> {
     CDP.with(|cdp| {
         cdp.borrow()

@@ -8,6 +8,9 @@
   const ids = new WeakMap();
   const els = new Map();
   const prints = new Map();
+  // The row a repeated control was shown in ("Dismiss" in "Invoice #4471 is
+  // overdue"), checked again before the reference is acted on.
+  const rows = new Map();
   let next = 0;
   // Elements DevTools reported a click/mousedown listener on (see
   // listenerCandidates); script-driven controls with no pointer cursor and no
@@ -48,7 +51,10 @@
   };
   // What identifies an outline line across re-renders: without the value
   // and the row context, which change while the element stays the same.
-  const printOf = line => line.replace(/ in ".*"$/, '').replace(/ value=.*$/, '');
+  // State words go too: a button that becomes enabled, a box that is ticked,
+  // is the same element.
+  const printOf = line => line.replace(/ in ".*"$/, '').replace(/ value=.*$/, '')
+    .replace(/( (checked|selected|expanded|collapsed|haspopup|disabled|readonly|required))+$/, '');
 
   const visible = el => {
     if (!el.isConnected) return false;
@@ -313,6 +319,34 @@
     return inlineText(node, absorbed);
   }).join('');
 
+  // The text of the row a control sits in (a list item, a table row, a
+  // card), without the symbols of the row's buttons and without the
+  // control's own name; '' when the control has no row of its own.
+  const plain = text => String(text || '').replace(/(^|\s)[^\p{L}\p{N}\s]{1,2}(?=\s|$)/gu, ' ').replace(/\s+/g, ' ').trim();
+  const rowOf = el => {
+    const own = plain(nameOf(el));
+    for (let up = el.parentElement, depth = 0; up && depth < 5 && up !== document.body; up = up.parentElement, depth++) {
+      let around = plain(up.innerText);
+      if (around.length > 160) break;
+      if (around.length > own.length + 2) {
+        if (own.length > 1) around = around.replace(own, ' ').replace(/\s+/g, ' ').trim();
+        return /[\p{L}\p{N}]{2}/u.test(around) ? around : '';
+      }
+    }
+    return '';
+  };
+  // How much two row texts are the same row: shared words first, shared
+  // numbers only to tell rows with the same words apart ("Invoice #4471" and
+  // "Invoice #4478"); a score or a rank that changed keeps a row the same.
+  const tokens = (text, digits) => new Set(String(text).toLowerCase().match(digits ? /\d+/g : /\p{L}{2,}/gu) || []);
+  const overlap = (a, b) => {
+    if (!a.size && !b.size) return 1;
+    let n = 0;
+    for (const t of a) if (b.has(t)) n++;
+    return n / (a.size + b.size - n);
+  };
+  const likeness = (a, b) => overlap(tokens(a), tokens(b)) + 0.01 * overlap(tokens(a, true), tokens(b, true));
+
   const collect = (opts = {}) => {
     const items = [];
     const absorbed = new WeakSet();
@@ -356,7 +390,7 @@
     // A clickable inside a clickable with the same name (a menu row and the
     // wrapper of its text, a tree row and its label) is one target: keep the
     // inner one, whose centre is surely on it.
-    return items.filter((item, i) => {
+    const kept = items.filter((item, i) => {
       if (!item.el || roleOf(item.el) !== 'clickable') return true;
       const name = nameOf(item.el);
       // A drawn shape named only by its classes and the text label drawn on
@@ -376,10 +410,27 @@
       }
       for (let j = i + 1; j < Math.min(items.length, i + 4); j++) {
         const inner = items[j].el;
-        if (inner && item.el.contains(inner) && roleOf(inner) === 'clickable' && nameOf(inner) === name) return false;
+        // ...also when the inner one says what it is (a menuitem, an option,
+        // a link): clicking the wrapper of a menu item may not choose it.
+        if (inner && item.el.contains(inner) && nameOf(inner) === name) return false;
       }
       return true;
     });
+    // Several controls that read the same (a "Dismiss" per notification, a
+    // "Like (12)" per post; numbers aside) each say which row they are in, so
+    // the agent need not count, and the row is kept to check the reference
+    // against before it is acted on.
+    const same = line => printOf(line).replace(/\d+/g, '#');
+    const count = new Map();
+    for (const item of kept) if (item.id) count.set(same(item.line), (count.get(same(item.line)) || 0) + 1);
+    for (const item of kept) {
+      if (!item.id || count.get(same(item.line)) < 2) continue;
+      const row = rowOf(item.el);
+      if (!row) continue;
+      rows.set(item.id, row);
+      if (!item.line.includes(' in "')) item.line += ` in ${quote(clean(row, 60))}`;
+    }
+    return kept;
   };
 
   // Cloudflare's full-page check ("Just a moment..."). Recognised by its
@@ -787,10 +838,34 @@
 
   const lookup = id => {
     const el = els.get(id)?.deref();
-    if (el?.isConnected) return { el };
+    const row = rows.get(id);
+    if (el?.isConnected) {
+      if (!row) return { el };
+      const now = rowOf(el);
+      if (now === row) return { el };
+      // A list that re-rendered by position (React's key={index}, a recycled
+      // virtual row) shows another item in the same node: act on the element
+      // that shows the row the agent was shown, or say what changed, never on
+      // whatever the node shows now.
+      const print = prints.get(id), here = likeness(now, row);
+      let best = null, score = here;
+      for (const item of collect()) {
+        if (!item.id || item.el === el || printOf(item.line) !== print) continue;
+        const s = likeness(rowOf(item.el), row);
+        if (s > score) { best = item; score = s; }
+      }
+      if (!best && here >= 0.5) { rows.set(id, now); return { el }; }
+      if (best && score >= 0.5) { rows.set(best.id, row); return { el: best.el, healed: best.id }; }
+      return { error: 'stale', detail: `reference ${id} now shows ${quote(clean(now, 60))}, not ${quote(clean(row, 60))} (the list re-rendered)` };
+    }
     const print = prints.get(id);
     if (!print) return { error: 'stale', detail: `reference ${id} does not exist in this document` };
-    const matches = collect().filter(item => item.id && printOf(item.line) === print);
+    let matches = collect().filter(item => item.id && printOf(item.line) === print);
+    // A repeated control that was re-created: the one in the same row.
+    if (row && matches.length > 1) {
+      const scored = matches.map(item => [item, likeness(rowOf(item.el), row)]).sort((a, b) => b[1] - a[1]);
+      if (scored[0][1] >= 0.5 && scored[0][1] > scored[1][1]) matches = [scored[0][0]];
+    }
     if (matches.length === 1) return { el: matches[0].el, healed: matches[0].id };
     return { error: matches.length ? 'ambiguous' : 'stale', detail: `${matches.length} elements match ${print}` };
   };
@@ -915,8 +990,11 @@
     const y = Math.round(fy + Math.min(Math.max(rect.top + rect.height / 2, 1), innerHeight - 1));
     const hit = deepHit(x, y);
     const ok = hit && (hit === el || el.contains(hit) || hit.contains(el) || [...(el.labels || [])].some(label => label.contains(hit)));
+    // A repeated control says which row it was in, so the reply shows which
+    // "Dismiss" was pressed.
+    const shown = rows.has(found.healed || id) ? rowOf(el) : '';
     const out = {
-      x, y, line: describe(el), tag: el.tagName, type: el.type || null,
+      x, y, line: describe(el) + (shown && !describe(el).includes(' in "') ? ` in ${quote(clean(shown, 60))}` : ''), tag: el.tagName, type: el.type || null,
       submits: isSubmitter(el) && formRisk(el) === 'submit',
       disabled: !!(el.disabled || el.getAttribute('aria-disabled') === 'true'),
       editable: /^(INPUT|TEXTAREA)$/.test(el.tagName) || el.isContentEditable,
@@ -1147,18 +1225,100 @@
       const unmoved = still > 0 && !changed && now - started >= still && document.readyState === 'complete';
       if (unmoved || (quietFor >= quiet && document.readyState === 'complete') || now - started >= timeout) {
         observer.disconnect();
-        resolve({ stable: quietFor >= quiet, ms: Math.round(now - started) });
+        resolve({ stable: quietFor >= quiet, ms: Math.round(now - started), changed });
       } else setTimeout(check, 50);
     };
     setTimeout(check, Math.min(quiet, still || 60, 60));
   });
 
-  const scroll = (opts = {}) => {
+  // What scrolls: the page, or when the page cannot (a fixed layout with a
+  // scrolled list, a virtual list), the largest visible scrolled box.
+  const scrollable = el => el.scrollHeight > el.clientHeight + 8 && /(auto|scroll|overlay)/.test(getComputedStyle(el).overflowY);
+  const scroller = (near = null) => {
+    for (let el = near; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+      if (scrollable(el)) return el;
+    }
     const root = document.scrollingElement || document.documentElement;
+    if (near || root.scrollHeight > innerHeight + 8) return root;
+    let best = null, area = 0;
+    for (const el of document.querySelectorAll('div,section,main,ul,ol,table,tbody,[role=list],[role=grid],[role=listbox]')) {
+      if (!scrollable(el) || !visible(el)) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width * r.height > area) { best = el; area = r.width * r.height; }
+    }
+    return best || root;
+  };
+
+  const scroll = (opts = {}) => {
+    const root = scroller();
+    const page = root === (document.scrollingElement || document.documentElement);
+    const step = Math.round((page ? innerHeight : root.clientHeight) * 0.85);
     if (opts.to === 'top') root.scrollTo({ top: 0, behavior: 'instant' });
     else if (opts.to === 'bottom') root.scrollTo({ top: root.scrollHeight, behavior: 'instant' });
-    else root.scrollBy({ top: opts.dy ?? Math.round(innerHeight * 0.85) * (opts.pages ?? 1), left: opts.dx || 0, behavior: 'instant' });
-    return scrollState();
+    else root.scrollBy({ top: opts.dy ?? step * (opts.pages ?? 1), left: opts.dx || 0, behavior: 'instant' });
+    return page ? scrollState() : { ...scrollState(), list: { y: Math.round(root.scrollTop), h: root.scrollHeight, vh: root.clientHeight } };
+  };
+
+  // Scrolls inside a box (a textarea, a list) to its top or bottom: `ref` is
+  // the box or something in it.
+  const scrollIn = (opts = {}) => {
+    const found = lookup(opts.ref);
+    if (found.error) return found;
+    const box = scrollable(found.el) || found.el.tagName === 'TEXTAREA' ? found.el : scroller(found.el);
+    box.scrollTo({ top: opts.to === 'top' ? 0 : box.scrollHeight, behavior: 'instant' });
+    box.dispatchEvent(new Event('scroll'));
+    return { box: describe(box).slice(0, 80), y: Math.round(box.scrollTop), h: box.scrollHeight, vh: box.clientHeight };
+  };
+
+  // Scrolls (the page, or the list `ref` is in) until `until` is in view,
+  // waiting for each part a lazy or virtual list loads: one call instead of
+  // a scroll and a read per screen.
+  const scrollUntil = async (opts = {}) => {
+    const needle = String(opts.until || '').toLowerCase();
+    if (!needle) return { error: 'params', detail: 'scroll until needs a text' };
+    const near = opts.ref != null ? lookup(opts.ref).el || null : null;
+    const root = scroller(near);
+    const page = root === (document.scrollingElement || document.documentElement);
+    const shown = () => {
+      const box = page ? { top: 0, bottom: innerHeight } : root.getBoundingClientRect();
+      const walker = document.createTreeWalker(page ? document.body : root, NodeFilter.SHOW_TEXT);
+      for (let node; (node = walker.nextNode());) {
+        if (!node.nodeValue.toLowerCase().includes(needle)) continue;
+        const el = node.parentElement;
+        if (!el || !visible(el)) continue;
+        const r = el.getBoundingClientRect();
+        if (r.bottom > box.top && r.top < box.bottom) return el;
+      }
+      return null;
+    };
+    if (opts.from === 'top') root.scrollTo({ top: 0, behavior: 'instant' });
+    const steps = Math.min(opts.max || 60, 120);
+    for (let i = 0; i <= steps; i++) {
+      const hit = shown();
+      if (hit) {
+        hit.scrollIntoView({ block: 'center', behavior: 'instant' });
+        return { found: true, steps: i, scroll: scrollState() };
+      }
+      const before = [root.scrollTop, root.scrollHeight];
+      root.scrollBy({ top: Math.round((page ? innerHeight : root.clientHeight) * 0.85), behavior: 'instant' });
+      if (root.scrollTop === before[0]) {
+        // At the end: a list that loads more when its end shows gets time to
+        // answer (its height grows).
+        for (let waited = 0; waited < 2500 && root.scrollHeight === before[1]; waited += 100) await new Promise(r => setTimeout(r, 100));
+        if (root.scrollHeight !== before[1]) { await settle(150, 900, 100); continue; }
+      } else if (!(await settle(150, 900, 120)).changed) {
+        // A virtual list redraws on its scroll event, which a tab that is
+        // not painting may not send: send it.
+        (page ? window : root).dispatchEvent(new Event('scroll'));
+        await settle(100, 500, 80);
+      }
+      if (root.scrollTop === before[0] && root.scrollHeight === before[1]) {
+        const last = shown();
+        if (last) { last.scrollIntoView({ block: 'center', behavior: 'instant' }); return { found: true, steps: i + 1, scroll: scrollState() }; }
+        return { found: false, steps: i + 1, end: true, scroll: scrollState() };
+      }
+    }
+    return { found: false, steps, scroll: scrollState() };
   };
 
   const waitFor = (opts = {}) => new Promise(resolve => {
@@ -1171,6 +1331,11 @@
       if (ok && opts.selector) ok = [...document.querySelectorAll(opts.selector)].some(visible);
       if (ok && opts.gone) ok = ![...document.querySelectorAll(opts.gone)].some(visible);
       if (ok && opts.urlContains) ok = location.href.includes(opts.urlContains);
+      // A control that becomes usable later (Deploy once the build passed).
+      if (ok && opts.enabled != null) {
+        const found = lookup(opts.enabled);
+        ok = !!found.el && !found.el.disabled && found.el.getAttribute('aria-disabled') !== 'true';
+      }
       const ms = Math.round(performance.now() - started);
       if (ok) resolve({ met: true, ms });
       else if (ms >= timeout) resolve({ met: false, ms });
@@ -1453,7 +1618,7 @@
     if (event.key === 'Enter' && event.target.tagName === 'INPUT') noticeSignIn(event.target.form || document);
   }, true);
 
-  globalThis.__ag = { expire, focusedEditable, adoptFocused, riskAt, focusedMoney, pointerAt: () => at, pointTo, pointAt, keyNote, hideStage, typing, banner, fillLogin, searchResults, selection, find, setBase, element, rect, enterRisk, snapshot, target, focusForInput, choose, valueOf, text, links, tables, forms, settle, scroll, waitFor, meta, signals, injectionChunks, translateText, translatePage, listenerCandidates, markListened, setValue, holds, awaitSuggestions };
+  globalThis.__ag = { expire, focusedEditable, adoptFocused, riskAt, focusedMoney, pointerAt: () => at, pointTo, pointAt, keyNote, hideStage, typing, banner, fillLogin, searchResults, selection, find, setBase, element, rect, enterRisk, snapshot, target, focusForInput, choose, valueOf, text, links, tables, forms, settle, scroll, scrollIn, scrollUntil, waitFor, meta, signals, injectionChunks, translateText, translatePage, listenerCandidates, markListened, setValue, holds, awaitSuggestions };
   // Helpers for the page tools (tools.js), which extend this agent.
   globalThis.__ag.h = { lookup, visible, clean, refOf, describe, signals, risk: el => moneyRisk(el) || (isSubmitter(el) && formRisk(el)) || null };
 })();

@@ -1,6 +1,6 @@
 [package]
 name = "agentgo-setup"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2021"
 license = "BUSL-1.1"
 publish = false
