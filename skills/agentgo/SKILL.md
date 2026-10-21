@@ -1,6 +1,6 @@
 ---
 name: agentgo
-description: Drive the AgentGo browser (a real Chromium on Windows built for agents). Use for any task on the web: reading pages, clicking, typing, forms, search, downloads, signed-in accounts and their APIs. Read this before the first browser call.
+description: "Drive the AgentGo browser (a real Chromium on Windows built for agents). Use for any task on the web: reading pages, clicking, typing, forms, search, downloads, signed-in accounts and their APIs. Read this before the first browser call."
 ---
 
 # AgentGo
