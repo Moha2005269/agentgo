@@ -940,8 +940,10 @@ pub async fn act_click(caller: &Caller, method: &str, params: &Value) -> Reply {
         json!([x, y, if pressing { "click" } else { "move" }]),
     )
     .await;
+    mouse(&tab, "mouseMoved", x, y, "none", 0, modifiers).await?;
     // A live list may move the element during the pointer animation (a row
-    // inserted on top): aim again right before pressing.
+    // inserted on top, a leaderboard re-sorted): aim again as the last thing
+    // before pressing, so the press follows within one round trip.
     let (x, y) = match aimed {
         Some(id) if pressing => match agent(&tab, "target", json!([id, {}]), 4_000).await {
             Ok(fresh) if agent_error(&fresh).is_none() => (
@@ -952,7 +954,6 @@ pub async fn act_click(caller: &Caller, method: &str, params: &Value) -> Reply {
         },
         _ => (x, y),
     };
-    mouse(&tab, "mouseMoved", x, y, "none", 0, modifiers).await?;
     if pressing {
         for click in 1..=clicks {
             mouse(&tab, "mousePressed", x, y, button, click, modifiers).await?;
