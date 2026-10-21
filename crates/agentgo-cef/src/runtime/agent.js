@@ -1335,9 +1335,15 @@
     // breaks alike, symbols aside ("#418 main Passed" matches a table row).
     const loose = text => plain(String(text || '').toLowerCase());
     const needle = opts.text ? loose(opts.text) : null;
-    // `gone` is a selector, or a text when it is not one ("Deploying #418").
+    // `gone` is a selector when it reads like one (punctuation, or one tag
+    // name) and parses; words are a text ("Last checked", "Deploying #418").
     let goneText = null;
-    if (opts.gone) { try { document.querySelector(opts.gone); } catch (_) { goneText = loose(opts.gone); } }
+    if (opts.gone) {
+      const g = String(opts.gone).trim();
+      let selector = /[.#[\]:>~+*=(]/.test(g) || (/^[a-z][a-z0-9-]*$/i.test(g) && !(document.createElement(g) instanceof HTMLUnknownElement));
+      if (selector) { try { document.querySelector(g); } catch (_) { selector = false; } }
+      if (!selector) goneText = loose(g);
+    }
     const check = () => {
       let ok = true;
       const page = needle || goneText ? loose(document.body?.innerText) : '';
