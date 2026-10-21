@@ -27,6 +27,11 @@ what changed.
   returns what changed while waiting; no read is needed after it.
 - Waiting after your own actions is built in: do not wait or re-read after
   every click.
+- Say what must happen and let the browser check it: `browser_act {action:
+  "click", ref: 9, expect: {gone: 9}}` (also `shows: "<text>"`, `enabled:
+  <ref>`, `url: "<part>"`, `changes: true`). The reply says `expect: met`, or
+  the action fails with what did change, so a click that did nothing cannot
+  pass as done.
 - The outline beats screenshots; use `browser_screenshot` only for canvases,
   images or layout.
 - `browser_call` reaches rare protocol methods (cookies, downloads, PDF,

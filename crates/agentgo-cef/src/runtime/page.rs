@@ -1858,6 +1858,77 @@ pub async fn observe_view(caller: &Caller, method: &str, params: &Value) -> Repl
     Ok(value)
 }
 
+/// `expect` after an action: `gone` (a ref, or a text), `shows` (a text),
+/// `enabled` (a ref), `url` (part of the address), `changes` (something
+/// visible changed). Waits up to `timeout` (3 s) for all of them; the reply
+/// says `expect: "met"`, or the action fails with what did change.
+pub async fn expect(caller: &Caller, params: &Value, expect: &Value, mut reply: Value) -> Reply {
+    let tab = tab_of(caller, params)?;
+    let timeout = u64_of(expect, "timeout").unwrap_or(3_000).clamp(200, 15_000);
+    let mut condition = json!({"timeout": timeout});
+    match &expect["gone"] {
+        Value::Number(n) => condition["missing"] = json!(n),
+        Value::String(text) => condition["absentText"] = json!(text),
+        _ => {}
+    }
+    if let Some(text) = expect["shows"].as_str() {
+        condition["text"] = json!(text);
+    }
+    if let Some(reference) = expect["enabled"].as_u64() {
+        condition["enabled"] = json!(reference);
+    }
+    if let Some(part) = expect["url"].as_str() {
+        condition["urlContains"] = json!(part);
+    }
+    // A change set is always there, empty when nothing changed: what counts
+    // is a line in it, a new page, a dialog or a navigation.
+    let changed = |reply: &Value| {
+        reply["changes"].as_str().is_some_and(|c| !c.trim().is_empty())
+            || reply["page"].as_str().is_some_and(|p| !p.trim().is_empty())
+            || reply.get("dialog").is_some_and(|d| !d.is_null())
+            || reply["navigated"] == true
+    };
+    let started = std::time::Instant::now();
+    let mut met = false;
+    while (started.elapsed().as_millis() as u64) <= timeout {
+        let page_ok = matches!(
+            cdp::agent_eval(&tab, &format!("__ag.waitFor({condition})"), timeout + 3_000).await,
+            Ok(result) if result["met"] == true
+        );
+        // Something must have changed: what changed after the reply counts.
+        let changes_ok = expect["changes"] != true || changed(&reply) || {
+            let later = state_diff(caller, &json!({"tabId": tab})).await.unwrap_or_default();
+            let seen = changed(&later);
+            if seen {
+                for key in ["changes", "page", "url"] {
+                    if let Some(value) = later.get(key).filter(|v| !v.is_null()) {
+                        reply[key] = value.clone();
+                    }
+                }
+            }
+            seen
+        };
+        if page_ok && changes_ok {
+            met = true;
+            break;
+        }
+        exec::sleep(150).await;
+    }
+    if met {
+        reply["expect"] = json!("met");
+        return Ok(reply);
+    }
+    let what = reply["changes"]
+        .as_str()
+        .map(|c| c.chars().take(600).collect::<String>())
+        .filter(|c| !c.is_empty())
+        .unwrap_or_else(|| "nothing visible changed".into());
+    Err(Fail::new(
+        ErrorCode::Timeout,
+        format!("the action ran, but expect {expect} did not hold within {timeout} ms; changes: {what}"),
+    ))
+}
+
 /// `wait.*`: bounded waits evaluated inside the page.
 pub async fn wait(caller: &Caller, method: &str, params: &Value) -> Reply {
     let tab = tab_of(caller, params)?;

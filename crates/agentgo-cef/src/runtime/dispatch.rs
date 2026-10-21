@@ -738,7 +738,24 @@ async fn batch(caller: &Caller, params: &Value) -> Reply {
 
 /// Routes one command. Preconditions (lease, pause/stop, operator-only
 /// settings) are enforced here for every transport.
-pub(super) async fn run(caller: &Caller, method: &str, mut params: Value) -> Reply {
+pub(super) async fn run(caller: &Caller, method: &str, params: Value) -> Reply {
+    // `expect` on an action: what must hold once it ran ("this button is
+    // gone"), checked by the browser, so a wrong assumption fails loudly
+    // instead of passing as "no visible change".
+    let expect = method
+        .starts_with("act.")
+        .then(|| params.get("expect").cloned())
+        .flatten()
+        .filter(Value::is_object);
+    let named = params.clone();
+    let reply = run_checked(caller, method, params).await?;
+    match expect {
+        Some(expect) => page::expect(caller, &named, &expect, reply).await,
+        None => Ok(reply),
+    }
+}
+
+async fn run_checked(caller: &Caller, method: &str, mut params: Value) -> Reply {
     // Any command that takes an element reference also takes `find: {by,
     // ...}`, resolved now on the page as it is (see tasks::resolve).
     if params.get("find").is_some()

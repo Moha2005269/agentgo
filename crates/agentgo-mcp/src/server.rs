@@ -54,7 +54,7 @@ pub fn tools() -> Value {
         },
         {
             "name": "browser_act",
-            "description": "Act on an element by ref with real input, wait for the page to settle, and get back only what changed. action: click, fill (text), press (key), check, uncheck, select (value, or values for a multiple list), hover, scroll (to: top|bottom, or ref; until: a text to scroll to, in the page or ref's list), type (text at focus), upload (paths). Add submit:true to fill to press Enter. If the reply is approval.required or handoff.required, call browser_wait_human.",
+            "description": "Act on an element by ref with real input, wait for the page to settle, and get back only what changed. action: click, fill (text), press (key), check, uncheck, select (value, or values for a multiple list), hover, scroll (to: top|bottom, or ref; until: a text to scroll to, in the page or ref's list), type (text at focus), upload (paths). Add submit:true to fill to press Enter; expect {gone, shows, enabled, url, changes} must hold after, or it fails. If the reply is approval.required or handoff.required, call browser_wait_human.",
             "inputSchema": object(json!({
                 "action": {"type": "string", "enum": ["click", "fill", "press", "check", "uncheck", "select", "hover", "scroll", "type", "upload", "double_click", "right_click"]},
                 "ref": {"type": "integer"},
@@ -66,6 +66,7 @@ pub fn tools() -> Value {
                 "until": {"type": "string"},
                 "paths": {"type": "array", "items": {"type": "string"}},
                 "submit": {"type": "boolean"},
+                "expect": {"type": "object"},
                 "approvalId": {"type": "string"}
             }), &["action"]),
         },

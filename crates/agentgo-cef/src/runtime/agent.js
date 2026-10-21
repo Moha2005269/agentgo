@@ -1338,6 +1338,13 @@
       if (ok && opts.selector) ok = [...document.querySelectorAll(opts.selector)].some(visible);
       if (ok && opts.gone) ok = ![...document.querySelectorAll(opts.gone)].some(visible);
       if (ok && opts.urlContains) ok = location.href.includes(opts.urlContains);
+      // An element that must be gone (expect after an action): its node, not
+      // another element with the same name.
+      if (ok && opts.missing != null) {
+        const el = els.get(opts.missing)?.deref();
+        ok = !el || !el.isConnected || !visible(el);
+      }
+      if (ok && opts.absentText) ok = !(document.body?.innerText || '').toLowerCase().includes(String(opts.absentText).toLowerCase());
       // A control that becomes usable later (Deploy once the build passed).
       if (ok && opts.enabled != null) {
         const found = lookup(opts.enabled);
