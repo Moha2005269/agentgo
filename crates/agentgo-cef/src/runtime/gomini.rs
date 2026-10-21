@@ -1083,7 +1083,21 @@ pub async fn command(caller: &Caller, method: &str, params: &Value) -> Reply {
             operator()?;
             remove()
         }
-        "gomini.delegate" => delegate(caller, params).await,
+        "gomini.delegate" => {
+            let mut out = delegate(caller, params).await?;
+            // What the steps changed since the planner last looked, so a
+            // finished delegation needs no read to check.
+            if out["status"] == "done" {
+                if let Ok(changes) = call(caller, "state.diff", json!({"tabId": params.get("tabId")})).await {
+                    for key in ["changes", "page", "navigated"] {
+                        if let Some(value) = changes.get(key).filter(|v| !v.is_null()) {
+                            out[key] = value.clone();
+                        }
+                    }
+                }
+            }
+            Ok(out)
+        }
         _ => Err(Fail::new(ErrorCode::MethodNotFound, method.to_string())),
     }
 }

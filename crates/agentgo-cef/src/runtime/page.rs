@@ -893,8 +893,11 @@ pub async fn act_click(caller: &Caller, method: &str, params: &Value) -> Reply {
     let tab = begin_action(caller, params).await?;
     let before_url = state::tab_url(&tab);
     let generation = cdp::generation(&tab);
+    // The reference actually pressed (a healed one when the list re-rendered).
+    let mut aimed: Option<u64> = None;
     let (x, y, line) = if params.get("ref").is_some() {
         let target = resolve_target(caller, &tab, params, true).await?;
+        aimed = target["healed"].as_u64().or(Some(reference(params)?));
         (
             target["x"].as_f64().unwrap_or(0.0),
             target["y"].as_f64().unwrap_or(0.0),
@@ -937,6 +940,18 @@ pub async fn act_click(caller: &Caller, method: &str, params: &Value) -> Reply {
         json!([x, y, if pressing { "click" } else { "move" }]),
     )
     .await;
+    // A live list may move the element during the pointer animation (a row
+    // inserted on top): aim again right before pressing.
+    let (x, y) = match aimed {
+        Some(id) if pressing => match agent(&tab, "target", json!([id, {}]), 4_000).await {
+            Ok(fresh) if agent_error(&fresh).is_none() => (
+                fresh["x"].as_f64().unwrap_or(x),
+                fresh["y"].as_f64().unwrap_or(y),
+            ),
+            _ => (x, y),
+        },
+        _ => (x, y),
+    };
     mouse(&tab, "mouseMoved", x, y, "none", 0, modifiers).await?;
     if pressing {
         for click in 1..=clicks {

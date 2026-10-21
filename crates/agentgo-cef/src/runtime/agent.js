@@ -328,6 +328,10 @@
     for (let up = el.parentElement, depth = 0; up && depth < 5 && up !== document.body; up = up.parentElement, depth++) {
       let around = plain(up.innerText);
       if (around.length > 160) break;
+      // A box with many controls (a tree, a menu, a form) is not one row.
+      let controls = 0;
+      for (const node of up.querySelectorAll('*')) if (ids.has(node) && ++controls > 3) break;
+      if (controls > 3) break;
       if (around.length > own.length + 2) {
         if (own.length > 1) around = around.replace(own, ' ').replace(/\s+/g, ' ').trim();
         return /[\p{L}\p{N}]{2}/u.test(around) ? around : '';
@@ -855,6 +859,9 @@
         if (s > score) { best = item; score = s; }
       }
       if (!best && here >= 0.5) { rows.set(id, now); return { el }; }
+      // collect() above noted what every node shows now; this reference
+      // still means the row the agent was shown.
+      rows.set(id, row);
       if (best && score >= 0.5) { rows.set(best.id, row); return { el: best.el, healed: best.id }; }
       return { error: 'stale', detail: `reference ${id} now shows ${quote(clean(now, 60))}, not ${quote(clean(row, 60))} (the list re-rendered)` };
     }
