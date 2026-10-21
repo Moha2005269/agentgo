@@ -707,8 +707,14 @@ mod tests {
         // The MCP start is short and in tool names: it stays in an agent's
         // context for every later turn.
         let start = guide(None, None, None).unwrap();
-        assert!(start.len() < 4_000 && start.contains("browser_act") && start.contains("until"), "{}", start.len());
-        assert!(guide(Some("skill"), None, None).unwrap().contains("## The loop"));
+        assert!(
+            start.len() < 4_000 && start.contains("browser_act") && start.contains("until"),
+            "{}",
+            start.len()
+        );
+        assert!(guide(Some("skill"), None, None)
+            .unwrap()
+            .contains("## The loop"));
         assert!(guide(Some("gomini"), None, None)
             .unwrap()
             .contains("agentgo.gomini.decision/1"));

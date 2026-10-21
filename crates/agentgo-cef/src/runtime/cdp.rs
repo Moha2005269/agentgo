@@ -520,7 +520,11 @@ pub fn agent_input_recent(tab_id: &str, ms: u64) -> bool {
 
 /// Milliseconds since AgentGo last sent input to this tab.
 pub fn input_age_ms(tab_id: &str) -> Option<u64> {
-    LAST_INPUT.with(|last| last.borrow().get(tab_id).map(|at| at.elapsed().as_millis() as u64))
+    LAST_INPUT.with(|last| {
+        last.borrow()
+            .get(tab_id)
+            .map(|at| at.elapsed().as_millis() as u64)
+    })
 }
 
 fn send(tab_id: &str, method: &str, params: Value) -> Result<Slot<CdpResult>, String> {

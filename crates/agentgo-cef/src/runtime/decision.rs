@@ -129,7 +129,9 @@ pub fn record(
     // "Focus the text box" with nothing to type: a box is clicked, not filled.
     let lower = subgoal.to_lowercase();
     if values.as_object().is_some_and(|v| v.is_empty())
-        && (lower.contains("focus") || lower.contains("click in") || lower.contains("click on the text"))
+        && (lower.contains("focus")
+            || lower.contains("click in")
+            || lower.contains("click on the text"))
     {
         for candidate in offered.iter_mut().filter(|c| c["op"] == "fill") {
             candidate["op"] = json!("click");

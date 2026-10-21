@@ -616,7 +616,11 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
             let best = choice
                 .probabilities
                 .iter()
-                .filter(|(key, p)| key.starts_with('r') && *p >= 0.2 && attempt_actions.iter().any(|(k, _)| k == key))
+                .filter(|(key, p)| {
+                    key.starts_with('r')
+                        && *p >= 0.2
+                        && attempt_actions.iter().any(|(k, _)| k == key)
+                })
                 .max_by(|a, b| a.1.total_cmp(&b.1))
                 .map(|(key, _)| key.clone());
             if let Some(best) = best {
@@ -697,7 +701,11 @@ pub async fn delegate(caller: &Caller, params: &Value) -> Reply {
                         "done",
                         Some(format!(
                             "{} the next step ({next}) is yours",
-                            if has_values { "every value is filled in;" } else { "the steps ran;" }
+                            if has_values {
+                                "every value is filled in;"
+                            } else {
+                                "the steps ran;"
+                            }
                         )),
                         &record,
                         &steps,
@@ -1111,7 +1119,9 @@ pub async fn command(caller: &Caller, method: &str, params: &Value) -> Reply {
             // What the steps changed since the planner last looked, so a
             // finished delegation needs no read to check.
             if out["status"] == "done" {
-                if let Ok(changes) = call(caller, "state.diff", json!({"tabId": params.get("tabId")})).await {
+                if let Ok(changes) =
+                    call(caller, "state.diff", json!({"tabId": params.get("tabId")})).await
+                {
                     for key in ["changes", "page", "navigated"] {
                         if let Some(value) = changes.get(key).filter(|v| !v.is_null()) {
                             out[key] = value.clone();

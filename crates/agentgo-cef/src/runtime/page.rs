@@ -1739,7 +1739,10 @@ pub async fn act_scroll(caller: &Caller, params: &Value) -> Reply {
         }
         found
     } else if params.get("ref").is_some()
-        && matches!(params.get("to").and_then(Value::as_str), Some("top" | "bottom"))
+        && matches!(
+            params.get("to").and_then(Value::as_str),
+            Some("top" | "bottom")
+        )
     {
         // To the top or bottom of the box ref is (in): a textarea, a list.
         let moved = agent(
@@ -1865,7 +1868,9 @@ pub async fn observe_view(caller: &Caller, method: &str, params: &Value) -> Repl
 /// says `expect: "met"`, or the action fails with what did change.
 pub async fn expect(caller: &Caller, params: &Value, expect: &Value, mut reply: Value) -> Reply {
     let tab = tab_of(caller, params)?;
-    let timeout = u64_of(expect, "timeout").unwrap_or(3_000).clamp(200, 15_000);
+    let timeout = u64_of(expect, "timeout")
+        .unwrap_or(3_000)
+        .clamp(200, 15_000);
     let mut condition = json!({"timeout": timeout});
     match &expect["gone"] {
         Value::Number(n) => condition["missing"] = json!(n),
@@ -1884,7 +1889,9 @@ pub async fn expect(caller: &Caller, params: &Value, expect: &Value, mut reply: 
     // A change set is always there, empty when nothing changed: what counts
     // is a line in it, a new page, a dialog or a navigation.
     let changed = |reply: &Value| {
-        reply["changes"].as_str().is_some_and(|c| !c.trim().is_empty())
+        reply["changes"]
+            .as_str()
+            .is_some_and(|c| !c.trim().is_empty())
             || reply["page"].as_str().is_some_and(|p| !p.trim().is_empty())
             || reply.get("dialog").is_some_and(|d| !d.is_null())
             || reply["navigated"] == true
@@ -1898,7 +1905,9 @@ pub async fn expect(caller: &Caller, params: &Value, expect: &Value, mut reply: 
         );
         // Something must have changed: what changed after the reply counts.
         let changes_ok = expect["changes"] != true || changed(&reply) || {
-            let later = state_diff(caller, &json!({"tabId": tab})).await.unwrap_or_default();
+            let later = state_diff(caller, &json!({"tabId": tab}))
+                .await
+                .unwrap_or_default();
             let seen = changed(&later);
             if seen {
                 for key in ["changes", "page", "url"] {
@@ -1926,7 +1935,9 @@ pub async fn expect(caller: &Caller, params: &Value, expect: &Value, mut reply: 
         .unwrap_or_else(|| "nothing visible changed".into());
     Err(Fail::new(
         ErrorCode::Timeout,
-        format!("the action ran, but expect {expect} did not hold within {timeout} ms; changes: {what}"),
+        format!(
+            "the action ran, but expect {expect} did not hold within {timeout} ms; changes: {what}"
+        ),
     ))
 }
 
@@ -1939,7 +1950,9 @@ pub async fn wait(caller: &Caller, method: &str, params: &Value) -> Reply {
         let ms = ms.min(10_000);
         // Counted from the last input (the click before it), not from the
         // end of that click's settling: "wait 1 second" between two clicks.
-        let since = cdp::input_age_ms(&tab).filter(|age| *age < 10_000).unwrap_or(0);
+        let since = cdp::input_age_ms(&tab)
+            .filter(|age| *age < 10_000)
+            .unwrap_or(0);
         exec::sleep(ms.saturating_sub(since)).await;
         return Ok(json!({"paused": ms}));
     }
